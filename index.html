@@ -1294,33 +1294,44 @@ function useLeaderboard(myCode, stocks, crypto) {
 }
 
 function LeaderboardSection({ players, user }) {
+  // Podium only includes real competitors -- people who've actually traded.
+  // A learner at $100,000 +0.0% sitting on the silver step looks broken
+  // even though technically their rank is 2nd.
+  const podiumPlayers = players.filter(p => p.trades > 0).slice(0, 3);
   return (
     <div>
-      {/* Podium -- top 3 */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 24, justifyContent: 'center', alignItems: 'flex-end' }}>
-        {[1, 0, 2].map(idx => {
-          const p = players[idx];
-          if (!p) return null;
-          const isFirst = idx === 0;
-          const medals = ['🥇', '🥈', '🥉'];
-          // Indexed by rank position in `players` array: [0]=1st (gold, tallest),
-          // [1]=2nd (silver, medium), [2]=3rd (bronze, shortest). Previously
-          // swapped so silver was taller than gold -- fixed.
-          const heights = [220, 180, 160];
-          const member = getSquadMember(p.name);
-          return (
-            <div key={p.name} style={{ textAlign: 'center', width: isFirst ? 180 : 150 }}>
-              <div style={{ height: heights[idx], background: `linear-gradient(to top, ${member.color}15, ${member.color}05)`, borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', border: `1px solid ${member.color}30`, borderBottom: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '16px 12px', position: 'relative' }}>
-                <div style={{ position: 'absolute', top: 12, fontSize: 28 }}>{medals[p.rank - 1]}</div>
-                <CharacterAvatar name={p.name} size={isFirst ? 72 : 56} style={{ marginBottom: 8 }} />
-                <div style={{ fontFamily: 'var(--font-headline)', fontSize: isFirst ? 14 : 12, fontWeight: 700, marginBottom: 4, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}{p.isYou ? ' (You)' : ''}</div>
-                <div style={{ fontFamily: 'var(--font-headline)', fontSize: isFirst ? 20 : 16, fontWeight: 900, color: p.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{p.gain >= 0 ? '+' : ''}{p.gainPct.toFixed(1)}%</div>
-                <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, color: 'var(--on-surface-variant)', marginTop: 2 }}>{formatCurrency(p.totalValue)}</div>
+      {/* Podium -- top 3 active traders. Show silver-gold-bronze arrangement. */}
+      {podiumPlayers.length > 0 ? (
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24, justifyContent: 'center', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          {[1, 0, 2].map(idx => {
+            const p = podiumPlayers[idx];
+            if (!p) return null;
+            const isFirst = idx === 0;
+            const medals = ['🥇', '🥈', '🥉'];
+            // Indexed by rank position: [0]=gold/tallest, [1]=silver/medium, [2]=bronze/shortest.
+            const heights = [220, 180, 160];
+            const member = getSquadMember(p.name);
+            const medal = medals[Math.min(Math.max(idx, 0), 2)];
+            return (
+              <div key={p.code || p.name} style={{ textAlign: 'center', width: isFirst ? 180 : 150 }}>
+                <div style={{ height: heights[idx], background: `linear-gradient(to top, ${member.color}15, ${member.color}05)`, borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', border: `1px solid ${member.color}30`, borderBottom: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '16px 12px', position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: 12, fontSize: 28 }}>{medal}</div>
+                  <CharacterAvatar name={p.name} size={isFirst ? 72 : 56} style={{ marginBottom: 8 }} />
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: isFirst ? 14 : 12, fontWeight: 700, marginBottom: 4, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}{p.isYou ? ' (You)' : ''}</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: isFirst ? 20 : 16, fontWeight: 900, color: p.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{p.gain >= 0 ? '+' : ''}{(Number.isFinite(p.gainPct) ? p.gainPct : 0).toFixed(1)}%</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, color: 'var(--on-surface-variant)', marginTop: 2 }}>{formatCurrency(p.totalValue)}</div>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 24, marginBottom: 24, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>🚀</div>
+          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700, marginBottom: 4 }}>No trades yet -- the podium is wide open</div>
+          <div className="text-muted" style={{ fontSize: 13 }}>First trade earns the gold medal.</div>
+        </div>
+      )}
 
       {/* Full stats table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -1602,11 +1613,15 @@ function usePortfolioChart(portfolio, days = 30) {
 }
 
 function formatCurrency(val, dec = 2) {
-  return '$' + Number(val).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  const n = Number(val);
+  const safe = Number.isFinite(n) ? n : 0;
+  return '$' + safe.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
 function formatCurrencySplit(val) {
-  const parts = Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).split('.');
+  const n = Number(val);
+  const safe = Number.isFinite(n) ? n : 0;
+  const parts = safe.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).split('.');
   return { whole: '$' + parts[0], decimal: '.' + parts[1] };
 }
 
