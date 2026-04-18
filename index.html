@@ -61,6 +61,17 @@ async function postTradeAlert({ code, type, symbol, shares, price }) {
   } catch (_) { /* silent -- trade already saved locally */ }
 }
 
+// Detect whether a chat message's content is an image (data URL, web URL, or
+// a relative path to a bundled GIF). Used both to render images in the chat
+// bubble AND when reconciling server-persisted messages after a poll.
+function isImageContent(content) {
+  if (!content || typeof content !== 'string') return false;
+  const c = content.trim();
+  if (c.startsWith('data:image/')) return true;
+  if (/\.(gif|png|jpe?g|webp)(\?.*)?$/i.test(c)) return true;
+  return false;
+}
+
 // ==================== PORTFOLIO / TRADES API ====================
 // Server (Supabase via /api/trades) is the source of truth. localStorage is
 // a fast-paint cache only -- on login we refresh from the server.
@@ -747,7 +758,51 @@ const ACADEMY_LESSONS = [
 // ==================== WEEKLY REPORTS DATA ====================
 const WEEKLY_REPORTS = [
   {
-    id: 'week-2026-03-17', weekStart: 'Mar 17', weekEnd: 'Mar 21, 2026', volume: 43, isCurrent: true,
+    id: 'week-2026-04-14', weekStart: 'Apr 14', weekEnd: 'Apr 18, 2026', volume: 44, isCurrent: true,
+    pulse: {
+      heartbeat: { value: '+1.37%', direction: 'up', label: 'Market drifted higher.', breakdown: 'The S&P 500 added gains across four of five trading days. Buyers stayed in charge, but nobody was chasing. Think of it as cruising speed, not foot-on-the-floor.' },
+      breadth: { winners: 6, losers: 4, label: 'Winners in the lead, barely.', breakdown: 'For every 10 stocks, 6 went up and 4 went down. That is a healthy tilt but not a blowout -- the gains were narrow, concentrated in a handful of big names.' },
+      mood: { sentiment: 'Measured Confidence', meterPercent: 62, breakdown: 'Investors look steady. Earnings season is starting strong, but everyone is watching for the first miss. It is the calm before the next data point, not the calm before a storm.' }
+    },
+    crypto: {
+      dailyBars: [55, 70, 60, 75, 82, 68, 78], peakDay: 4,
+      chartBreakdown: 'Bitcoin pushed higher through midweek, peaked on Friday, and pulled back slightly into the weekend. The shape is classic: run, breath, continue.',
+      smartMoney: { insight: 'Wallets holding 1,000+ BTC grew for the sixth straight week.', breakdown: 'When the biggest wallets keep adding, they are telling you what they believe. "Whales" do not buy on hope -- they buy on conviction.' },
+      gossip: [
+        { label: 'ETF Flows', text: 'Spot Bitcoin ETFs pulled in $1.2B of new money this week. Wall Street keeps showing up, steadily.' },
+        { label: 'Ethereum Upgrade', text: 'Developers finalized the next Ethereum upgrade window. Faster transactions, lower fees, more apps.' }
+      ],
+      table: [
+        { name: 'Bitcoin', subtitle: 'The King', icon: 'currency_bitcoin', change: '+4.8%', marketCap: '$1.95 Trillion', signal: 'Buy', color: 'primary' },
+        { name: 'Ethereum', subtitle: 'The Builder', icon: 'token', change: '+3.1%', marketCap: '$470 Billion', signal: 'Buy', color: 'primary' },
+        { name: 'Solana', subtitle: 'The Speed', icon: 'bolt', change: '+6.4%', marketCap: '$96 Billion', signal: 'Strong Buy', color: 'primary' },
+      ]
+    },
+    focus: [
+      { number: '01', tag: 'Earnings', tagColor: 'primary', title: 'Big Banks Kick Off', body: 'JPMorgan and Goldman Sachs opened earnings season with stronger-than-expected results. Deal-making is back, and trading desks had a big quarter.', simpleTerms: 'When banks do well, it usually means the whole economy is moving. Loans are happening. Companies are buying each other. Money is flowing.', cta: 'View Calendar' },
+      { number: '02', tag: 'Tech', tagColor: 'tertiary', title: 'AI Spend Still Climbing', body: 'Microsoft, Google, and Meta confirmed another year of record AI infrastructure spending. The companies selling the picks and shovels are the clearest winners.', simpleTerms: 'In a gold rush, the people who get rich are the ones selling shovels. Right now NVIDIA is the shovel company, and everyone wants a shovel.', cta: 'Rate Analysis' },
+      { number: '03', tag: 'Patterns', tagColor: 'neutral', title: 'S&P Near Record', body: 'The index is one good session away from a fresh all-time high. A clean break usually pulls more buyers off the sidelines.', simpleTerms: 'When prices push through a level they have been stuck at, it tends to attract new buyers. Like a new trail opening in a park -- everyone wants to try it.', cta: 'Technical View' }
+    ],
+    migration: {
+      body: 'Money rotated toward financials and semiconductors this week, while defensive names like utilities lagged. That is a risk-on signal.',
+      analogy: { title: 'Sailors and Weather', text: 'Professional investors watch the weather. When it is clear, they raise the big sails (tech, banks, chips). When storms gather, they fold those sails and switch to smaller, sturdier ones (utilities, staples). This week, the big sails were up.' },
+      flows: [
+        { sector: 'Semiconductors', status: 'buying', label: 'Buying Heavily' },
+        { sector: 'Banks', status: 'buying', label: 'Rotating In' },
+        { sector: 'Utilities', status: 'selling', label: 'Trimming Exposure' }
+      ]
+    },
+    glossary: [
+      { term: 'Earnings Season', def: 'The weeks each quarter when public companies report how they did. The market reacts to every number.' },
+      { term: 'All-Time High', def: 'The highest price a stock or index has ever reached. Breaking above one often triggers more buying.' },
+      { term: 'Risk-On', def: 'When investors feel confident and buy growth-heavy sectors like tech, banks, and small caps.' },
+      { term: 'Picks and Shovels', def: 'Companies that supply the tools for a booming industry rather than competing in it directly.' },
+      { term: 'Sector Rotation', def: 'When investors move money from one industry to another based on economic conditions.' },
+      { term: 'Accumulation', def: 'When big investors quietly buy large amounts over time. A bullish signal.' },
+    ]
+  },
+  {
+    id: 'week-2026-03-17', weekStart: 'Mar 17', weekEnd: 'Mar 21, 2026', volume: 43, isCurrent: false,
     pulse: {
       heartbeat: { value: '+2.48%', direction: 'up', label: 'The market is moving up.', breakdown: 'Most stocks in the S&P 500 (the 500 largest US companies) rose this week, showing strong buyer interest.' },
       breadth: { winners: 7, losers: 3, label: 'More winners than losers.', breakdown: 'For every 10 stocks, 7 went up and 3 went down. This is like a sports team where most players are performing well.' },
@@ -2580,7 +2635,7 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
 }
 
 // ==================== CHAT ====================
-function ChatPage({ user, code, isAdmin }) {
+function ChatPage({ user, displayName, code, isAdmin }) {
   const [activeRoom, setActiveRoom] = useState('general');
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(true);
@@ -2603,7 +2658,9 @@ function ChatPage({ user, code, isAdmin }) {
   const [showNewDmPicker, setShowNewDmPicker] = useState(false);
   const endRef = useRef(null);
   const inputRef = useRef(null);
-  const currentUser = user || 'Ella';
+  // In-chat display name comes from the access code's label (e.g. "Milburn Pennybags"),
+  // not the human-entered login name. Falls back if label isn't threaded through.
+  const currentUser = displayName || user || 'Ella';
   const mySquad = getSquadMember(currentUser);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -2690,6 +2747,7 @@ function ChatPage({ user, code, isAdmin }) {
       read: true,
       room: activeRoom,
       created_at: m.created_at,
+      isGif: isImageContent(m.content),
     });
 
     const fetchMessages = async () => {
@@ -2752,33 +2810,63 @@ function ChatPage({ user, code, isAdmin }) {
 
   const fileInputRef = useRef(null);
 
-  // Handle file picker selection
+  // Shared helper: post an image/GIF URL through the same pipeline as text messages.
+  // Optimistic append, then POST /api/messages -- next 5s poll reconciles with the server row.
+  // If the POST fails or the content is too large, we mark the optimistic bubble as failed
+  // so the next poll doesn't silently wipe it.
+  const postImageMessage = async (content, fileName) => {
+    const ch = findChannel(activeRoom);
+    if (!ch || !code) return;
+    // Trade Alerts is a system feed -- users cannot post manually
+    if (ch.channel === 'alerts') return;
+    // Server caps content at 2000 chars. Library GIF URLs fit easily; data: URLs for
+    // local uploads usually don't. Guard before a silent truncation.
+    if (content.length > 2000) {
+      setMessages(p => [...p, {
+        id: 'err-' + Date.now(),
+        user: 'System',
+        content: 'That image is too large to post. Use a GIF from the library, or upload to Dropbox and paste the link.',
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        own: false, reactions: [], read: true, room: activeRoom, system: true, failed: true,
+      }]);
+      return;
+    }
+    const payload = { channel: ch.channel, content };
+    if (ch.channel === 'milburn') payload.thread_for = ch.threadFor || code;
+
+    const optimisticId = 'tmp-' + Date.now();
+    setMessages(p => [...p, {
+      id: optimisticId, user: currentUser, author_code: code,
+      content, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      own: true, reactions: [], read: false, room: activeRoom, pending: true, isGif: true, fileName,
+    }]);
+    try {
+      const res = await fetch(`${API_BASE}/api/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('post_failed');
+    } catch (e) {
+      setMessages(p => p.map(m => m.id === optimisticId ? { ...m, failed: true, pending: false } : m));
+    }
+  };
+
+  // Handle file picker selection -- convert to data URL and try to post
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { return; }
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setMessages(p => [...p, {
-        id: Date.now(), user: currentUser, content: ev.target.result,
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        own: true, reactions: [], read: false, isGif: true, fileName: file.name
-      }]);
-    };
+    reader.onload = (ev) => { postImageMessage(ev.target.result, file.name); };
     reader.readAsDataURL(file);
     e.target.value = ''; // reset so same file can be selected again
   };
 
-  // Send a GIF from the curated library (placeholder -- sends label for now, will send URL when library is populated)
+  // Send a GIF from the curated library. URL is short, always fits in the content cap.
   const sendGif = (gif) => {
     const content = gif.url || gif.label || 'GIF';
-    const isImage = content.includes('.gif') || content.includes('.png') || content.includes('.jpg') || content.includes('.webp') || content.startsWith('http') || content.startsWith('data:');
-    setMessages(p => [...p, {
-      id: Date.now(), user: currentUser,
-      content: content,
-      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      own: true, reactions: [], read: false, isGif: isImage, room: activeRoom
-    }]);
+    postImageMessage(content, gif.label);
     setShowGifPicker(false);
     setGifSearch('');
   };
@@ -2791,30 +2879,20 @@ function ChatPage({ user, code, isAdmin }) {
     e.stopPropagation();
     setIsDragOver(false);
 
-    // Check for dropped files (images/GIFs)
+    // Dropped file (image/GIF)
     const files = Array.from(e.dataTransfer?.files || []);
     const imageFile = files.find(f => f.type.startsWith('image/'));
     if (imageFile) {
       const reader = new FileReader();
-      reader.onload = (ev) => {
-        setMessages(p => [...p, {
-          id: Date.now(), user: currentUser, content: ev.target.result,
-          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          own: true, reactions: [], read: false, isGif: true, fileName: imageFile.name
-        }]);
-      };
+      reader.onload = (ev) => { postImageMessage(ev.target.result, imageFile.name); };
       reader.readAsDataURL(imageFile);
       return;
     }
 
-    // Check for dropped URLs (e.g. dragging a GIF from a browser)
+    // Dropped URL (e.g. dragging a GIF from a browser)
     const url = e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain') || '';
     if (url && (url.endsWith('.gif') || url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.webp'))) {
-      setMessages(p => [...p, {
-        id: Date.now(), user: currentUser, content: url,
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        own: true, reactions: [], read: false, isGif: true
-      }]);
+      postImageMessage(url);
     }
   };
 
@@ -2949,7 +3027,7 @@ function ChatPage({ user, code, isAdmin }) {
           <div className="chat-rooms-list">
             {channels.map(r => {
               const isDm = r.type === 'dm';
-              const preview = r.id === 'general' ? 'Family chat'
+              const preview = r.id === 'general' ? 'Group chat'
                 : r.id === 'trades' ? 'Live trade feed'
                 : isAdmin && isDm ? 'Private DM'
                 : 'Your DM with Milburn';
@@ -3009,7 +3087,7 @@ function ChatPage({ user, code, isAdmin }) {
                 <div>
                   <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15 }}>{room?.name || 'Group Chat'}</div>
                   <div className="text-muted" style={{ fontSize: 11 }}>
-                    {activeRoom === 'general' && 'Family chat'}
+                    {activeRoom === 'general' && 'Group chat'}
                     {activeRoom === 'trades' && 'Trades post here automatically'}
                     {activeRoom === 'milburn' && !isAdmin && 'Private DM with Milburn Pennybags'}
                     {isDmRoom && isAdmin && 'Private DM \u00B7 ' + labelForCode(currentDmCode)}
@@ -4940,6 +5018,7 @@ function App() {
   })();
   const [isLoggedIn, setIsLoggedIn] = useState(!!restoredAuth);
   const [user, setUser] = useState(restoredAuth?.name || '');
+  const [displayName, setDisplayName] = useState(restoredAuth?.displayName || restoredAuth?.name || '');
   const [tier, setTier] = useState(restoredAuth?.tier || 'free');
   const [accessCode, setAccessCode] = useState(restoredAuth?.code || '');
   const [activePage, setActivePage] = useState('dashboard');
@@ -5013,6 +5092,7 @@ function App() {
     try { localStorage.removeItem('stockrocket_auth'); } catch {}
     setIsLoggedIn(false);
     setUser('');
+    setDisplayName('');
     setIsAdmin(false);
     setTier('free');
     setAccessCode('');
@@ -5062,14 +5142,16 @@ function App() {
   }, [activePage, isAdmin]);
 
   const handleLogin = (payload) => {
+    const resolvedDisplay = payload.label || payload.name;
     setUser(payload.name);
+    setDisplayName(resolvedDisplay);
     setIsAdmin(!!payload.isAdmin);
     setTier(payload.tier || 'free');
     setAccessCode(payload.code || '');
     setIsLoggedIn(true);
     try {
       localStorage.setItem('stockrocket_auth', JSON.stringify({
-        name: payload.name, tier: payload.tier, isAdmin: payload.isAdmin, code: payload.code, loginAt: Date.now()
+        name: payload.name, displayName: resolvedDisplay, tier: payload.tier, isAdmin: payload.isAdmin, code: payload.code, loginAt: Date.now()
       }));
     } catch {}
   };
@@ -5100,7 +5182,7 @@ function App() {
       case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
       case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} />;
-      case 'chat': return <ChatPage user={user} code={accessCode} isAdmin={isAdmin} />;
+      case 'chat': return <ChatPage user={user} displayName={displayName} code={accessCode} isAdmin={isAdmin} />;
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
       case 'insights': return <InsightsPage />;
       case 'learn': return <LearnPage />;
