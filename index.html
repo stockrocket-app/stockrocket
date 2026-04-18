@@ -38,6 +38,29 @@ const API_BASE = (() => {
 })();
 const APP_VERSION = '1.0.0';
 
+// Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
+// Fire-and-forget: if the network fails, the trade still completes locally.
+async function postTradeAlert({ code, type, symbol, shares, price }) {
+  if (!code) return;
+  try {
+    const body = {
+      channel: 'alerts',
+      content: JSON.stringify({
+        type,                                          // BUY | SELL
+        action: type === 'BUY' ? 'bought' : 'sold',
+        symbol,
+        shares,
+        price,
+      }),
+    };
+    await fetch(`${API_BASE}/api/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
+      body: JSON.stringify(body),
+    });
+  } catch (_) { /* silent -- trade already saved locally */ }
+}
+
 // ==================== ACCESS CODES ====================
 // v1: client-side validation, private-invite only. Moves to Supabase in v1.1.
 // Tier gates UI features. Admin flag elevates to admin tools.
@@ -264,10 +287,11 @@ function CharacterAvatar({ name, size = 44, style = {} }) {
   );
 }
 
-const MOCK_CHAT_ROOMS = [
-  { id: 'general', name: 'Group Chat', icon: 'forum', unread: 3, lastMessage: 'Watching the 15m candle closely...', members: 7, type: 'group' },
-  { id: 'trades', name: 'Trade Alerts', icon: 'swap_vert', unread: 2, lastMessage: 'Ella bought 10 NVDA', members: 7, type: 'feed' },
-  { id: 'milburn', name: 'Ask Milburn', icon: 'support_agent', unread: 0, lastMessage: 'Happy to help! What questions do you have?', members: 2, type: 'dm' },
+// Channel config. `channel` maps to the DB column in stockrocket_messages.
+const CHANNELS = [
+  { id: 'general', channel: 'group',   name: 'Group Chat',    icon: 'forum',          type: 'group' },
+  { id: 'trades',  channel: 'alerts',  name: 'Trade Alerts',  icon: 'swap_vert',      type: 'feed'  },
+  { id: 'milburn', channel: 'milburn', name: 'Ask Milburn',   icon: 'support_agent',  type: 'dm'    },
 ];
 
 const QUICK_EMOJIS = ['🚀', '🔥', '💎', '📈', '📉', '🐻', '🐂', '💰', '⚡', '👀', '🎯', '💪'];
@@ -290,14 +314,8 @@ function ReactionEmoji({ emoji, size = 16 }) {
   return <span style={{ fontSize: size }}>{emoji}</span>;
 }
 
-const MOCK_MESSAGES = [
-  { id: 1, user: 'Lawson', content: "Just following the flow. The order block at $42k is holding firm. Watching the 15m candle.", time: '2:18 PM', own: false, reactions: [{ emoji: '🐟', users: ['PCM'] }], read: true },
-  { id: 2, user: 'PCM', content: "Lambo mooning soon. Fast break above resistance. Revving up for the spike! 🚀", time: '2:20 PM', own: false, reactions: [{ emoji: '🚀', users: ['Ella', 'Lawson'] }, { emoji: '🔥', users: ['Ella'] }], read: true },
-  { id: 3, user: 'Ella', content: "Relax boys. MACD just crossed on the 1H. It's a textbook entry. Positioning for the breakout now.", time: '2:22 PM', own: true, reactions: [], read: true },
-  { id: 4, user: 'Milburn Pennybags', content: "I'm tightening my stops. Volatility is getting a bit uncivilized for my portfolio.", time: '2:22 PM', own: false, reactions: [], read: true },
-  { id: 5, user: 'Lawson', content: "BTC volume spike! This could be the move. Everyone watching the same level.", time: '2:25 PM', own: false, reactions: [{ emoji: '👀', users: ['Ella', 'PCM'] }], read: false },
-  { id: 6, user: 'PCM', content: "@Ella what's your take on the SOL setup? Seeing a bull flag on the 4H", time: '2:27 PM', own: false, reactions: [], read: false, mention: 'Ella' },
-];
+// Mock chat messages removed -- chat now reads from Supabase via /api/messages.
+// See ChatPage for the live fetch + polling loop.
 
 // ==================== ACADEMY LESSONS DATA ====================
 const ACADEMY_LESSONS = [
@@ -1155,7 +1173,7 @@ function QuickTradeBtn({ symbol, setActivePage }) {
 }
 
 // ==================== STOCK DETAIL PAGE ====================
-function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setNotification, onBack }) {
+function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setNotification, onBack, user, code }) {
   const allAssets = [...(stocks || []), ...(crypto || [])];
   const asset = allAssets.find(a => a.symbol === symbol);
   const holding = portfolio?.holdings?.find(h => h.symbol === symbol);
@@ -1186,6 +1204,8 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
     setPortfolio({ ...portfolio, cash: newCash, holdings: newHoldings, trades: [...portfolio.trades, newTrade] });
     setNotification({ type: 'success', message: `${tradeType} ${qty} ${asset.symbol} @ ${formatCurrency(asset.price)}` });
     setShares('');
+    // Broadcast to Trade Alerts channel (fire-and-forget)
+    postTradeAlert({ code, type: tradeType, symbol: asset.symbol, shares: qty, price: asset.price });
   };
 
   if (!asset) return <div className="empty-state"><Icon name="error" /><h3>Asset not found</h3><button className="btn btn-secondary" onClick={onBack}>Go Back</button></div>;
@@ -1903,7 +1923,7 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
 }
 
 // ==================== TRADE ====================
-function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification }) {
+function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, user, code }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAsset, setSelectedAsset] = useState(stocks[0]);
   const [tradeType, setTradeType] = useState('BUY');
@@ -1965,6 +1985,8 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification })
     setShares('');
     setLimitPrice('');
     setTimeout(() => setShowSuccess(null), 4000);
+    // Broadcast to Trade Alerts channel (fire-and-forget)
+    postTradeAlert({ code, type: tradeType, symbol: selectedAsset.symbol, shares: qty, price: execPrice });
   };
 
   // Educational tip based on current action
@@ -2260,7 +2282,7 @@ function MarketsPage({ stocks, setStockDetail }) {
 }
 
 // ==================== CRYPTO ====================
-function CryptoPage({ crypto, portfolio, setPortfolio, setNotification }) {
+function CryptoPage({ crypto, portfolio, setPortfolio, setNotification, user, code }) {
   const [selectedCrypto, setSelectedCrypto] = useState(null);
   const [tradeType, setTradeType] = useState('BUY');
   const [amount, setAmount] = useState('');
@@ -2300,6 +2322,8 @@ function CryptoPage({ crypto, portfolio, setPortfolio, setNotification }) {
     setShowSuccess(newTrade);
     setAmount('');
     setTimeout(() => setShowSuccess(null), 4000);
+    // Broadcast to Trade Alerts channel (fire-and-forget)
+    postTradeAlert({ code, type: tradeType, symbol: selected.symbol, shares: qty, price: selected.price });
   };
 
   return (
@@ -2441,9 +2465,10 @@ function CryptoPage({ crypto, portfolio, setPortfolio, setNotification }) {
 }
 
 // ==================== CHAT ====================
-function ChatPage({ user }) {
+function ChatPage({ user, code, isAdmin }) {
   const [activeRoom, setActiveRoom] = useState('general');
-  const [messages, setMessages] = useState(MOCK_MESSAGES);
+  const [messages, setMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(true);
   const [newMsg, setNewMsg] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(null); // message id for reaction picker
   const [showQuickEmoji, setShowQuickEmoji] = useState(false); // input emoji picker
@@ -2462,6 +2487,50 @@ function ChatPage({ user }) {
   const mySquad = getSquadMember(currentUser);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // -------- Live messages: fetch from /api/messages + poll every 5s --------
+  useEffect(() => {
+    if (!code) return;
+    let mounted = true;
+    const ch = CHANNELS.find(r => r.id === activeRoom);
+    if (!ch) return;
+
+    const toUiMsg = (m) => ({
+      id: m.id,
+      user: m.author_name,
+      author_code: m.author_code,
+      content: m.content,
+      time: new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      own: m.author_code === code,
+      reactions: [],
+      read: true,
+      room: activeRoom,
+      created_at: m.created_at,
+    });
+
+    const fetchMessages = async () => {
+      try {
+        let qs = `?channel=${ch.channel}`;
+        if (ch.channel === 'milburn') {
+          // Users always see their own thread; admin view goes through the Admin panel
+          qs += `&thread_for=${encodeURIComponent(code)}`;
+        }
+        const res = await fetch(`${API_BASE}/api/messages${qs}`, { headers: { 'X-User-Code': code } });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        setMessages((data.messages || []).map(toUiMsg));
+      } catch (e) {
+        // Silent: network hiccup, next poll will retry
+      } finally {
+        if (mounted) setLoadingMessages(false);
+      }
+    };
+
+    setLoadingMessages(true);
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 5000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, [activeRoom, code]);
 
   // Typing indicator -- will be driven by Supabase Realtime presence
   // typingUsers state is kept but only populated by real events (no fake simulation)
@@ -2620,36 +2689,37 @@ function ChatPage({ user }) {
     setShowEmojiPicker(null);
   };
 
-  const send = () => {
-    if (!newMsg.trim()) return;
-    const hasMention = newMsg.includes('@');
-    const msg = {
-      id: Date.now(), user: currentUser, content: newMsg.trim(),
-      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      own: true, reactions: [], read: false, room: activeRoom,
-      mention: hasMention ? newMsg.match(/@([\w\s]+)/)?.[1]?.trim() : null
-    };
-    setMessages(p => [...p, msg]);
-    // Auto-reply from Milburn in DM
-    if (activeRoom === 'milburn') {
-      const replies = [
-        'Great question! Check out the Academy lessons for a deep dive on this topic.',
-        'That is a smart thing to think about. The key is understanding risk vs reward.',
-        'I would recommend starting with index funds and learning as you go. The Academy has a lesson on this!',
-        'Remember -- the best investors are patient. Time in the market beats timing the market.',
-        'Good thinking! Diversification is your best friend as a beginner. Do not put all your eggs in one basket.',
-      ];
-      setTimeout(() => {
-        setMessages(p => [...p, {
-          id: Date.now() + 1, user: 'Milburn Pennybags',
-          content: replies[Math.floor(Math.random() * replies.length)],
-          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          own: false, reactions: [], read: true, room: 'milburn'
-        }]);
-      }, 1500);
+  const send = async () => {
+    const content = newMsg.trim();
+    if (!content) return;
+    const ch = CHANNELS.find(r => r.id === activeRoom);
+    if (!ch || !code) return;
+    // Trade Alerts is a system feed -- users cannot post manually
+    if (ch.channel === 'alerts') { setNewMsg(''); return; }
+    const payload = { channel: ch.channel, content };
+    if (ch.channel === 'milburn') {
+      // User's own thread (admin uses the Admin panel to reply into other threads)
+      payload.thread_for = code;
     }
+    // Optimistic append -- the next poll will reconcile
+    const optimisticId = 'tmp-' + Date.now();
+    setMessages(p => [...p, {
+      id: optimisticId, user: currentUser, author_code: code,
+      content, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      own: true, reactions: [], read: false, room: activeRoom, pending: true,
+    }]);
     setNewMsg('');
     setShowMentions(false);
+    try {
+      await fetch(`${API_BASE}/api/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // Mark optimistic message as failed (leave in list with a flag)
+      setMessages(p => p.map(m => m.id === optimisticId ? { ...m, failed: true, pending: false } : m));
+    }
   };
 
   const handleKey = (e) => {
@@ -2657,7 +2727,7 @@ function ChatPage({ user }) {
     if (e.key === 'Escape') { setShowMentions(false); setShowEmojiPicker(null); setShowQuickEmoji(false); }
   };
 
-  const room = MOCK_CHAT_ROOMS.find(r => r.id === activeRoom);
+  const room = CHANNELS.find(r => r.id === activeRoom);
   const mentionCandidates = Object.keys(SQUAD_MEMBERS).filter(n => n !== currentUser && n.toLowerCase().includes(mentionFilter));
 
   return (
@@ -2677,16 +2747,19 @@ function ChatPage({ user }) {
             <h3 className="label-system" style={{ fontSize: 12 }}>Channels</h3>
           </div>
           <div className="chat-rooms-list">
-            {MOCK_CHAT_ROOMS.map(r => (
+            {CHANNELS.map(r => (
               <button key={r.id} className={`chat-room-item ${activeRoom === r.id ? 'active' : ''}`} onClick={() => { setActiveRoom(r.id); setShowMobileRooms(false); }}>
                 <div className="chat-room-icon" style={r.type === 'dm' ? { background: 'rgba(243,156,18,0.15)' } : {}}>
                   {r.type === 'dm' ? <span style={{ fontSize: 18 }}>🎩</span> : <Icon name={r.icon} size={18} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="chat-room-name">{r.name}</div>
-                  <div className="chat-room-preview">{r.lastMessage}</div>
+                  <div className="chat-room-preview">
+                    {r.id === 'general' && 'Family chat'}
+                    {r.id === 'trades' && 'Live trade feed'}
+                    {r.id === 'milburn' && 'Your DM with Milburn'}
+                  </div>
                 </div>
-                {r.unread > 0 && <div className="chat-room-badge">{r.unread}</div>}
               </button>
             ))}
           </div>
@@ -2704,9 +2777,9 @@ function ChatPage({ user }) {
                 <div>
                   <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15 }}>{room?.name || 'Group Chat'}</div>
                   <div className="text-muted" style={{ fontSize: 11 }}>
-                    {activeRoom === 'general' && `${room?.members || 7} members online`}
-                    {activeRoom === 'trades' && 'Live trading activity feed'}
-                    {activeRoom === 'milburn' && 'Direct message with Milburn Pennybags (Admin)'}
+                    {activeRoom === 'general' && 'Family chat'}
+                    {activeRoom === 'trades' && 'Trades post here automatically'}
+                    {activeRoom === 'milburn' && 'Private DM with Milburn Pennybags'}
                   </div>
                 </div>
               </div>
@@ -2731,26 +2804,44 @@ function ChatPage({ user }) {
           )}
           </div>
 
-          {/* Trade Alerts Feed */}
+          {/* Trade Alerts Feed -- live from stockrocket_messages, channel='alerts' */}
           {activeRoom === 'trades' && (
             <div className="chat-messages" style={{ padding: 24 }}>
-              {[
-                { user: 'Ella', action: 'bought', shares: 10, symbol: 'NVDA', price: 924.15, time: '2:30 PM', type: 'BUY' },
-                { user: 'Lawson', action: 'sold', shares: 50, symbol: 'TSLA', price: 248.92, time: '2:15 PM', type: 'SELL' },
-                { user: 'PCM', action: 'bought', shares: 100, symbol: 'SOL', price: 198.72, time: '1:45 PM', type: 'BUY' },
-                { user: 'Milburn Pennybags', action: 'bought', shares: 15, symbol: 'AAPL', price: 227.48, time: '1:20 PM', type: 'BUY' },
-                { user: 'Ella', action: 'bought', shares: 25, symbol: 'GOOGL', price: 178.35, time: '11:30 AM', type: 'BUY' },
-                { user: 'Lawson', action: 'bought', shares: 0.5, symbol: 'BTC', price: 97245.00, time: '10:15 AM', type: 'BUY' },
-                { user: 'PCM', action: 'sold', shares: 20, symbol: 'META', price: 582.30, time: '9:45 AM', type: 'SELL' },
-              ].map((t, i) => {
-                const m = getSquadMember(t.user);
-                const total = t.shares * t.price;
+              {loadingMessages && messages.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 48, color: 'var(--on-surface-variant)', fontSize: 13 }}>Loading...</div>
+              )}
+              {!loadingMessages && messages.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 48 }}>
+                  <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📈</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 15, fontWeight: 700, marginBottom: 6 }}>No trades yet</div>
+                  <div style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>Trades will post here automatically when you or anyone in the squad makes one.</div>
+                </div>
+              )}
+              {messages.slice().reverse().map((m, i) => {
+                // Parse the JSON payload the trade handler writes: {action, shares, symbol, price, type}
+                let t = null;
+                try { t = JSON.parse(m.content); } catch {}
+                const member = getSquadMember(m.user);
+                if (!t) {
+                  // Fallback: render content as plain text (legacy or malformed rows)
+                  return (
+                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '14px 0', borderBottom: '1px solid rgba(73,72,71,0.05)' }}>
+                      <CharacterAvatar name={m.user} size={44} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 700, color: member.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{m.user}</div>
+                        <div style={{ fontSize: 13, marginTop: 2 }}>{m.content}</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--outline)' }}>{m.time}</div>
+                    </div>
+                  );
+                }
+                const total = (Number(t.shares) || 0) * (Number(t.price) || 0);
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '18px 0', borderBottom: i < 6 ? '1px solid rgba(73,72,71,0.05)' : 'none' }}>
-                    <CharacterAvatar name={t.user} size={56} />
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '18px 0', borderBottom: '1px solid rgba(73,72,71,0.05)' }}>
+                    <CharacterAvatar name={m.user} size={56} />
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <span style={{ fontFamily: 'var(--font-headline)', fontSize: 15, fontWeight: 700, color: m.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{t.user}</span>
+                        <span style={{ fontFamily: 'var(--font-headline)', fontSize: 15, fontWeight: 700, color: member.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{m.user}</span>
                         <span style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--on-surface)' }}>{t.action} <strong>{t.shares} {t.symbol}</strong></span>
                       </div>
                       <div style={{ fontSize: 13, color: 'var(--on-surface-variant)', marginTop: 2 }}>@ {formatCurrency(t.price)} per share</div>
@@ -2760,7 +2851,7 @@ function ChatPage({ user }) {
                         {t.type === 'BUY' ? '-' : '+'}{formatCurrency(total)}
                       </div>
                       <span className={`badge ${t.type === 'BUY' ? 'badge-error' : 'badge-primary'}`} style={{ fontSize: 10 }}>{t.type}</span>
-                      <div style={{ fontSize: 11, color: 'var(--outline)', marginTop: 4 }}>{t.time}</div>
+                      <div style={{ fontSize: 11, color: 'var(--outline)', marginTop: 4 }}>{m.time}</div>
                     </div>
                   </div>
                 );
@@ -2778,23 +2869,14 @@ function ChatPage({ user }) {
                 <p className="text-muted" style={{ fontSize: 12 }}>Admin {'\u00B7'} Value Preservation Specialist</p>
                 <p className="text-muted" style={{ fontSize: 11, marginTop: 8, maxWidth: 360, margin: '8px auto 0' }}>Ask me anything about the market, your trades, or how things work.</p>
               </div>
-              {/* Quick question starters */}
-              {messages.filter(m => m.room === 'milburn').length === 0 && (
-                <div style={{ textAlign: 'center', padding: 24 }}>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    {['How do I start investing?', 'What is a P/E ratio?', 'Should I buy or sell?', 'Explain options trading'].map((q, i) => (
-                      <button key={i} className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => {
-                        setMessages(p => [...p, { id: Date.now(), user: currentUser, content: q, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), own: true, reactions: [], read: false, room: 'milburn' }]);
-                        setTimeout(() => {
-                          setMessages(p => [...p, { id: Date.now() + 1, user: 'Milburn Pennybags', content: 'Great question! This is something every investor should understand. When we connect Supabase, I will be able to give you real-time answers powered by AI. For now, check out the Academy lessons -- they cover this topic in depth!', time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), own: false, reactions: [], read: true, room: 'milburn' }]);
-                        }, 1000);
-                      }}>{q}</button>
-                    ))}
-                  </div>
+              {/* Empty state when no DMs yet */}
+              {!loadingMessages && messages.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '16px 24px 24px' }}>
+                  <p className="text-muted" style={{ fontSize: 12, maxWidth: 360, margin: '0 auto' }}>Type your question below. Milburn usually replies within a day.</p>
                 </div>
               )}
               {/* Milburn DM messages */}
-              {messages.filter(m => m.room === 'milburn').map(m => {
+              {messages.map(m => {
                 const member = getSquadMember(m.user);
                 return (
                   <div key={m.id} className={`chat-message ${m.own ? 'own' : ''}`}>
@@ -2831,7 +2913,7 @@ function ChatPage({ user }) {
                 </div>
               </div>
             )}
-            {messages.filter(m => !m.room || m.room === 'general').map(m => {
+            {messages.map(m => {
               const member = getSquadMember(m.user);
               return (
                 <div key={m.id} className={`chat-message ${m.own ? 'own' : ''}`} style={{ position: 'relative' }}
@@ -3704,6 +3786,172 @@ function AccessCodesAdmin({ adminCode, setNotification }) {
   );
 }
 
+// ==================== MILBURN INBOX ====================
+// Admin-only reply surface for the "Ask Milburn" DM channel.
+// GET  /api/messages?channel=milburn&admin=1         -> all threads, grouped by thread_for
+// POST /api/messages { channel:'milburn', thread_for, content }  -> replies as admin
+function MilburnInbox({ adminCode, setNotification }) {
+  const [threads, setThreads] = useState([]);
+  const [activeThread, setActiveThread] = useState(null);
+  const [reply, setReply] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const endRef = useRef(null);
+
+  // Load + poll threads every 5s
+  useEffect(() => {
+    if (!adminCode) return;
+    let mounted = true;
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/messages?channel=milburn&admin=1`, { headers: { 'X-User-Code': adminCode } });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        setThreads(data.threads || []);
+        // Auto-select first thread on initial load
+        setActiveThread(prev => prev || (data.threads?.[0]?.thread_for) || null);
+      } catch {}
+      finally { if (mounted) setLoading(false); }
+    };
+    load();
+    const iv = setInterval(load, 5000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, [adminCode]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeThread, threads]);
+
+  const current = threads.find(t => t.thread_for === activeThread);
+
+  const sendReply = async () => {
+    const content = reply.trim();
+    if (!content || !activeThread || sending) return;
+    setSending(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Code': adminCode },
+        body: JSON.stringify({ channel: 'milburn', thread_for: activeThread, content }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setReply('');
+        // Optimistically append so the admin sees it before next poll
+        setThreads(prev => prev.map(t => t.thread_for === activeThread ? { ...t, messages: [...t.messages, data.message], last_at: data.message.created_at } : t));
+      } else {
+        setNotification?.({ type: 'error', message: 'Reply failed: ' + (data.error || 'unknown') });
+      }
+    } catch (e) {
+      setNotification?.({ type: 'error', message: 'Network error' });
+    } finally { setSending(false); }
+  };
+
+  const formatTime = (iso) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch { return ''; }
+  };
+
+  return (
+    <div>
+      <h3 className="section-title" style={{ marginBottom: 12 }}><Icon name="support_agent" size={20} /> Milburn_Inbox</h3>
+      <p className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>Every "Ask Milburn" DM lands here. Replies post into that family member's private thread.</p>
+
+      {loading && threads.length === 0 && (
+        <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+          <span className="text-muted" style={{ fontSize: 13 }}>Loading threads...</span>
+        </div>
+      )}
+      {!loading && threads.length === 0 && (
+        <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📭</div>
+          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 15, fontWeight: 700, marginBottom: 6 }}>No DMs yet</div>
+          <div className="text-muted" style={{ fontSize: 12 }}>When a family member messages Milburn, the thread appears here.</div>
+        </div>
+      )}
+
+      {threads.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: 16, minHeight: 480 }}>
+          {/* Thread list */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {threads.map(t => {
+              const last = t.messages[t.messages.length - 1];
+              const author = last?.author_name || t.thread_for;
+              const isActive = t.thread_for === activeThread;
+              const fromUser = last && last.author_code === t.thread_for; // last message came from the user (not Milburn)
+              return (
+                <button key={t.thread_for} onClick={() => setActiveThread(t.thread_for)}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '14px 16px', background: isActive ? 'rgba(243,156,18,0.12)' : 'transparent', border: 'none', borderBottom: '1px solid rgba(73,72,71,0.06)', cursor: 'pointer', transition: 'background 0.15s' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 'var(--radius-lg)', background: 'rgba(243,156,18,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 16 }}>{fromUser ? '💬' : '🎩'}</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.thread_for}</span>
+                        <span style={{ fontSize: 10, color: 'var(--outline)', flexShrink: 0 }}>{formatTime(t.last_at)}</span>
+                      </div>
+                      <div className="text-muted" style={{ fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ opacity: 0.7 }}>{author}:</span> {last?.content || ''}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active thread view */}
+          <div className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column' }}>
+            {!current && (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+                <span className="text-muted" style={{ fontSize: 13 }}>Select a thread to view messages.</span>
+              </div>
+            )}
+            {current && (
+              <>
+                <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(73,72,71,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: 'rgba(243,156,18,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 16 }}>🎩</span>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{current.thread_for}</div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>{current.messages.length} message{current.messages.length === 1 ? '' : 's'}</div>
+                  </div>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', maxHeight: 480 }}>
+                  {current.messages.map(m => {
+                    const isMilburn = m.author_code !== current.thread_for;
+                    return (
+                      <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMilburn ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, color: 'var(--outline)', marginBottom: 2, fontFamily: 'var(--font-headline)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                          {isMilburn ? '🎩 ' : ''}{m.author_name} {'\u00B7'} {formatTime(m.created_at)}
+                        </div>
+                        <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: 'var(--radius-xl)', background: isMilburn ? 'rgba(243,156,18,0.12)' : 'var(--surface-container-highest)', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {m.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={endRef} />
+                </div>
+                <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(73,72,71,0.08)', display: 'flex', gap: 8 }}>
+                  <input className="input-field" style={{ flex: 1 }} placeholder={`Reply to ${current.thread_for} as Milburn...`} value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); } }} disabled={sending} />
+                  <button className="btn btn-primary" onClick={sendReply} disabled={sending || !reply.trim()} style={{ flexShrink: 0 }}>
+                    <Icon name="send" size={16} /> {sending ? 'Sending' : 'Reply'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [announceText, setAnnounceText] = useState('');
@@ -3777,6 +4025,7 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
   const tabs = [
     { id: 'overview', icon: 'dashboard', label: 'Overview' },
     { id: 'users', icon: 'group', label: 'Users' },
+    { id: 'inbox', icon: 'support_agent', label: 'Milburn Inbox' },
     { id: 'content', icon: 'edit_note', label: 'Content' },
     { id: 'trading', icon: 'tune', label: 'Trading' },
     { id: 'challenges', icon: 'emoji_events', label: 'Challenges' },
@@ -3847,6 +4096,11 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
       {/* USERS TAB -- Supabase-backed access codes */}
       {activeTab === 'users' && (
         <AccessCodesAdmin adminCode={adminCode} setNotification={setNotification} />
+      )}
+
+      {/* INBOX TAB -- Ask Milburn DM threads (admin reply surface) */}
+      {activeTab === 'inbox' && (
+        <MilburnInbox adminCode={adminCode} setNotification={setNotification} />
       )}
 
       {/* CONTENT TAB */}
@@ -4463,7 +4717,7 @@ function App() {
         {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
         <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} />
         <main className="main-content"><div className="main-inner">
-          <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} />
+          <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} user={user} code={accessCode} />
         </div></main>
         <Notification notification={notification} onClose={() => setNotification(null)} />
         <AchievementToast achievement={newAchievement} />
@@ -4475,11 +4729,11 @@ function App() {
     switch (activePage) {
       case 'dashboard': return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} setStockDetail={setStockDetail} achievementsUnlocked={achievementsUnlocked} achievementsTotal={achievementsTotal} leaderboard={leaderboard} />;
       case 'portfolio': return <PortfolioPage portfolio={portfolio} user={user} stocks={stocks} setStockDetail={setStockDetail} />;
-      case 'trade': return <TradePage stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} />;
+      case 'trade': return <TradePage stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
-      case 'crypto': return <CryptoPage crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} />;
+      case 'crypto': return <CryptoPage crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} />;
-      case 'chat': return <ChatPage user={user} />;
+      case 'chat': return <ChatPage user={user} code={accessCode} isAdmin={isAdmin} />;
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
       case 'insights': return <InsightsPage />;
       case 'learn': return <LearnPage />;
