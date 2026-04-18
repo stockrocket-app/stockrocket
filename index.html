@@ -11,6 +11,9 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Vercel Web Analytics (no-op outside Vercel) -->
+  <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+  <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -21,6 +24,33 @@
 // =============================================
 
 const { useState, useEffect, useCallback, useRef, createContext, useContext } = React;
+
+// ==================== APP CONFIG ====================
+const APP_ENV = (location.hostname === 'localhost' || location.protocol === 'file:') ? 'development' : 'production';
+const API_BASE = APP_ENV === 'production' ? '' : '';
+const APP_VERSION = '1.0.0';
+
+// ==================== ACCESS CODES ====================
+// v1: client-side validation, private-invite only. Moves to Supabase in v1.1.
+// Tier gates UI features. Admin flag elevates to admin tools.
+const ACCESS_CODES = {
+  'LAUNCH2026':   { tier: 'free',   admin: false, expires: '2026-05-18', label: 'Launch Week' },
+  'NEPHEW-APR18': { tier: 'family', admin: false, expires: '2026-12-31', label: 'Family' },
+  'ELLA-2026':    { tier: 'family', admin: false, expires: '2027-01-01', label: 'Family' },
+  'RSJ-ADMIN':    { tier: 'pro',    admin: true,  expires: '2099-01-01', label: 'Admin' },
+  'DEMO':         { tier: 'free',   admin: false, expires: '2099-01-01', label: 'Demo' },
+};
+
+function validateAccessCode(raw) {
+  if (!raw) return { ok: false, error: 'Enter an access code' };
+  const code = raw.trim().toUpperCase();
+  const entry = ACCESS_CODES[code];
+  if (!entry) return { ok: false, error: 'That code is not valid' };
+  if (entry.expires && new Date(entry.expires) < new Date()) {
+    return { ok: false, error: 'That code has expired' };
+  }
+  return { ok: true, code, tier: entry.tier, admin: entry.admin, label: entry.label };
+}
 
 // ==================== MOCK DATA ====================
 const MOCK_STOCKS = [
@@ -1210,19 +1240,33 @@ function Sparkline({ data, color = '#00FFA3', width = 80, height = 32 }) {
   return <svg width={width} height={height}><polyline fill="none" stroke={color} strokeWidth="1.5" points={points} /></svg>;
 }
 
-// ==================== ADMIN CONFIG ====================
-const ADMIN_SECRET = 'rocketadmin'; // Secret password for admin access
-
 // ==================== LOGIN PAGE ====================
-function LoginPage({ onLogin }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+function LoginPage({ onLogin, onShowLegal }) {
+  const [code, setCode] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [error, setError] = useState('');
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (username.trim()) {
-      const isAdmin = password === ADMIN_SECRET;
-      onLogin(username.trim(), isAdmin);
-    }
+    setError('');
+    if (!displayName.trim()) return setError('Pick a display name');
+    if (!termsAccepted) return setError('Accept the Terms to continue');
+    const result = validateAccessCode(code);
+    if (!result.ok) return setError(result.error);
+    onLogin({
+      name: displayName.trim(),
+      code: result.code,
+      tier: result.tier,
+      isAdmin: result.admin,
+      label: result.label,
+    });
+  };
+
+  const handleDemo = () => {
+    if (!termsAccepted) return setError('Accept the Terms to continue');
+    const result = validateAccessCode('DEMO');
+    onLogin({ name: 'Ella', code: result.code, tier: result.tier, isAdmin: false, label: result.label });
   };
 
   return (
@@ -1235,26 +1279,110 @@ function LoginPage({ onLogin }) {
         <p className="login-subtitle">Learn. Trade. Launch Your Portfolio.</p>
         <form className="login-form" onSubmit={handleSubmit}>
           <div>
-            <div className="login-field-header"><label className="input-label">Your_Name</label></div>
-            <input className="input-field" type="text" placeholder="Ella" value={username} onChange={e => setUsername(e.target.value)} autoFocus />
+            <div className="login-field-header"><label className="input-label">Display_Name</label></div>
+            <input className="input-field" type="text" placeholder="Ella" value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={24} autoFocus />
           </div>
           <div>
             <div className="login-field-header">
-              <label className="input-label">Password</label>
-              <a href="#" className="recover-link">Recover_Key</a>
+              <label className="input-label">Access_Code</label>
             </div>
-            <input className="input-field" type="password" placeholder="Optional" value={password} onChange={e => setPassword(e.target.value)} />
+            <input
+              className="input-field"
+              type="text"
+              placeholder="NEPHEW-APR18"
+              value={code}
+              onChange={e => setCode(e.target.value.toUpperCase())}
+              style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck="false"
+            />
           </div>
-          <label className="login-checkbox"><input type="checkbox" /> Remember me</label>
+          <label className="login-checkbox" style={{ alignItems: 'flex-start', lineHeight: 1.4 }}>
+            <input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>I have read and agree to the <a onClick={(e) => { e.preventDefault(); onShowLegal('terms'); }} style={{ cursor: 'pointer', textDecoration: 'underline' }}>Terms</a> and <a onClick={(e) => { e.preventDefault(); onShowLegal('privacy'); }} style={{ cursor: 'pointer', textDecoration: 'underline' }}>Privacy Policy</a>. I understand StockRocket uses play money only -- nothing here is real investing advice.</span>
+          </label>
+          {error && <div style={{ color: '#ff716c', fontSize: 13, padding: '4px 8px', background: 'rgba(255,113,108,0.08)', borderRadius: 4 }}>{error}</div>}
           <button type="submit" className="login-btn">Launch In <Icon name="north_east" size={18} /></button>
           <div className="login-divider">Quick Start</div>
           <div className="login-alt-btns">
-            <button type="button" className="login-alt-btn" onClick={() => onLogin('Ella', false)}><span style={{ fontSize: 16 }}>🐱</span> Play as Ella</button>
-            <button type="button" className="login-alt-btn" onClick={() => onLogin('Milburn Pennybags', true)}><span style={{ fontSize: 16 }}>🎩</span> Admin Login</button>
+            <button type="button" className="login-alt-btn" onClick={handleDemo}><span style={{ fontSize: 16 }}>🐱</span> Try Demo as Ella</button>
           </div>
         </form>
         <div className="login-footer">
-          <span style={{ color: 'var(--primary-fixed)' }}>{'\u25CF'}</span> System Status Optimal {' \u00B7 '} <a href="#">Privacy</a> {' \u00B7 '} <a href="#">Terms</a>
+          <span style={{ color: 'var(--primary-fixed)' }}>{'\u25CF'}</span> v{APP_VERSION} {' \u00B7 '} <a onClick={(e) => { e.preventDefault(); onShowLegal('privacy'); }} style={{ cursor: 'pointer' }}>Privacy</a> {' \u00B7 '} <a onClick={(e) => { e.preventDefault(); onShowLegal('terms'); }} style={{ cursor: 'pointer' }}>Terms</a> {' \u00B7 '} <a onClick={(e) => { e.preventDefault(); onShowLegal('disclaimer'); }} style={{ cursor: 'pointer' }}>Disclaimer</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== LEGAL PAGES ====================
+function LegalPage({ page, onBack }) {
+  const content = {
+    terms: {
+      title: 'Terms of Service',
+      body: (
+        <React.Fragment>
+          <p><strong>Last updated: April 18, 2026</strong></p>
+          <p>StockRocket ("the App") is an educational trading simulator. By using the App, you agree to these Terms.</p>
+          <h3>1. No Real Money, No Investment Advice</h3>
+          <p>The App uses simulated "play money" only. Nothing displayed in the App constitutes investment advice, a recommendation, or an offer to buy or sell any security. Market data may be delayed, inaccurate, or for illustration only. Do not use the App to make real-world investment decisions.</p>
+          <h3>2. Access Codes</h3>
+          <p>Access is by invite only via access codes. Codes are personal and non-transferable. We may revoke codes at any time for misuse.</p>
+          <h3>3. Acceptable Use</h3>
+          <p>You agree not to reverse-engineer, abuse, or disrupt the App. You agree not to use the App to harass other users or attempt to identify other users.</p>
+          <h3>4. Minors</h3>
+          <p>If you are under 13, a parent or guardian must approve your use. We collect no personal information -- just a display name you choose.</p>
+          <h3>5. No Warranty</h3>
+          <p>The App is provided "as is" without warranty. We are not liable for any loss, damage, or inconvenience arising from use of the App.</p>
+          <h3>6. Changes</h3>
+          <p>We may update these Terms. Continued use after an update means you accept the new Terms.</p>
+          <h3>7. Contact</h3>
+          <p>Questions: robbie@coa.world</p>
+        </React.Fragment>
+      )
+    },
+    privacy: {
+      title: 'Privacy Policy',
+      body: (
+        <React.Fragment>
+          <p><strong>Last updated: April 18, 2026</strong></p>
+          <h3>What we collect</h3>
+          <p>Just a display name you pick and an access code you type in. We do not ask for your email, phone, real name, address, or any other personal information. We do not collect payment details.</p>
+          <h3>Where your data lives</h3>
+          <p>Your portfolio, trades, and display name are stored locally in your browser (localStorage). Clearing your browser data will clear your StockRocket data.</p>
+          <h3>Analytics</h3>
+          <p>We use Vercel Web Analytics, which counts anonymous page views. No cookies are set, and no personal data is sent. See vercel.com/docs/analytics/privacy-policy.</p>
+          <h3>Children</h3>
+          <p>StockRocket is designed to be safe for kids. We deliberately collect no personal information that could identify a child.</p>
+          <h3>Contact</h3>
+          <p>Questions: robbie@coa.world</p>
+        </React.Fragment>
+      )
+    },
+    disclaimer: {
+      title: 'Disclaimer',
+      body: (
+        <React.Fragment>
+          <p><strong>StockRocket is for education only.</strong></p>
+          <p>All trading happens with simulated play money. No real money ever changes hands. Market data shown in the App may be delayed, inaccurate, or illustrative. StockRocket is not a broker, is not registered with the SEC, FINRA, or any other regulator, and does not provide investment advice.</p>
+          <p>Nothing in the App should be interpreted as a recommendation to buy, sell, or hold any security or cryptocurrency. Past performance does not guarantee future results. You should consult a licensed financial advisor before making real investment decisions.</p>
+          <p>StockRocket is built by a parent who wanted his kids to learn about markets without risking real money. Use it in that spirit.</p>
+        </React.Fragment>
+      )
+    }
+  };
+  const c = content[page] || content.terms;
+  return (
+    <div className="login-page" style={{ overflowY: 'auto', alignItems: 'flex-start', paddingTop: 40, paddingBottom: 40 }}>
+      <div className="login-container" style={{ maxWidth: 640 }}>
+        <button onClick={onBack} className="login-alt-btn" style={{ width: 'auto', marginBottom: 16 }}>
+          <Icon name="arrow_back" size={16} /> Back
+        </button>
+        <h1 style={{ fontSize: 28, marginBottom: 16 }}>{c.title}</h1>
+        <div style={{ lineHeight: 1.6, fontSize: 14, color: 'var(--on-surface-variant)' }}>
+          {c.body}
         </div>
       </div>
     </div>
@@ -1282,7 +1410,7 @@ function Header({ activePage, setActivePage, user, onMenuToggle }) {
 }
 
 // ==================== SIDEBAR ====================
-function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin }) {
+function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin, tier, onShowLegal }) {
   const navItems = [
     { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
     { id: 'portfolio', icon: 'account_balance', label: 'Portfolio' },
@@ -1305,7 +1433,7 @@ function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin 
         <CharacterAvatar name={user} size={48} />
         <div>
           <div className="sidebar-user-name">{user || 'Ella_Cat'}</div>
-          <div className="sidebar-user-tier">{isAdmin ? 'Admin_Mode' : 'Rocket_Cadet'}</div>
+          <div className="sidebar-user-tier">{isAdmin ? 'Admin_Mode' : (tier === 'pro' ? 'Pro_Tier' : tier === 'family' ? 'Family_Tier' : 'Rocket_Cadet')}</div>
         </div>
       </div>
       <nav className="sidebar-nav">
@@ -3866,6 +3994,9 @@ function Notification({ notification, onClose }) {
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState('');
+  const [tier, setTier] = useState('free');
+  const [accessCode, setAccessCode] = useState('');
+  const [legalPage, setLegalPage] = useState(null); // 'terms' | 'privacy' | 'disclaimer' | null
   const [activePage, setActivePage] = useState('dashboard');
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -3918,8 +4049,22 @@ function App() {
   const { unlocked: achievementsUnlocked, newAchievement, total: achievementsTotal } = useAchievements(portfolio);
   const leaderboard = useLeaderboard(user, portfolio, stocks, crypto);
 
-  const handleLogin = (u, admin) => { setUser(u); setIsLoggedIn(true); setIsAdmin(!!admin); };
-  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />;
+  const handleLogin = (payload) => {
+    setUser(payload.name);
+    setIsAdmin(!!payload.isAdmin);
+    setTier(payload.tier || 'free');
+    setAccessCode(payload.code || '');
+    setIsLoggedIn(true);
+    try {
+      localStorage.setItem('stockrocket_auth', JSON.stringify({
+        name: payload.name, tier: payload.tier, isAdmin: payload.isAdmin, code: payload.code, loginAt: Date.now()
+      }));
+    } catch {}
+  };
+
+  // Legal pages are reachable both before and after login
+  if (legalPage) return <LegalPage page={legalPage} onBack={() => setLegalPage(null)} />;
+  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} onShowLegal={setLegalPage} />;
 
   // Stock detail page (overlay -- any page can navigate here)
   if (stockDetail) {
@@ -3927,7 +4072,7 @@ function App() {
       <div className="app-layout">
         <Header activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
         {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} />
+        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onShowLegal={setLegalPage} />
         <main className="main-content"><div className="main-inner">
           <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} />
         </div></main>
@@ -3958,7 +4103,7 @@ function App() {
     <div className="app-layout">
       <Header activePage={activePage} setActivePage={setActivePage} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
-      <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} />
+      <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onShowLegal={setLegalPage} />
       <main className="main-content">
         <div className="main-inner">
           {isLive && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
@@ -3967,6 +4112,14 @@ function App() {
             </span>
           </div>}
           {renderPage()}
+          <div style={{ marginTop: 40, paddingTop: 20, borderTop: '1px solid var(--outline-variant)', fontSize: 11, color: 'var(--on-surface-variant)', textAlign: 'center', letterSpacing: '0.05em' }}>
+            <div style={{ marginBottom: 8, fontFamily: 'var(--font-label)' }}>FOR EDUCATION ONLY {' \u00B7 '} NO REAL MONEY {' \u00B7 '} NOT FINANCIAL ADVICE</div>
+            <div>
+              <a onClick={(e) => { e.preventDefault(); setLegalPage('terms'); }} style={{ cursor: 'pointer', marginRight: 12 }}>Terms</a>
+              <a onClick={(e) => { e.preventDefault(); setLegalPage('privacy'); }} style={{ cursor: 'pointer', marginRight: 12 }}>Privacy</a>
+              <a onClick={(e) => { e.preventDefault(); setLegalPage('disclaimer'); }} style={{ cursor: 'pointer' }}>Disclaimer</a>
+            </div>
+          </div>
         </div>
       </main>
       <Notification notification={notification} onClose={() => setNotification(null)} />
