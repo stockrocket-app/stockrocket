@@ -2695,8 +2695,13 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
 }
 
 // ==================== CHAT ====================
-function ChatPage({ user, displayName, code, isAdmin }) {
-  const [activeRoom, setActiveRoom] = useState('general');
+function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange }) {
+  const [activeRoom, setActiveRoom] = useState(initialRoom || 'general');
+  // Keep the App-level watcher in sync so chat-alert banners can tell whether
+  // the user is already looking at the room a new message arrived in.
+  useEffect(() => { if (onRoomChange) onRoomChange(activeRoom); }, [activeRoom, onRoomChange]);
+  // If the App passes us a new initialRoom (e.g. banner click), jump there.
+  useEffect(() => { if (initialRoom && initialRoom !== activeRoom) setActiveRoom(initialRoom); }, [initialRoom]);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [newMsg, setNewMsg] = useState('');
@@ -5123,6 +5128,153 @@ function Notification({ notification, onClose }) {
   return <div className={`notification notification-${notification.type}`}><Icon name={notification.type === 'success' ? 'check_circle' : 'error'} size={18} /> {notification.message}</div>;
 }
 
+// ==================== CHAT ALERT BANNER ====================
+// A slim banner that drops down from the top of the viewport whenever a new
+// chat message arrives in a room the user is not currently watching. Click to
+// jump into that room; click the X or wait 6 seconds to dismiss.
+function ChatAlertBanner({ alert, onDismiss, onOpen }) {
+  useEffect(() => {
+    if (!alert) return;
+    const t = setTimeout(onDismiss, 6000);
+    return () => clearTimeout(t);
+  }, [alert]);
+  if (!alert) return null;
+  const isGif = alert.isGif;
+  return (
+    <div className="chat-alert-banner" role="alert" onClick={onOpen}>
+      <div className="chat-alert-icon"><Icon name="chat_bubble" size={18} /></div>
+      <div className="chat-alert-body">
+        <div className="chat-alert-title">
+          {alert.user}
+          <span className="chat-alert-room">in {alert.roomLabel}</span>
+        </div>
+        <div className="chat-alert-preview">{isGif ? 'Sent a GIF' : alert.message}</div>
+      </div>
+      <span className="chat-alert-cta">Open chat</span>
+      <button className="chat-alert-close" onClick={(e) => { e.stopPropagation(); onDismiss(); }} aria-label="Dismiss">
+        <Icon name="close" size={16} />
+      </button>
+    </div>
+  );
+}
+
+// ==================== CHAT ALERTS HOOK ====================
+// Polls the group channel and the user's Milburn thread(s) every 10 seconds
+// and surfaces a banner when a new message arrives from someone else in a
+// room the user is not currently watching. The seen timestamps live in
+// localStorage so opening a room clears its alerts for future sessions too.
+const CHAT_ALERT_SEEN_KEY = 'stockrocket_chat_alert_seen';
+function readChatAlertSeen() {
+  try { return JSON.parse(localStorage.getItem(CHAT_ALERT_SEEN_KEY) || '{}') || {}; } catch { return {}; }
+}
+function writeChatAlertSeen(obj) {
+  try { localStorage.setItem(CHAT_ALERT_SEEN_KEY, JSON.stringify(obj)); } catch {}
+}
+
+function useChatAlerts({ code, isAdmin, activePage, currentChatRoom, setAlert }) {
+  useEffect(() => {
+    if (!code) return;
+    let mounted = true;
+    // On first mount for this session, seed seen timestamps with "now" so we
+    // don't immediately blast the user with every historical message.
+    const seenOnMount = readChatAlertSeen();
+    if (seenOnMount.bootstrap_at == null) {
+      writeChatAlertSeen({ ...seenOnMount, bootstrap_at: Date.now(), group: Date.now(), milburn: Date.now() });
+    }
+
+    const poll = async () => {
+      try {
+        // -------- Group channel --------
+        const groupRes = await fetch(`${API_BASE}/api/messages?channel=group`, { headers: { 'X-User-Code': code } });
+        const groupData = await groupRes.json();
+        if (!mounted || !groupData.ok) { /* still try milburn */ }
+        const groupMessages = (groupData && groupData.ok) ? (groupData.messages || []) : [];
+        const seen = readChatAlertSeen();
+        const groupSeen = Number(seen.group || 0);
+        const isWatchingGroup = activePage === 'chat' && currentChatRoom === 'general';
+
+        let newestGroup = null;
+        let latestGroupAt = groupSeen;
+        for (const m of groupMessages) {
+          const at = new Date(m.created_at).getTime();
+          if (at > latestGroupAt) latestGroupAt = at;
+          if (m.author_code !== code && at > groupSeen) {
+            if (!newestGroup || at > new Date(newestGroup.created_at).getTime()) newestGroup = m;
+          }
+        }
+        if (isWatchingGroup && latestGroupAt > groupSeen) {
+          const s = readChatAlertSeen();
+          writeChatAlertSeen({ ...s, group: latestGroupAt });
+        } else if (newestGroup && mounted) {
+          setAlert({
+            channel: 'group',
+            room: 'general',
+            roomLabel: 'Group chat',
+            user: newestGroup.author_name || 'Someone',
+            message: (newestGroup.content || '').slice(0, 140),
+            isGif: isImageContent(newestGroup.content),
+            created_at: newestGroup.created_at,
+          });
+        }
+
+        // -------- Milburn DMs --------
+        // Admin sees every thread; regular users only see their own.
+        let milburnMessages = [];
+        if (isAdmin) {
+          const r = await fetch(`${API_BASE}/api/messages?channel=milburn&admin=1`, { headers: { 'X-User-Code': code } });
+          const d = await r.json();
+          if (!mounted) return;
+          if (d.ok) {
+            milburnMessages = (d.threads || []).flatMap(t => (t.messages || []).map(m => ({ ...m, _thread_for: t.thread_for })));
+          }
+        } else {
+          const r = await fetch(`${API_BASE}/api/messages?channel=milburn&thread_for=${encodeURIComponent(code)}`, { headers: { 'X-User-Code': code } });
+          const d = await r.json();
+          if (!mounted) return;
+          if (d.ok) {
+            milburnMessages = (d.messages || []).map(m => ({ ...m, _thread_for: code }));
+          }
+        }
+
+        const seen2 = readChatAlertSeen();
+        const milburnSeen = Number(seen2.milburn || 0);
+        const targetRoomForMessage = (m) => isAdmin ? `dm:${m._thread_for}` : 'milburn';
+        const isWatchingMilburnFor = (m) => activePage === 'chat' && currentChatRoom === targetRoomForMessage(m);
+
+        let newestMilburn = null;
+        let latestMilburnAt = milburnSeen;
+        for (const m of milburnMessages) {
+          const at = new Date(m.created_at).getTime();
+          if (at > latestMilburnAt) latestMilburnAt = at;
+          if (m.author_code !== code && at > milburnSeen && !isWatchingMilburnFor(m)) {
+            if (!newestMilburn || at > new Date(newestMilburn.created_at).getTime()) newestMilburn = m;
+          }
+        }
+        if (latestMilburnAt > milburnSeen && milburnMessages.every(m => isWatchingMilburnFor(m) || m.author_code === code)) {
+          const s = readChatAlertSeen();
+          writeChatAlertSeen({ ...s, milburn: latestMilburnAt });
+        } else if (newestMilburn && mounted) {
+          setAlert(prev => prev || {
+            channel: 'milburn',
+            room: targetRoomForMessage(newestMilburn),
+            roomLabel: isAdmin ? `DM with ${newestMilburn.author_name}` : 'Ask Milburn',
+            user: newestMilburn.author_name || 'Someone',
+            message: (newestMilburn.content || '').slice(0, 140),
+            isGif: isImageContent(newestMilburn.content),
+            created_at: newestMilburn.created_at,
+          });
+        }
+      } catch {
+        // Silent -- next poll will retry
+      }
+    };
+
+    poll();
+    const iv = setInterval(poll, 10000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, [code, isAdmin, activePage, currentChatRoom]);
+}
+
 // ==================== MAIN APP ====================
 function App() {
   // Restore session from localStorage -- Mobile users should not have to re-enter
@@ -5145,6 +5297,12 @@ function App() {
   const [activePage, setActivePage] = useState('dashboard');
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Chat alert: top-banner notification when a new chat message arrives in a
+  // room the user isn't currently watching. `currentChatRoom` is kept in sync
+  // by ChatPage via its onRoomChange callback.
+  const [chatAlert, setChatAlert] = useState(null);
+  const [currentChatRoom, setCurrentChatRoom] = useState('general');
+  const [pendingChatRoom, setPendingChatRoom] = useState(null);
 
   // Live data hook -- fetches from CoinGecko + Finnhub proxy
   const { stocks, crypto, isLive, stocksLive, cryptoLive, marketOpen, lastUpdated, refresh } = useLiveData();
@@ -5224,6 +5382,31 @@ function App() {
   const { unlocked: achievementsUnlocked, newAchievement, total: achievementsTotal } = useAchievements(portfolio);
   const leaderboard = useLeaderboard(accessCode, stocks, crypto);
 
+  // Chat alerts -- polls group + milburn, surfaces top banner when a new
+  // message hits a room the user isn't currently watching.
+  useChatAlerts({
+    code: accessCode,
+    isAdmin,
+    activePage,
+    currentChatRoom,
+    setAlert: setChatAlert,
+  });
+  const handleOpenChatAlert = () => {
+    if (!chatAlert) return;
+    // Mark the target room's "seen" timestamp as now so we don't re-alert.
+    const seen = readChatAlertSeen();
+    const now = Date.now();
+    if (chatAlert.channel === 'group') writeChatAlertSeen({ ...seen, group: now });
+    if (chatAlert.channel === 'milburn') writeChatAlertSeen({ ...seen, milburn: now });
+    setPendingChatRoom(chatAlert.room);
+    setActivePage('chat');
+    setChatAlert(null);
+  };
+  // Clear the pending room once ChatPage has consumed it.
+  useEffect(() => {
+    if (pendingChatRoom && currentChatRoom === pendingChatRoom) setPendingChatRoom(null);
+  }, [pendingChatRoom, currentChatRoom]);
+
   // Milburn inbox unread counter -- only meaningful for admin.
   // Polls /api/messages every 15s. Counts messages newer than `stockrocket_milburn_seen_at`
   // that came from someone other than the admin. Clearing happens when admin opens Chat -> Ask Milburn.
@@ -5289,6 +5472,7 @@ function App() {
         <main className="main-content"><div className="main-inner">
           <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} user={user} code={accessCode} />
         </div></main>
+        <ChatAlertBanner alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
         <Notification notification={notification} onClose={() => setNotification(null)} />
         <AchievementToast achievement={newAchievement} />
       </div>
@@ -5303,7 +5487,7 @@ function App() {
       case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
       case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} />;
-      case 'chat': return <ChatPage user={user} displayName={displayName} code={accessCode} isAdmin={isAdmin} />;
+      case 'chat': return <ChatPage user={user} displayName={displayName} code={accessCode} isAdmin={isAdmin} initialRoom={pendingChatRoom} onRoomChange={setCurrentChatRoom} />;
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
       case 'insights': return <InsightsPage />;
       case 'learn': return <LearnPage />;
@@ -5341,6 +5525,7 @@ function App() {
           {renderPage()}
         </div>
       </main>
+      <ChatAlertBanner alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
       <Notification notification={notification} onClose={() => setNotification(null)} />
       <AchievementToast achievement={newAchievement} />
     </div>

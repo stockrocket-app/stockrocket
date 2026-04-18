@@ -268,6 +268,45 @@ h1,h2,h3,h4,h5,h6 { font-family: var(--font-headline); font-weight: 700; letter-
 .notification-error { background: rgba(255,113,108,0.15); border: 1px solid rgba(255,113,108,0.3); color: var(--error); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
+/* Chat alert -- slides down from the top edge when a new chat message arrives
+   in a room the user is not currently watching. Click to jump into the room. */
+.chat-alert-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, rgba(0,255,163,0.14), rgba(243,156,18,0.1));
+  border-bottom: 1px solid rgba(0,255,163,0.35);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 6px 28px rgba(0,0,0,0.25);
+  cursor: pointer;
+  animation: chatAlertDrop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  color: var(--on-surface);
+}
+.chat-alert-banner:hover { background: linear-gradient(135deg, rgba(0,255,163,0.2), rgba(243,156,18,0.14)); }
+.chat-alert-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: rgba(0,255,163,0.18);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--primary-fixed);
+}
+.chat-alert-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.chat-alert-title { font-family: var(--font-headline); font-weight: 700; font-size: 13px; color: var(--on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-alert-room { opacity: 0.7; font-weight: 500; font-size: 11px; font-family: var(--font-label); letter-spacing: 0.06em; text-transform: uppercase; margin-left: 6px; }
+.chat-alert-preview { font-size: 12px; color: var(--on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-alert-cta { font-family: var(--font-label); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--primary-fixed); padding: 6px 10px; border: 1px solid rgba(0,255,163,0.4); border-radius: var(--radius-full); flex-shrink: 0; }
+.chat-alert-close { background: none; border: none; color: var(--on-surface-variant); cursor: pointer; padding: 6px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.chat-alert-close:hover { background: rgba(73,72,71,0.12); color: var(--on-surface); }
+@keyframes chatAlertDrop {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (max-width: 767px) {
+  .chat-alert-banner { padding: 10px 12px; gap: 8px; }
+  .chat-alert-cta { display: none; }
+  .chat-alert-icon { width: 32px; height: 32px; }
+}
+
 /* ==================== CHAT ==================== */
 .chat-layout { display: flex; height: calc(100vh - var(--header-height) - 48px); gap: 0; border-radius: var(--radius-xl); overflow: hidden; border: 1px solid rgba(73,72,71,0.1); }
 .chat-rooms-panel { width: 220px; background: var(--surface-container-low); border-right: 1px solid rgba(73,72,71,0.05); display: flex; flex-direction: column; flex-shrink: 0; }
