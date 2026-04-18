@@ -27,7 +27,15 @@ const { useState, useEffect, useCallback, useRef, createContext, useContext } = 
 
 // ==================== APP CONFIG ====================
 const APP_ENV = (location.hostname === 'localhost' || location.protocol === 'file:') ? 'development' : 'production';
-const API_BASE = APP_ENV === 'production' ? '' : '';
+// API_BASE is same-origin in production. In dev, allow override via ?apiBase= or
+// localStorage('stockrocket_api_base') so developers can point at a deployed preview.
+const API_BASE = (() => {
+  if (APP_ENV === 'production') return '';
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    return qs.get('apiBase') || localStorage.getItem('stockrocket_api_base') || '';
+  } catch { return ''; }
+})();
 const APP_VERSION = '1.0.0';
 
 // ==================== ACCESS CODES ====================
@@ -38,18 +46,32 @@ const ACCESS_CODES = {
   'NEPHEW-APR18': { tier: 'family', admin: false, expires: '2026-12-31', label: 'Family' },
   'ELLA-2026':    { tier: 'family', admin: false, expires: '2027-01-01', label: 'Family' },
   'RSJ-ADMIN':    { tier: 'pro',    admin: true,  expires: '2099-01-01', label: 'Admin' },
-  'DEMO':         { tier: 'free',   admin: false, expires: '2099-01-01', label: 'Demo' },
 };
 
-function validateAccessCode(raw) {
-  if (!raw) return { ok: false, error: 'Enter an access code' };
-  const code = raw.trim().toUpperCase();
-  const entry = ACCESS_CODES[code];
-  if (!entry) return { ok: false, error: 'That code is not valid' };
+// Validates against Supabase via /api/codes. Falls back to the hardcoded
+// ACCESS_CODES constant if the endpoint is unreachable (launch-day belt + suspenders).
+// Passwords are case-sensitive -- pass raw input to the API.
+async function validateAccessCode(raw, displayName = '') {
+  if (!raw) return { ok: false, error: 'Enter your password' };
+  const code = raw.trim();
+  try {
+    const res = await fetch(`${API_BASE}/api/codes?code=${encodeURIComponent(code)}&name=${encodeURIComponent(displayName)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.ok) {
+        return { ok: true, code: data.code, tier: data.tier, admin: !!data.admin, label: data.label, email: data.email };
+      }
+      if (data && data.error) return { ok: false, error: data.error };
+    }
+    // Fall through to hardcoded on non-OK
+  } catch { /* network error -- fall through */ }
+  // Fallback: hardcoded ACCESS_CODES (always works for the seed codes, uppercase only)
+  const entry = ACCESS_CODES[code.toUpperCase()];
+  if (!entry) return { ok: false, error: 'That password is not valid' };
   if (entry.expires && new Date(entry.expires) < new Date()) {
     return { ok: false, error: 'That code has expired' };
   }
-  return { ok: true, code, tier: entry.tier, admin: entry.admin, label: entry.label };
+  return { ok: true, code, tier: entry.tier, admin: entry.admin, label: entry.label, fallback: true };
 }
 
 // ==================== MOCK DATA ====================
@@ -681,33 +703,63 @@ const WEEKLY_REPORTS = [
 ];
 
 // ==================== LIVE DATA LAYER ====================
-// Finnhub: Free tier -- get your key at https://finnhub.io/register
-// CoinGecko: Free, no key needed
-const FINNHUB_KEY = (() => { try { return localStorage.getItem('stockrocket_finnhub_key') || ''; } catch { return ''; } })();
+// Finnhub: calls go through our Vercel Edge proxy at /api/finnhub.
+//          The API key lives in Vercel env vars (FINNHUB_KEY), never in the client.
+// CoinGecko: no key needed, called directly (crypto is 24/7 real market).
+async function finnhub(path, params = {}) {
+  const qs = new URLSearchParams({ path, ...params });
+  const res = await fetch(`${API_BASE}/api/finnhub?${qs.toString()}`);
+  if (!res.ok) throw new Error(`finnhub_${res.status}`);
+  return res.json();
+}
 
 const LiveData = {
-  // Fetch real stock quotes from Finnhub
+  // Fetch real stock quote via the proxy
   async fetchStockQuote(symbol) {
-    if (!FINNHUB_KEY) return null;
     try {
-      const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`);
-      const data = await res.json();
-      if (data.c) return { price: data.c, change: data.d, changePercent: data.dp, high: data.h, low: data.l, open: data.o, prevClose: data.pc };
+      const data = await finnhub('quote', { symbol });
+      if (data && typeof data.c === 'number' && data.c > 0) {
+        return {
+          price: data.c,
+          change: data.d,
+          changePercent: data.dp,
+          high: data.h,
+          low: data.l,
+          open: data.o,
+          prevClose: data.pc,
+          timestamp: data.t ? data.t * 1000 : Date.now(),
+        };
+      }
       return null;
     } catch { return null; }
   },
 
-  // Fetch all stock quotes, fall back to mock
+  // Fetch all stock quotes in parallel
   async fetchAllStocks(symbols) {
-    if (!FINNHUB_KEY) return null;
     try {
       const promises = symbols.map(s => LiveData.fetchStockQuote(s));
-      const results = await Promise.all(promises);
-      return results;
+      return await Promise.all(promises);
     } catch { return null; }
   },
 
-  // Fetch real crypto prices from CoinGecko
+  // Fetch intraday candles (may be blocked on free tier -- caller handles empty)
+  async fetchStockCandles(symbol, resolution = 'D', daysBack = 30) {
+    try {
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - daysBack * 86400;
+      const data = await finnhub('candle', { symbol, resolution, from, to });
+      if (data && data.s === 'ok' && Array.isArray(data.c) && data.c.length > 1) {
+        return data.c.map((price, i) => ({
+          day: i + 1,
+          price,
+          timestamp: (data.t && data.t[i]) ? data.t[i] * 1000 : null,
+        }));
+      }
+      return [];
+    } catch { return []; }
+  },
+
+  // Fetch real crypto prices from CoinGecko (direct -- no key needed)
   async fetchCrypto() {
     try {
       const ids = 'bitcoin,ethereum,solana,cardano,polkadot';
@@ -723,27 +775,37 @@ const LiveData = {
     } catch { return null; }
   },
 
-  // Fetch market news from Finnhub
-  async fetchMarketNews() {
-    if (!FINNHUB_KEY) return null;
+  // Fetch CoinGecko market_chart for crypto candles (free, no key)
+  // id = coingecko coin id, days = 1/7/30/90/365
+  async fetchCryptoCandles(id, days = 30) {
     try {
-      const res = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${FINNHUB_KEY}`);
-      return await res.json();
-    } catch { return null; }
+      const res = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      if (!Array.isArray(data.prices) || data.prices.length < 2) return [];
+      // Thin out large arrays for chart perf -- aim for ~90 points
+      const step = Math.max(1, Math.floor(data.prices.length / 90));
+      const thinned = data.prices.filter((_, i) => i % step === 0);
+      return thinned.map(([ts, price], i) => ({ day: i + 1, price, timestamp: ts }));
+    } catch { return []; }
   },
 
-  // Fetch company news for a specific stock
+  // Fetch market news via the proxy
+  async fetchMarketNews() {
+    try { return await finnhub('news', { category: 'general' }); }
+    catch { return null; }
+  },
+
+  // Fetch company news via the proxy
   async fetchCompanyNews(symbol, daysBack = 7) {
-    if (!FINNHUB_KEY) return null;
     try {
       const to = new Date().toISOString().split('T')[0];
       const from = new Date(Date.now() - daysBack * 86400000).toISOString().split('T')[0];
-      const res = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${from}&to=${to}&token=${FINNHUB_KEY}`);
-      return await res.json();
+      return await finnhub('company-news', { symbol, from, to });
     } catch { return null; }
   },
 
-  // Fetch trending tickers from CoinGecko
+  // Fetch trending tickers from CoinGecko (direct)
   async fetchTrendingCrypto() {
     try {
       const res = await fetch('https://api.coingecko.com/api/v3/search/trending');
@@ -753,37 +815,74 @@ const LiveData = {
   }
 };
 
-// Hook to fetch live data with fallback to mock
+// Map stock/crypto symbols to CoinGecko ids for candle fetching
+const COINGECKO_IDS = { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', ADA: 'cardano', DOT: 'polkadot' };
+const CRYPTO_SYMBOLS = new Set(Object.keys(COINGECKO_IDS));
+
+// Hook to fetch live data. No silent mock fallback -- if a feed is down,
+// the UI should honestly show "prices unavailable" via the isLive/status flags.
 function useLiveData() {
-  const [stocks, setStocks] = useState(MOCK_STOCKS);
+  const [stocks, setStocks] = useState(MOCK_STOCKS);      // seed with static last-known so layout doesn't flicker
   const [crypto, setCrypto] = useState(MOCK_CRYPTO);
-  const [isLive, setIsLive] = useState(false);
+  const [stocksLive, setStocksLive] = useState(false);
+  const [cryptoLive, setCryptoLive] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [marketOpen, setMarketOpen] = useState(() => isUsMarketOpen());
 
   const refresh = useCallback(async () => {
-    // Try crypto first (no key needed)
+    // Crypto: 24/7 real market -- always refresh
     const liveCrypto = await LiveData.fetchCrypto();
     if (liveCrypto && liveCrypto.length > 0) {
-      setCrypto(liveCrypto);
-      setIsLive(true);
+      // Preserve category from MOCK_CRYPTO so UI filters keep working
+      const merged = MOCK_CRYPTO.map(mc => {
+        const live = liveCrypto.find(lc => lc.symbol === mc.symbol);
+        return live ? { ...mc, ...live } : mc;
+      });
+      setCrypto(merged);
+      setCryptoLive(true);
+    } else {
+      setCryptoLive(false);
     }
 
-    // Try stocks (needs key)
-    if (FINNHUB_KEY) {
+    // Stocks: only fetch during US market hours (avoids wasted calls + avoids
+    // showing post-close wiggle; the prev-close snapshot remains on display).
+    const open = isUsMarketOpen();
+    setMarketOpen(open);
+    if (open) {
       const symbols = MOCK_STOCKS.map(s => s.symbol);
       const quotes = await LiveData.fetchAllStocks(symbols);
-      if (quotes) {
+      if (quotes && quotes.some(q => q && q.price)) {
         const updated = MOCK_STOCKS.map((s, i) => {
           const q = quotes[i];
           if (!q) return s;
-          return { ...s, price: q.price, change: q.change, changePercent: q.changePercent };
+          return { ...s, price: q.price, change: q.change, changePercent: q.changePercent,
+                   high: q.high, low: q.low, open: q.open, prevClose: q.prevClose };
         });
         setStocks(updated);
-        setIsLive(true);
+        setStocksLive(true);
+      } else {
+        setStocksLive(false);
+      }
+    } else {
+      // Market closed: fetch one quote pull on first load so we have honest
+      // session-close numbers, then freeze.
+      if (!stocksLive) {
+        const symbols = MOCK_STOCKS.map(s => s.symbol);
+        const quotes = await LiveData.fetchAllStocks(symbols);
+        if (quotes && quotes.some(q => q && q.price)) {
+          const updated = MOCK_STOCKS.map((s, i) => {
+            const q = quotes[i];
+            if (!q) return s;
+            return { ...s, price: q.price, change: q.change, changePercent: q.changePercent,
+                     high: q.high, low: q.low, open: q.open, prevClose: q.prevClose };
+          });
+          setStocks(updated);
+          setStocksLive(true);
+        }
       }
     }
     setLastUpdated(new Date());
-  }, []);
+  }, [stocksLive]);
 
   useEffect(() => {
     refresh();
@@ -791,7 +890,15 @@ function useLiveData() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  return { stocks, crypto, isLive, lastUpdated, refresh };
+  return { stocks, crypto, stocksLive, cryptoLive, isLive: stocksLive || cryptoLive, marketOpen, lastUpdated, refresh };
+}
+
+// Market-hours check used by useLiveData (kept in sync with useMarketCountdown)
+function isUsMarketOpen(date = new Date()) {
+  const et = new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = et.getDay();
+  const mins = et.getHours() * 60 + et.getMinutes();
+  return day >= 1 && day <= 5 && mins >= (9 * 60 + 30) && mins < (16 * 60);
 }
 
 // ==================== MARKET STATUS ====================
@@ -1054,8 +1161,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
   const holding = portfolio?.holdings?.find(h => h.symbol === symbol);
   const [tradeType, setTradeType] = useState('BUY');
   const [shares, setShares] = useState('');
-  const chartData = asset ? generateChartData(90, asset.price * 0.85) : [];
-  if (chartData.length && asset) chartData[chartData.length - 1].price = asset.price;
+  const { data: chartData, loading: chartLoading } = useChartData(asset?.symbol, 90);
   const total = asset ? parseFloat(shares || 0) * asset.price : 0;
 
   const executeTrade = () => {
@@ -1109,7 +1215,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
         {/* Chart + Stats */}
         <div>
           <div className="card" style={{ marginBottom: 24 }}>
-            <NebulaChart data={chartData} height={280} />
+            <NebulaChart data={chartData} height={280} loading={chartLoading} />
           </div>
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
             <div className="stat-card"><p className="stat-label">Market Cap</p><p className="stat-value" style={{ fontSize: 20 }}>{asset.marketCap || 'N/A'}</p></div>
@@ -1175,16 +1281,87 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
 }
 
 // ==================== HELPERS ====================
-function generateChartData(days = 30, startPrice = 100) {
-  const data = [];
-  let price = startPrice;
-  const now = Date.now();
-  for (let i = days; i >= 0; i--) {
-    price += (Math.random() - 0.48) * (price * 0.03);
-    price = Math.max(price * 0.5, price);
-    data.push({ date: new Date(now - i * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), price: parseFloat(price.toFixed(2)) });
-  }
-  return data;
+// No client-side random chart generation. Every chart is real historical data
+// fetched from Finnhub (stocks) or CoinGecko (crypto) via useChartData below.
+function generateChartData() {
+  return [];
+}
+
+// Real historical chart hook. Returns { data, loading, error, source }.
+// Works for both stocks (via our Finnhub proxy) and crypto (via CoinGecko).
+// Gracefully returns an empty array if the source is unavailable -- the
+// NebulaChart component will render a "LIVE CHART CONNECTING" placeholder.
+function useChartData(symbol, days = 30) {
+  const [state, setState] = useState({ data: [], loading: true, error: null, source: null });
+  useEffect(() => {
+    if (!symbol) { setState({ data: [], loading: false, error: null, source: null }); return; }
+    let cancelled = false;
+    (async () => {
+      setState(s => ({ ...s, loading: true, error: null }));
+      try {
+        if (CRYPTO_SYMBOLS.has(symbol)) {
+          const id = COINGECKO_IDS[symbol];
+          const points = await LiveData.fetchCryptoCandles(id, days);
+          if (!cancelled) setState({ data: points, loading: false, error: null, source: 'coingecko' });
+        } else {
+          // Finnhub candle resolution: D=daily (fine for 30/90 day views)
+          const resolution = days <= 7 ? '60' : 'D';
+          const points = await LiveData.fetchStockCandles(symbol, resolution, days);
+          if (!cancelled) setState({ data: points, loading: false, error: points.length ? null : 'unavailable', source: 'finnhub' });
+        }
+      } catch (e) {
+        if (!cancelled) setState({ data: [], loading: false, error: String(e.message || e), source: null });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [symbol, days]);
+  return state;
+}
+
+// Portfolio-level chart: synthesize from real holdings' historical data.
+// For the MVP we fetch daily candles for each holding, weight by shares, and sum.
+// If any holding's history isn't available, we fall back to a flat line at current
+// value (honest: "we don't have history for this position yet").
+function usePortfolioChart(portfolio, days = 30) {
+  const [state, setState] = useState({ data: [], loading: true });
+  useEffect(() => {
+    if (!portfolio?.holdings?.length) {
+      // No positions: show cash as a flat line at starting value
+      const cash = portfolio?.cash || 0;
+      setState({ data: [{ day: 1, price: cash }, { day: 2, price: cash }], loading: false });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setState(s => ({ ...s, loading: true }));
+      const series = await Promise.all(portfolio.holdings.map(async h => {
+        const points = CRYPTO_SYMBOLS.has(h.symbol)
+          ? await LiveData.fetchCryptoCandles(COINGECKO_IDS[h.symbol], days)
+          : await LiveData.fetchStockCandles(h.symbol, 'D', days);
+        return { shares: h.shares, points };
+      }));
+      if (cancelled) return;
+      // Align on index (not timestamp) -- good enough for a visual overview
+      const maxLen = Math.max(...series.map(s => s.points.length), 0);
+      if (maxLen < 2) {
+        const tv = (portfolio.cash || 0) + portfolio.holdings.reduce((s, h) => s + h.value, 0);
+        setState({ data: [{ day: 1, price: tv }, { day: 2, price: tv }], loading: false });
+        return;
+      }
+      const combined = [];
+      for (let i = 0; i < maxLen; i++) {
+        let sum = portfolio.cash || 0;
+        for (const s of series) {
+          const p = s.points[i] || s.points[s.points.length - 1];
+          if (p) sum += p.price * s.shares;
+        }
+        combined.push({ day: i + 1, price: sum });
+      }
+      setState({ data: combined, loading: false });
+    })();
+    return () => { cancelled = true; };
+  }, [portfolio, days]);
+  return state;
 }
 
 function formatCurrency(val, dec = 2) {
@@ -1201,8 +1378,18 @@ function Icon({ name, size, className, style }) {
 }
 
 // ==================== SVG CHART ====================
-function NebulaChart({ data, height = 200 }) {
-  if (!data || data.length < 2) return null;
+function NebulaChart({ data, height = 200, loading = false, label = null }) {
+  if (!data || data.length < 2) {
+    const placeholderLabel = label || (loading ? 'LOADING CHART' : 'CHART UNAVAILABLE');
+    return (
+      <div className="chart-container" style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-container-low)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--outline-variant)' }}>
+        <div style={{ textAlign: 'center', color: 'var(--on-surface-variant)', fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.1em' }}>
+          <div style={{ marginBottom: 6, opacity: 0.6 }}>◦ ◦ ◦</div>
+          {placeholderLabel}
+        </div>
+      </div>
+    );
+  }
   const prices = data.map(d => d.price);
   const min = Math.min(...prices) * 0.998;
   const max = Math.max(...prices) * 1.002;
@@ -1241,32 +1428,33 @@ function Sparkline({ data, color = '#00FFA3', width = 80, height = 32 }) {
 }
 
 // ==================== LOGIN PAGE ====================
-function LoginPage({ onLogin, onShowLegal }) {
+function LoginPage({ onLogin }) {
   const [code, setCode] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!displayName.trim()) return setError('Pick a display name');
-    if (!termsAccepted) return setError('Accept the Terms to continue');
-    const result = validateAccessCode(code);
-    if (!result.ok) return setError(result.error);
-    onLogin({
-      name: displayName.trim(),
-      code: result.code,
-      tier: result.tier,
-      isAdmin: result.admin,
-      label: result.label,
-    });
-  };
-
-  const handleDemo = () => {
-    if (!termsAccepted) return setError('Accept the Terms to continue');
-    const result = validateAccessCode('DEMO');
-    onLogin({ name: 'Ella', code: result.code, tier: result.tier, isAdmin: false, label: result.label });
+    if (!displayName.trim()) return setError('Enter your name');
+    if (!code.trim()) return setError('Enter your password');
+    setSubmitting(true);
+    try {
+      // Passwords are case-sensitive -- pass exactly what the user typed
+      const result = await validateAccessCode(code, displayName.trim());
+      if (!result.ok) { setError(result.error); return; }
+      onLogin({
+        name: displayName.trim(),
+        code: result.code,
+        tier: result.tier,
+        isAdmin: result.admin,
+        label: result.label,
+        email: result.email,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1279,110 +1467,30 @@ function LoginPage({ onLogin, onShowLegal }) {
         <p className="login-subtitle">Learn. Trade. Launch Your Portfolio.</p>
         <form className="login-form" onSubmit={handleSubmit}>
           <div>
-            <div className="login-field-header"><label className="input-label">Display_Name</label></div>
-            <input className="input-field" type="text" placeholder="Ella" value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={24} autoFocus />
+            <div className="login-field-header"><label className="input-label">Name</label></div>
+            <input className="input-field" type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={24} autoFocus inputMode="text" autoComplete="off" />
           </div>
           <div>
             <div className="login-field-header">
-              <label className="input-label">Access_Code</label>
+              <label className="input-label">Password</label>
             </div>
             <input
               className="input-field"
-              type="text"
-              placeholder="NEPHEW-APR18"
+              type="password"
               value={code}
-              onChange={e => setCode(e.target.value.toUpperCase())}
-              style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}
-              autoCapitalize="characters"
+              onChange={e => setCode(e.target.value)}
               autoCorrect="off"
               spellCheck="false"
+              autoComplete="new-password"
             />
           </div>
-          <label className="login-checkbox" style={{ alignItems: 'flex-start', lineHeight: 1.4 }}>
-            <input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} style={{ marginTop: 2 }} />
-            <span>I have read and agree to the <a onClick={(e) => { e.preventDefault(); onShowLegal('terms'); }} style={{ cursor: 'pointer', textDecoration: 'underline' }}>Terms</a> and <a onClick={(e) => { e.preventDefault(); onShowLegal('privacy'); }} style={{ cursor: 'pointer', textDecoration: 'underline' }}>Privacy Policy</a>. I understand StockRocket uses play money only -- nothing here is real investing advice.</span>
-          </label>
           {error && <div style={{ color: '#ff716c', fontSize: 13, padding: '4px 8px', background: 'rgba(255,113,108,0.08)', borderRadius: 4 }}>{error}</div>}
-          <button type="submit" className="login-btn">Launch In <Icon name="north_east" size={18} /></button>
-          <div className="login-divider">Quick Start</div>
-          <div className="login-alt-btns">
-            <button type="button" className="login-alt-btn" onClick={handleDemo}><span style={{ fontSize: 16 }}>🐱</span> Try Demo as Ella</button>
-          </div>
+          <button type="submit" className="login-btn" disabled={submitting}>
+            {submitting ? 'Launching...' : <>Launch <Icon name="north_east" size={18} /></>}
+          </button>
         </form>
         <div className="login-footer">
-          <span style={{ color: 'var(--primary-fixed)' }}>{'\u25CF'}</span> v{APP_VERSION} {' \u00B7 '} <a onClick={(e) => { e.preventDefault(); onShowLegal('privacy'); }} style={{ cursor: 'pointer' }}>Privacy</a> {' \u00B7 '} <a onClick={(e) => { e.preventDefault(); onShowLegal('terms'); }} style={{ cursor: 'pointer' }}>Terms</a> {' \u00B7 '} <a onClick={(e) => { e.preventDefault(); onShowLegal('disclaimer'); }} style={{ cursor: 'pointer' }}>Disclaimer</a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ==================== LEGAL PAGES ====================
-function LegalPage({ page, onBack }) {
-  const content = {
-    terms: {
-      title: 'Terms of Service',
-      body: (
-        <React.Fragment>
-          <p><strong>Last updated: April 18, 2026</strong></p>
-          <p>StockRocket ("the App") is an educational trading simulator. By using the App, you agree to these Terms.</p>
-          <h3>1. No Real Money, No Investment Advice</h3>
-          <p>The App uses simulated "play money" only. Nothing displayed in the App constitutes investment advice, a recommendation, or an offer to buy or sell any security. Market data may be delayed, inaccurate, or for illustration only. Do not use the App to make real-world investment decisions.</p>
-          <h3>2. Access Codes</h3>
-          <p>Access is by invite only via access codes. Codes are personal and non-transferable. We may revoke codes at any time for misuse.</p>
-          <h3>3. Acceptable Use</h3>
-          <p>You agree not to reverse-engineer, abuse, or disrupt the App. You agree not to use the App to harass other users or attempt to identify other users.</p>
-          <h3>4. Minors</h3>
-          <p>If you are under 13, a parent or guardian must approve your use. We collect no personal information -- just a display name you choose.</p>
-          <h3>5. No Warranty</h3>
-          <p>The App is provided "as is" without warranty. We are not liable for any loss, damage, or inconvenience arising from use of the App.</p>
-          <h3>6. Changes</h3>
-          <p>We may update these Terms. Continued use after an update means you accept the new Terms.</p>
-          <h3>7. Contact</h3>
-          <p>Questions: robbie@coa.world</p>
-        </React.Fragment>
-      )
-    },
-    privacy: {
-      title: 'Privacy Policy',
-      body: (
-        <React.Fragment>
-          <p><strong>Last updated: April 18, 2026</strong></p>
-          <h3>What we collect</h3>
-          <p>Just a display name you pick and an access code you type in. We do not ask for your email, phone, real name, address, or any other personal information. We do not collect payment details.</p>
-          <h3>Where your data lives</h3>
-          <p>Your portfolio, trades, and display name are stored locally in your browser (localStorage). Clearing your browser data will clear your StockRocket data.</p>
-          <h3>Analytics</h3>
-          <p>We use Vercel Web Analytics, which counts anonymous page views. No cookies are set, and no personal data is sent. See vercel.com/docs/analytics/privacy-policy.</p>
-          <h3>Children</h3>
-          <p>StockRocket is designed to be safe for kids. We deliberately collect no personal information that could identify a child.</p>
-          <h3>Contact</h3>
-          <p>Questions: robbie@coa.world</p>
-        </React.Fragment>
-      )
-    },
-    disclaimer: {
-      title: 'Disclaimer',
-      body: (
-        <React.Fragment>
-          <p><strong>StockRocket is for education only.</strong></p>
-          <p>All trading happens with simulated play money. No real money ever changes hands. Market data shown in the App may be delayed, inaccurate, or illustrative. StockRocket is not a broker, is not registered with the SEC, FINRA, or any other regulator, and does not provide investment advice.</p>
-          <p>Nothing in the App should be interpreted as a recommendation to buy, sell, or hold any security or cryptocurrency. Past performance does not guarantee future results. You should consult a licensed financial advisor before making real investment decisions.</p>
-          <p>StockRocket is built by a parent who wanted his kids to learn about markets without risking real money. Use it in that spirit.</p>
-        </React.Fragment>
-      )
-    }
-  };
-  const c = content[page] || content.terms;
-  return (
-    <div className="login-page" style={{ overflowY: 'auto', alignItems: 'flex-start', paddingTop: 40, paddingBottom: 40 }}>
-      <div className="login-container" style={{ maxWidth: 640 }}>
-        <button onClick={onBack} className="login-alt-btn" style={{ width: 'auto', marginBottom: 16 }}>
-          <Icon name="arrow_back" size={16} /> Back
-        </button>
-        <h1 style={{ fontSize: 28, marginBottom: 16 }}>{c.title}</h1>
-        <div style={{ lineHeight: 1.6, fontSize: 14, color: 'var(--on-surface-variant)' }}>
-          {c.body}
+          <span style={{ color: 'var(--primary-fixed)' }}>{'\u25CF'}</span> v{APP_VERSION}
         </div>
       </div>
     </div>
@@ -1410,7 +1518,7 @@ function Header({ activePage, setActivePage, user, onMenuToggle }) {
 }
 
 // ==================== SIDEBAR ====================
-function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin, tier, onShowLegal }) {
+function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin, tier, onLogout }) {
   const navItems = [
     { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
     { id: 'portfolio', icon: 'account_balance', label: 'Portfolio' },
@@ -1456,7 +1564,11 @@ function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin,
         </>}
       </nav>
       <div className="sidebar-bottom">
-
+        {onLogout && (
+          <button className="sidebar-nav-item" onClick={() => { onLogout(); if (onClose) onClose(); }} style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+            <Icon name="logout" /> Sign Out
+          </button>
+        )}
       </div>
     </aside>
   );
@@ -1479,8 +1591,7 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
   const totalGain = holdings.reduce((sum, h) => sum + h.gain, 0);
   const totalGainPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
   const periodDays = { '1D': 1, '1W': 7, '1M': 30, '1Y': 365 };
-  const chartData = generateChartData(periodDays[chartPeriod] || 30, totalValue * 0.92);
-  chartData[chartData.length - 1].price = totalValue;
+  const { data: chartData, loading: chartLoading } = usePortfolioChart(portfolio, periodDays[chartPeriod] || 30);
   const topMovers = [...stocks].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 5);
   const randomInsight = TRADER_INSIGHTS.length > 0 ? TRADER_INSIGHTS[Math.floor(Date.now() / 86400000) % TRADER_INSIGHTS.length] : 'Markets reward patience.';
   const { whole, decimal } = formatCurrencySplit(totalValue);
@@ -1523,7 +1634,7 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
               ))}
             </div>
           </div>
-          <div style={{ marginTop: 48 }}><NebulaChart data={chartData} height={220} /></div>
+          <div style={{ marginTop: 48 }}><NebulaChart data={chartData} height={220} loading={chartLoading} /></div>
         </section>
 
         {/* Quick Stats */}
@@ -1806,8 +1917,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification })
   const filtered = searchTerm ? allAssets.filter(a => a.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || a.name.toLowerCase().includes(searchTerm.toLowerCase())) : allAssets;
   const execPrice = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : (selectedAsset?.price || 0);
   const total = selectedAsset ? parseFloat(shares || 0) * execPrice : 0;
-  const chartData = selectedAsset ? generateChartData(30, selectedAsset.price * 0.95) : [];
-  if (chartData.length && selectedAsset) chartData[chartData.length - 1].price = selectedAsset.price;
+  const { data: chartData, loading: chartLoading } = useChartData(selectedAsset?.symbol, 30);
 
   // Quick-buy preset amounts
   const quickAmounts = [1, 5, 10, 25];
@@ -1941,7 +2051,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification })
                   <span className={`badge ${selectedAsset.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{selectedAsset.change >= 0 ? '+' : ''}{selectedAsset.changePercent.toFixed(2)}%</span>
                 </div>
               </div>
-              <NebulaChart data={chartData} height={180} />
+              <NebulaChart data={chartData} height={180} loading={chartLoading} />
               {existing && (
                 <div style={{ marginTop: 16, padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
@@ -3320,10 +3430,304 @@ function WeeklyReportPage({ setStockDetail }) {
 
 
 // ==================== ADMIN PAGE ====================
-function AdminPage({ portfolio, stocks, crypto, setNotification }) {
+// ==================== ACCESS CODES ADMIN ====================
+// Supabase-backed CRUD for access codes. Admin endpoint requires the admin's own
+// code in the X-Admin-Code header. Component handles list / create / deactivate /
+// reactivate / reset-uses / delete, plus a recent audit log view.
+function AccessCodesAdmin({ adminCode, setNotification }) {
+  const [users, setUsers] = useState(null); // null = loading
+  const [log, setLog] = useState([]);
+  const [showLog, setShowLog] = useState(false);
+  const [error, setError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ label: '', email: '', code: '', is_admin: false });
+  const [revealed, setRevealed] = useState({}); // { [code]: true } -- show password in plaintext
+  const [editing, setEditing] = useState(null); // { code, field, value }
+
+  const authHeaders = { 'Content-Type': 'application/json', 'X-Admin-Code': adminCode };
+
+  const fetchUsers = useCallback(async () => {
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/codes`, { headers: { 'X-Admin-Code': adminCode } });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setError(data.error || 'Failed to load users'); setUsers([]); return; }
+      setUsers(data.codes || []);
+    } catch (e) {
+      setError('Network error -- is the admin endpoint deployed?');
+      setUsers([]);
+    }
+  }, [adminCode]);
+
+  const fetchLog = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/codes?log=1`, { headers: { 'X-Admin-Code': adminCode } });
+      const data = await res.json();
+      if (res.ok && data.ok) setLog(data.log || []);
+    } catch {}
+  }, [adminCode]);
+
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  const submitCreate = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!form.label.trim()) { setError('Name is required'); return; }
+    if (form.code.length < 4) { setError('Password must be at least 4 characters'); return; }
+    setCreating(true);
+    try {
+      const payload = {
+        code: form.code,
+        label: form.label.trim(),
+        email: form.email.trim() || null,
+        tier: 'family',
+        is_admin: form.is_admin,
+        uses_max: 9999,
+      };
+      const res = await fetch(`${API_BASE}/api/codes`, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok || data.error) { setError(data.detail || data.error || 'Create failed'); return; }
+      setNotification({ type: 'success', message: `User "${payload.label}" created` });
+      setForm({ label: '', email: '', code: '', is_admin: false });
+      fetchUsers();
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const patchUser = async (code, body) => {
+    const res = await fetch(`${API_BASE}/api/codes`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ code, ...body }) });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      setNotification({ type: 'error', message: data.detail || data.error || 'Update failed' });
+      return false;
+    }
+    return true;
+  };
+
+  const toggleActive = async (code, active) => {
+    if (await patchUser(code, { active })) fetchUsers();
+  };
+
+  const changePassword = async (currentCode, label) => {
+    const next = prompt(`New password for ${label || currentCode}?\n(4-64 characters, no spaces, case-sensitive)`);
+    if (!next) return;
+    if (await patchUser(currentCode, { new_code: next })) {
+      setNotification({ type: 'success', message: `Password updated for ${label || currentCode}` });
+      fetchUsers();
+    }
+  };
+
+  const changeEmail = async (code, currentEmail, label) => {
+    const next = prompt(`Email for ${label || code}? (leave blank to remove)`, currentEmail || '');
+    if (next === null) return;
+    if (await patchUser(code, { email: next })) {
+      setNotification({ type: 'success', message: `Email updated` });
+      fetchUsers();
+    }
+  };
+
+  const changeName = async (code, currentLabel) => {
+    const next = prompt('Name?', currentLabel || '');
+    if (next === null) return;
+    if (!next.trim()) return setNotification({ type: 'error', message: 'Name cannot be blank' });
+    if (await patchUser(code, { label: next.trim() })) {
+      setNotification({ type: 'success', message: `Name updated` });
+      fetchUsers();
+    }
+  };
+
+  const deleteUser = async (code, label) => {
+    if (!confirm(`Delete ${label || code}? They lose access immediately.`)) return;
+    await fetch(`${API_BASE}/api/codes?code=${encodeURIComponent(code)}`, { method: 'DELETE', headers: authHeaders });
+    setNotification({ type: 'success', message: `Deleted ${label || code}` });
+    fetchUsers();
+  };
+
+  const copy = async (value, thing = 'value') => {
+    try { await navigator.clipboard.writeText(value); setNotification({ type: 'success', message: `Copied ${thing}` }); } catch {}
+  };
+
+  const toggleReveal = (code) => setRevealed(r => ({ ...r, [code]: !r[code] }));
+
+  if (users === null) {
+    return <div className="card"><p className="text-muted">Loading users...</p></div>;
+  }
+
+  return (
+    <div>
+      {error && <div className="card" style={{ borderColor: 'var(--error)', marginBottom: 16 }}>
+        <p style={{ color: 'var(--error)', fontSize: 13 }}>{error}</p>
+        <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Check SUPABASE_URL + SUPABASE_SERVICE_KEY env vars in Vercel.</p>
+      </div>}
+
+      {/* Add user */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="person_add" size={20} /> Add_User</h3>
+        <form onSubmit={submitCreate}>
+          <div className="two-col" style={{ gap: 16 }}>
+            <div>
+              <label className="input-label">Name</label>
+              <input className="input-field" placeholder="Katie" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} maxLength={80} autoComplete="off" />
+            </div>
+            <div>
+              <label className="input-label">Email (optional)</label>
+              <input className="input-field" type="email" placeholder="katie@example.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} maxLength={120} autoComplete="off" />
+            </div>
+          </div>
+          <div className="two-col" style={{ gap: 16, marginTop: 16 }}>
+            <div>
+              <label className="input-label">Password</label>
+              <input className="input-field" type="text" placeholder="BoogieWoogie" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} maxLength={64} autoComplete="off" spellCheck="false" style={{ fontFamily: 'var(--font-headline)' }} />
+              <p className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>Case-sensitive. 4-64 chars, no spaces.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.is_admin} onChange={e => setForm({ ...form, is_admin: e.target.checked })} />
+                Grant admin access (can manage users)
+              </label>
+            </div>
+          </div>
+          <button type="submit" disabled={creating || !form.label || form.code.length < 4} className="btn btn-primary" style={{ marginTop: 20, background: 'linear-gradient(135deg, #00FFA3, #00c380)', color: '#000' }}>
+            <Icon name="add" size={16} /> {creating ? 'Creating...' : 'Add User'}
+          </button>
+        </form>
+      </div>
+
+      {/* Users table */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="label-system" style={{ fontSize: 14 }}>Users ({users.length})</h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={fetchUsers}><Icon name="refresh" size={14} /> Refresh</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setShowLog(v => !v); if (!showLog) fetchLog(); }}>
+              <Icon name="history" size={14} /> {showLog ? 'Hide' : 'View'} Activity
+            </button>
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead><tr><th>User</th><th>Email</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              {users.map(u => {
+                const isSelf = u.code === adminCode;
+                const showPassword = revealed[u.code] && !isSelf;
+                return (
+                  <tr key={u.code}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="stock-symbol-text" style={{ fontWeight: 600 }}>{u.label || '—'}</div>
+                        {isSelf && <span className="badge badge-primary" style={{ fontSize: 9 }}>you</span>}
+                        {u.is_admin && <span className="badge badge-error" style={{ fontSize: 9 }}>admin</span>}
+                      </div>
+                      {!isSelf && (
+                        <button className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: '2px 6px', marginTop: 4 }} onClick={() => changeName(u.code, u.label)}>
+                          <Icon name="edit" size={10} /> rename
+                        </button>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono, monospace)' }}>{u.email || <span className="text-muted">—</span>}</div>
+                      <button className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: '2px 6px', marginTop: 4 }} onClick={() => changeEmail(u.code, u.email, u.label)}>
+                        <Icon name="edit" size={10} /> {u.email ? 'change' : 'add'}
+                      </button>
+                    </td>
+                    <td>
+                      {isSelf ? (
+                        <div className="text-muted" style={{ fontSize: 12, fontStyle: 'italic' }}>(your existing password)</div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <code style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 600, color: 'var(--primary-fixed)', letterSpacing: showPassword ? '0.02em' : '0.15em' }}>
+                            {showPassword ? u.code : '••••••••'}
+                          </code>
+                          <button className="btn btn-secondary btn-sm" title={showPassword ? 'Hide' : 'Show'} onClick={() => toggleReveal(u.code)} style={{ padding: '2px 6px' }}>
+                            <Icon name={showPassword ? 'visibility_off' : 'visibility'} size={12} />
+                          </button>
+                          {showPassword && (
+                            <button className="btn btn-secondary btn-sm" title="Copy" onClick={() => copy(u.code, 'password')} style={{ padding: '2px 6px' }}>
+                              <Icon name="content_copy" size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {!isSelf && (
+                        <button className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: '2px 6px', marginTop: 4 }} onClick={() => changePassword(u.code, u.label)}>
+                          <Icon name="key" size={10} /> change
+                        </button>
+                      )}
+                    </td>
+                    <td>
+                      {u.active
+                        ? <span className="badge badge-primary"><span className="badge-dot glow"></span> Active</span>
+                        : <span className="badge badge-neutral">Paused</span>}
+                      {u.uses_current > 0 && <div className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>{u.uses_current} sign-in{u.uses_current === 1 ? '' : 's'}</div>}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary btn-sm" title={u.active ? 'Deactivate' : 'Reactivate'} onClick={() => toggleActive(u.code, !u.active)} disabled={isSelf}>
+                          <Icon name={u.active ? 'pause' : 'play_arrow'} size={14} />
+                        </button>
+                        <button className="btn btn-secondary btn-sm" title={isSelf ? "Can't delete yourself" : 'Delete'} style={{ color: isSelf ? 'var(--text-muted)' : 'var(--error)' }} onClick={() => deleteUser(u.code, u.label)} disabled={isSelf}>
+                          <Icon name="delete" size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {users.length === 0 && <tr><td colSpan="5" className="text-muted" style={{ padding: 24, textAlign: 'center' }}>No users yet. Add one above.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Activity log (collapsible) */}
+      {showLog && <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: 20 }}>
+          <h3 className="label-system" style={{ fontSize: 14 }}>Recent_Activity</h3>
+        </div>
+        <table className="data-table">
+          <thead><tr><th>When</th><th>Action</th><th>Who</th></tr></thead>
+          <tbody>
+            {log.slice(0, 50).map(e => (
+              <tr key={e.id}>
+                <td className="text-muted" style={{ fontSize: 11 }}>{new Date(e.created_at).toLocaleString()}</td>
+                <td><span className={`badge ${e.action === 'redeem' ? 'badge-primary' : e.action === 'reject' ? 'badge-error' : 'badge-neutral'}`} style={{ fontSize: 10 }}>{e.action}</span></td>
+                <td style={{ fontSize: 12 }}>{e.display_name || '—'}</td>
+              </tr>
+            ))}
+            {log.length === 0 && <tr><td colSpan="3" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>No activity yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>}
+    </div>
+  );
+}
+
+function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [announceText, setAnnounceText] = useState('');
   const [challengeName, setChallengeName] = useState('');
+  const [codeStats, setCodeStats] = useState({ total: 0, active: 0, redemptions: 0 });
+
+  // Real access-code stats for the Overview tab (replaces the old mockUsers counts)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/codes`, { headers: { 'X-Admin-Code': adminCode } });
+        const data = await res.json();
+        if (cancelled || !res.ok || !data.ok) return;
+        const codes = data.codes || [];
+        setCodeStats({
+          total: codes.length,
+          active: codes.filter(c => c.active).length,
+          redemptions: codes.reduce((s, c) => s + (c.uses_current || 0), 0),
+        });
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [adminCode]);
   const [challengeCash, setChallengeCash] = useState('100000');
   const [challengeDays, setChallengeDays] = useState('7');
 
@@ -3405,26 +3809,26 @@ function AdminPage({ portfolio, stocks, crypto, setNotification }) {
       {activeTab === 'overview' && (
         <div>
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 32 }}>
-            <div className="stat-card"><p className="stat-label">Total_Users</p><p className="stat-value">{mockUsers.length}</p><p className="stat-change positive">{mockUsers.filter(u => u.status === 'active').length} active</p></div>
-            <div className="stat-card"><p className="stat-label">Total_Trades</p><p className="stat-value">{mockUsers.reduce((s, u) => s + u.trades, 0)}</p><p className="stat-change neutral">All time</p></div>
+            <div className="stat-card"><p className="stat-label">Users</p><p className="stat-value">{codeStats.total}</p><p className="stat-change positive">{codeStats.active} active</p></div>
+            <div className="stat-card"><p className="stat-label">Sign_Ins</p><p className="stat-value">{codeStats.redemptions}</p><p className="stat-change neutral">All time</p></div>
             <div className="stat-card"><p className="stat-label">Active_Challenges</p><p className="stat-value">{challenges.filter(c => c.status === 'active').length}</p><p className="stat-change positive">{challenges.reduce((s, c) => s + c.participants, 0)} participants</p></div>
             <div className="stat-card"><p className="stat-label">Disabled_Stocks</p><p className="stat-value">{disabledStocks.length}</p><p className="stat-change neutral">of {stocks.length + crypto.length}</p></div>
           </div>
 
           <div className="two-col">
             <div className="card">
-              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="trending_up" size={20} /> Platform_Activity</h3>
-              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-                <span className="label-system">Most Active User</span>
-                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>PCM (45 trades)</span>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="trending_up" size={20} /> Quick_Actions</h3>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveTab('users')}>
+                <span className="label-system">Add a family member</span>
+                <button className="btn btn-primary btn-sm"><Icon name="person_add" size={14} /> Add</button>
               </div>
-              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-                <span className="label-system">Top Performer</span>
-                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, color: 'var(--primary-fixed)' }}>PCM (+$15,200)</span>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveTab('content')}>
+                <span className="label-system">Post announcement</span>
+                <button className="btn btn-secondary btn-sm"><Icon name="campaign" size={14} /> Write</button>
               </div>
-              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', display: 'flex', justifyContent: 'space-between' }}>
-                <span className="label-system">Most Traded</span>
-                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>AAPL, NVDA, BTC</span>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveTab('challenges')}>
+                <span className="label-system">Create challenge</span>
+                <button className="btn btn-secondary btn-sm"><Icon name="emoji_events" size={14} /> Create</button>
               </div>
             </div>
             <div className="card">
@@ -3440,43 +3844,9 @@ function AdminPage({ portfolio, stocks, crypto, setNotification }) {
         </div>
       )}
 
-      {/* USERS TAB */}
+      {/* USERS TAB -- Supabase-backed access codes */}
       {activeTab === 'users' && (
-        <div>
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 className="label-system" style={{ fontSize: 14 }}>All_Users ({mockUsers.length})</h3>
-              <div className="input-with-icon">
-                <Icon name="search" />
-                <input className="input-field" placeholder="Search users..." style={{ width: 200, padding: '8px 12px 8px 40px', fontSize: 12 }} />
-              </div>
-            </div>
-            <table className="data-table">
-              <thead><tr><th>User</th><th>Status</th><th>Joined</th><th>Portfolio Value</th><th>Trades</th><th>Actions</th></tr></thead>
-              <tbody>
-                {mockUsers.map(u => (
-                  <tr key={u.id}>
-                    <td><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div className="stock-icon-badge" style={{ background: 'rgba(0,255,163,0.15)', color: 'var(--primary-fixed)' }}>{u.name[0]}</div>
-                      <div><div className="stock-symbol-text">{u.name}</div><div className="stock-name-text">{u.role}</div></div>
-                    </div></td>
-                    <td><span className={`badge ${u.status === 'active' ? 'badge-primary' : 'badge-neutral'}`}><span className="badge-dot glow"></span> {u.status}</span></td>
-                    <td className="text-muted">{u.joined}</td>
-                    <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(u.totalValue)}</td>
-                    <td style={{ fontFamily: 'var(--font-headline)' }}>{u.trades}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-secondary btn-sm" title="View portfolio"><Icon name="visibility" size={14} /></button>
-                        <button className="btn btn-secondary btn-sm" title="Reset portfolio"><Icon name="restart_alt" size={14} /></button>
-                        <button className="btn btn-secondary btn-sm" title="Suspend" style={{ color: 'var(--error)' }}><Icon name="block" size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AccessCodesAdmin adminCode={adminCode} setNotification={setNotification} />
       )}
 
       {/* CONTENT TAB */}
@@ -3569,14 +3939,14 @@ function AdminPage({ portfolio, stocks, crypto, setNotification }) {
           {/* API Keys */}
           <div className="card" style={{ marginBottom: 32 }}>
             <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="key" size={20} /> API Keys</h3>
-            <p className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>Connect live data feeds. Keys are stored locally and never sent to our servers.</p>
-            <div style={{ marginBottom: 16 }}>
-              <label className="input-label">Finnhub API Key (Stocks)</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input className="input-field" type="password" placeholder="Paste your Finnhub API key" defaultValue={typeof FINNHUB_KEY !== 'undefined' ? FINNHUB_KEY : ''} id="finnhub-key-input" />
-                <button className="btn btn-primary btn-sm" onClick={() => { const v = document.getElementById('finnhub-key-input')?.value; if (v) { try { localStorage.setItem('stockrocket_finnhub_key', v); setNotification({ type: 'success', message: 'Finnhub key saved. Reload to activate.' }); } catch {} } }}>Save</button>
+            <p className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>Live data runs through a secure server-side proxy. No keys live in the browser.</p>
+            <div style={{ marginBottom: 16, padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+              <label className="input-label" style={{ display: 'block', marginBottom: 6 }}>Finnhub (Stocks)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="pulse-dot"></span>
+                <span style={{ fontFamily: 'var(--font-label)', fontSize: 12, letterSpacing: '0.08em' }}>ROUTED THROUGH /api/finnhub</span>
               </div>
-              <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Free at <a href="https://finnhub.io/register" style={{ color: 'var(--primary-fixed)' }}>finnhub.io/register</a> -- enables real-time US stock prices</p>
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 8 }}>Key is set in Vercel environment variables (FINNHUB_KEY). Client never sees it.</p>
             </div>
             <div style={{ marginBottom: 16 }}>
               <label className="input-label">Supabase URL</label>
@@ -3723,7 +4093,6 @@ function AdminPage({ portfolio, stocks, crypto, setNotification }) {
               <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="priority_high" size={20} className="text-error" /> Launch Blockers</h3>
               {[
                 { title: 'Set Up Supabase', desc: 'Create a Supabase project for auth, database, and real-time chat. Required for multi-user -- right now all data is local to each browser.', action: 'Go to supabase.com, create project, paste URL + anon key in Trading > API Keys.' },
-                { title: 'Get Finnhub API Key', desc: 'Free API key for live US stock prices. Without this, all stock prices are mock data.', action: 'Register at finnhub.io/register (free), paste key in Admin > Trading > API Keys.' },
                 { title: 'Deploy to Vercel', desc: 'Host the app so all 4 players can access it. Currently only runs from your desktop.', action: 'Push to GitHub, connect to Vercel (free), get a live URL.' },
               ].map((item, i) => (
                 <div key={i} className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--error)' }}>
@@ -3992,17 +4361,28 @@ function Notification({ notification, onClose }) {
 
 // ==================== MAIN APP ====================
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState('');
-  const [tier, setTier] = useState('free');
-  const [accessCode, setAccessCode] = useState('');
-  const [legalPage, setLegalPage] = useState(null); // 'terms' | 'privacy' | 'disclaimer' | null
+  // Restore session from localStorage -- Mobile users should not have to re-enter
+  // their access code on every visit. Session stays valid for 30 days.
+  const restoredAuth = (() => {
+    try {
+      const raw = localStorage.getItem('stockrocket_auth');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const age = Date.now() - (parsed.loginAt || 0);
+      if (age > 30 * 86400 * 1000) return null; // 30-day session window
+      return parsed;
+    } catch { return null; }
+  })();
+  const [isLoggedIn, setIsLoggedIn] = useState(!!restoredAuth);
+  const [user, setUser] = useState(restoredAuth?.name || '');
+  const [tier, setTier] = useState(restoredAuth?.tier || 'free');
+  const [accessCode, setAccessCode] = useState(restoredAuth?.code || '');
   const [activePage, setActivePage] = useState('dashboard');
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Live data hook -- fetches from CoinGecko + Finnhub, falls back to mock
-  const { stocks, crypto, isLive, lastUpdated, refresh } = useLiveData();
+  // Live data hook -- fetches from CoinGecko + Finnhub proxy
+  const { stocks, crypto, isLive, stocksLive, cryptoLive, marketOpen, lastUpdated, refresh } = useLiveData();
 
   // Load portfolio from localStorage or use defaults
   const defaultPortfolio = {
@@ -4042,8 +4422,19 @@ function App() {
     });
   }, [stocks, isLive]);
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(!!restoredAuth?.isAdmin);
   const [stockDetail, setStockDetail] = useState(null); // symbol for stock detail page
+
+  // Logout clears session + returns to login screen
+  const handleLogout = useCallback(() => {
+    try { localStorage.removeItem('stockrocket_auth'); } catch {}
+    setIsLoggedIn(false);
+    setUser('');
+    setIsAdmin(false);
+    setTier('free');
+    setAccessCode('');
+    setActivePage('dashboard');
+  }, []);
 
   // Achievements + Leaderboard
   const { unlocked: achievementsUnlocked, newAchievement, total: achievementsTotal } = useAchievements(portfolio);
@@ -4062,9 +4453,7 @@ function App() {
     } catch {}
   };
 
-  // Legal pages are reachable both before and after login
-  if (legalPage) return <LegalPage page={legalPage} onBack={() => setLegalPage(null)} />;
-  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} onShowLegal={setLegalPage} />;
+  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />;
 
   // Stock detail page (overlay -- any page can navigate here)
   if (stockDetail) {
@@ -4072,7 +4461,7 @@ function App() {
       <div className="app-layout">
         <Header activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
         {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onShowLegal={setLegalPage} />
+        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} />
         <main className="main-content"><div className="main-inner">
           <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} />
         </div></main>
@@ -4094,7 +4483,7 @@ function App() {
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
       case 'insights': return <InsightsPage />;
       case 'learn': return <LearnPage />;
-      case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
+      case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} user={user} adminCode={accessCode} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
       default: return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
     }
   };
@@ -4103,23 +4492,29 @@ function App() {
     <div className="app-layout">
       <Header activePage={activePage} setActivePage={setActivePage} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
-      <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onShowLegal={setLegalPage} />
+      <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} />
       <main className="main-content">
         <div className="main-inner">
-          {isLive && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-            <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="pulse-dot"></span> LIVE_DATA {lastUpdated ? '-- Updated ' + lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}
-            </span>
-          </div>}
-          {renderPage()}
-          <div style={{ marginTop: 40, paddingTop: 20, borderTop: '1px solid var(--outline-variant)', fontSize: 11, color: 'var(--on-surface-variant)', textAlign: 'center', letterSpacing: '0.05em' }}>
-            <div style={{ marginBottom: 8, fontFamily: 'var(--font-label)' }}>FOR EDUCATION ONLY {' \u00B7 '} NO REAL MONEY {' \u00B7 '} NOT FINANCIAL ADVICE</div>
-            <div>
-              <a onClick={(e) => { e.preventDefault(); setLegalPage('terms'); }} style={{ cursor: 'pointer', marginRight: 12 }}>Terms</a>
-              <a onClick={(e) => { e.preventDefault(); setLegalPage('privacy'); }} style={{ cursor: 'pointer', marginRight: 12 }}>Privacy</a>
-              <a onClick={(e) => { e.preventDefault(); setLegalPage('disclaimer'); }} style={{ cursor: 'pointer' }}>Disclaimer</a>
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, gap: 12, flexWrap: 'wrap' }}>
+            {!marketOpen && <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--on-surface-variant)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--outline-variant)', display: 'inline-block' }}></span>
+              STOCKS CLOSED -- LAST CLOSE
+            </span>}
+            {marketOpen && stocksLive && <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="pulse-dot"></span> STOCKS LIVE
+            </span>}
+            {marketOpen && !stocksLive && <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--error, #ff716c)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}></span>
+              STOCK FEED UNAVAILABLE
+            </span>}
+            {cryptoLive && <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="pulse-dot"></span> CRYPTO LIVE
+            </span>}
+            {lastUpdated && <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em' }}>
+              UPDATED {lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </span>}
           </div>
+          {renderPage()}
         </div>
       </main>
       <Notification notification={notification} onClose={() => setNotification(null)} />
