@@ -2033,8 +2033,30 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
 
 // ==================== PORTFOLIO ====================
 function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
-  const totalValue = portfolio.cash + portfolio.holdings.reduce((sum, h) => sum + h.value, 0);
+  const investedValue = portfolio.holdings.reduce((sum, h) => sum + h.value, 0);
+  const totalValue = portfolio.cash + investedValue;
   const totalGain = portfolio.holdings.reduce((sum, h) => sum + h.gain, 0);
+  const investedPct = totalValue > 0 ? (investedValue / totalValue) * 100 : 0;
+  const cashPct = totalValue > 0 ? (portfolio.cash / totalValue) * 100 : 100;
+
+  // Allocation slices: each holding + cash. Sorted largest first so the bar + legend are easy to scan.
+  const ALLOC_PALETTE = ['#00FFA3', '#7C4DFF', '#FF71B0', '#FFD93D', '#4DD0E1', '#FF9F43', '#E056FD', '#74B9FF', '#FF6B6B', '#A8E6CF'];
+  const holdingSlices = [...portfolio.holdings]
+    .map((h, idx) => ({
+      key: h.symbol,
+      label: h.symbol,
+      name: h.name,
+      value: h.value,
+      pct: totalValue > 0 ? (h.value / totalValue) * 100 : 0,
+      color: ALLOC_PALETTE[idx % ALLOC_PALETTE.length],
+      isCash: false,
+      shares: h.shares,
+      returnPercent: h.returnPercent,
+      gain: h.gain,
+    }))
+    .sort((a, b) => b.value - a.value);
+  const cashSlice = { key: '__cash__', label: 'Cash', name: 'Unallocated', value: portfolio.cash, pct: cashPct, color: 'rgba(255,255,255,0.22)', isCash: true };
+  const allSlices = [...holdingSlices, cashSlice].filter(s => s.value > 0);
 
   return (
     <div>
@@ -2054,9 +2076,100 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
       </div>
       <div className="stats-grid" style={{ marginBottom: 32 }}>
         <div className="stat-card"><p className="stat-label">Total_Portfolio_Value</p><p className="stat-value">{formatCurrency(totalValue)}</p><div style={{ display: 'flex', gap: 12, marginTop: 8 }}><span className="stat-change positive">+{formatCurrency(Math.abs(totalGain))}</span><span className="stat-change positive">+{((totalValue - 100000) / 100000 * 100).toFixed(2)}%</span></div></div>
-        <div className="stat-card"><p className="stat-label">Cash_Balance</p><p className="stat-value">{formatCurrency(portfolio.cash)}</p></div>
-        <div className="stat-card"><p className="stat-label">Risk_Score</p><p className="stat-value text-secondary">Low_Moderate</p></div>
+        <div className="stat-card"><p className="stat-label">Invested</p><p className="stat-value">{formatCurrency(investedValue)}</p><div style={{ display: 'flex', gap: 12, marginTop: 8 }}><span className="stat-change" style={{ color: 'var(--on-surface-variant)' }}>{investedPct.toFixed(1)}% of portfolio</span></div></div>
+        <div className="stat-card"><p className="stat-label">Cash_Balance</p><p className="stat-value">{formatCurrency(portfolio.cash)}</p><div style={{ display: 'flex', gap: 12, marginTop: 8 }}><span className="stat-change" style={{ color: 'var(--on-surface-variant)' }}>{cashPct.toFixed(1)}% of portfolio</span></div></div>
       </div>
+
+      {/* Allocation -- at-a-glance split of every dollar in the account */}
+      <div className="card" style={{ padding: 24, marginBottom: 32 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h3 className="section-title" style={{ marginBottom: 4 }}>Where_Your_Money_Is</h3>
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              {investedValue > 0
+                ? `${formatCurrency(investedValue)} invested across ${portfolio.holdings.length} ${portfolio.holdings.length === 1 ? 'position' : 'positions'} -- ${formatCurrency(portfolio.cash)} still in cash.`
+                : `All ${formatCurrency(portfolio.cash)} is sitting in cash. Head to the Trade page to put it to work.`}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ padding: '8px 14px', background: 'rgba(0,255,163,0.10)', border: '1px solid rgba(0,255,163,0.25)', borderRadius: 'var(--radius-lg)' }}>
+              <div className="label-system" style={{ fontSize: 10, color: 'var(--primary-fixed)' }}>Invested</div>
+              <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15, color: 'var(--primary-fixed)' }}>{investedPct.toFixed(1)}%</div>
+            </div>
+            <div style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 'var(--radius-lg)' }}>
+              <div className="label-system" style={{ fontSize: 10 }}>Cash</div>
+              <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15 }}>{cashPct.toFixed(1)}%</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stacked allocation bar */}
+        <div style={{ display: 'flex', height: 36, borderRadius: 10, overflow: 'hidden', background: 'var(--surface-container-highest)', marginBottom: 18 }}>
+          {allSlices.map((s, i) => (
+            <div
+              key={s.key}
+              title={`${s.label}: ${formatCurrency(s.value)} (${s.pct.toFixed(1)}%)`}
+              style={{
+                width: `${s.pct}%`,
+                background: s.color,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 11,
+                fontFamily: 'var(--font-headline)',
+                fontWeight: 700,
+                color: s.isCash ? 'var(--on-surface)' : '#0a0a0a',
+                letterSpacing: '0.02em',
+                borderRight: i < allSlices.length - 1 ? '1px solid rgba(0,0,0,0.25)' : 'none',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                transition: 'width 0.3s ease',
+              }}
+            >
+              {s.pct >= 8 ? `${s.label} ${s.pct.toFixed(0)}%` : ''}
+            </div>
+          ))}
+        </div>
+
+        {/* Legend: every slice with color + $ + % */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+          {allSlices.map(s => (
+            <div
+              key={s.key}
+              onClick={() => !s.isCash && setStockDetail && setStockDetail(stocks.find(st => st.symbol === s.key) || { symbol: s.key, name: s.name })}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 12px',
+                background: 'var(--surface-container-highest)',
+                borderRadius: 'var(--radius-lg)',
+                cursor: s.isCash ? 'default' : 'pointer',
+                transition: 'transform 0.15s ease, background 0.15s ease',
+              }}
+              onMouseEnter={e => !s.isCash && (e.currentTarget.style.background = 'var(--surface-container-high)')}
+              onMouseLeave={e => !s.isCash && (e.currentTarget.style.background = 'var(--surface-container-highest)')}
+            >
+              <div style={{ width: 14, height: 14, borderRadius: 4, background: s.color, flexShrink: 0, border: s.isCash ? '1px solid rgba(255,255,255,0.2)' : 'none' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 14, color: 'var(--on-surface-variant)' }}>{s.pct.toFixed(1)}%</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginTop: 2 }}>
+                  <span className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {s.isCash ? 'Unallocated' : `${s.shares} ${s.shares === 1 ? 'share' : 'shares'}`}
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-headline)', color: s.isCash ? 'var(--on-surface-variant)' : (s.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)') }}>
+                    {formatCurrency(s.value)}{!s.isCash && s.returnPercent !== undefined ? ` (${s.returnPercent >= 0 ? '+' : ''}${s.returnPercent.toFixed(1)}%)` : ''}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <h3 className="section-title" style={{ marginBottom: 20 }}>Active_Holdings</h3>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {portfolio.holdings.length === 0 ? (
