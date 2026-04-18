@@ -339,9 +339,20 @@ h1,h2,h3,h4,h5,h6 { font-family: var(--font-headline); font-weight: 700; letter-
 }
 @media (min-width: 1440px) { .main-inner { padding: 40px 60px; } }
 .app-sidebar.mobile-open { display: flex; z-index: 45; }
+
+/* Mobile chat rooms toggle -- hidden on desktop, shows a Slack-style hamburger
+   in the chat header on mobile so users can swipe open the channel list. */
+.chat-mobile-toggle { display: none; background: none; border: 1px solid rgba(73,72,71,0.15); border-radius: var(--radius-lg); width: 38px; height: 38px; align-items: center; justify-content: center; cursor: pointer; color: var(--on-surface); flex-shrink: 0; margin-right: 4px; }
+.chat-mobile-toggle:hover { background: rgba(0,255,163,0.08); border-color: rgba(0,255,163,0.3); }
+.chat-rooms-close { display: none; background: none; border: 1px solid rgba(73,72,71,0.15); border-radius: var(--radius-lg); width: 30px; height: 30px; align-items: center; justify-content: center; cursor: pointer; color: var(--on-surface); }
+.chat-rooms-backdrop { display: none; }
+
 @media (max-width: 767px) {
   .chat-rooms-panel { display: none; }
-  .chat-rooms-panel.mobile-open { display: flex; position: fixed; inset: 0; width: 100%; z-index: 50; }
+  .chat-rooms-panel.mobile-open { display: flex; position: fixed; inset: 0; width: 100%; z-index: 50; background: var(--bg); }
+  .chat-mobile-toggle { display: inline-flex; }
+  .chat-rooms-close { display: inline-flex; }
+  .chat-rooms-backdrop.mobile-open { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 49; }
   .login-container { padding: 32px 24px; }
   .stat-value { font-size: 24px; }
   .stat-value.lg { font-size: 32px; }
