@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "secondary-fixed-dim": "#53edbc",
+              "on-primary-fixed-variant": "#00673f",
+              "on-tertiary-fixed": "#002c38",
+              "on-surface-variant": "#adaaaa",
+              "on-error-container": "#ffa8a3",
+              "surface-tint": "#b1ffce",
+              "on-secondary-container": "#dfffef",
+              "on-secondary-fixed": "#004936",
+              "on-primary-fixed": "#00472a",
+              "secondary-dim": "#53edbc",
+              "surface-container-high": "#201f1f",
+              "surface-container": "#1a1919",
+              "secondary": "#64fcc9",
+              "tertiary-dim": "#00c3ed",
+              "tertiary-container": "#00d2ff",
+              "on-tertiary": "#004c5e",
+              "outline-variant": "#494847",
+              "tertiary-fixed": "#00d2ff",
+              "on-primary": "#00663e",
+              "outline": "#777575",
+              "on-primary-container": "#005c38",
+              "error": "#ff716c",
+              "on-surface": "#ffffff",
+              "primary-fixed-dim": "#00ef99",
+              "on-error": "#490006",
+              "secondary-container": "#006c51",
+              "background": "#0e0e0e",
+              "error-dim": "#d7383b",
+              "surface-variant": "#262626",
+              "inverse-on-surface": "#565554",
+              "inverse-primary": "#006d43",
+              "on-tertiary-fixed-variant": "#004c5e",
+              "primary-fixed": "#00ffa3",
+              "surface-bright": "#2c2c2c",
+              "primary-container": "#00ffa3",
+              "surface": "#0e0e0e",
+              "on-secondary": "#005d46",
+              "tertiary": "#72dcff",
+              "surface-container-highest": "#262626",
+              "primary": "#b1ffce",
+              "inverse-surface": "#fcf8f8",
+              "on-tertiary-container": "#004252",
+              "surface-dim": "#0e0e0e",
+              "tertiary-fixed-dim": "#00c3ed",
+              "primary-dim": "#00ef99",
+              "surface-container-low": "#131313",
+              "surface-container-lowest": "#000000",
+              "on-secondary-fixed-variant": "#00684e",
+              "secondary-fixed": "#64fcc9",
+              "error-container": "#9f0519",
+              "on-background": "#ffffff"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+        }
+        .kinetic-glow:hover {
+            box-shadow: 0 0 20px rgba(0, 255, 163, 0.15);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar Shell -->
+<header class="fixed top-0 z-50 w-full h-16 bg-[#0e0e0e]/80 backdrop-blur-xl border-b border-[#00FFA3]/10 flex justify-between items-center px-6">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-black tracking-tighter text-[#00FFA3] drop-shadow-[0_0_8px_rgba(0,255,163,0.4)] font-headline">NEBULA_TERMINAL</span>
+<nav class="hidden md:flex items-center gap-6 font-headline text-[13px] tracking-widest uppercase">
+<a class="text-slate-400 hover:text-slate-200 transition-colors" href="#">Dashboard</a>
+<a class="text-slate-400 hover:text-slate-200 transition-colors" href="#">Markets</a>
+<a class="text-[#00FFA3] border-b-2 border-[#00FFA3] pb-1" href="#">Academy</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="hidden lg:flex items-center px-4 py-1.5 rounded-full border border-primary/20 text-primary-fixed text-xs font-headline font-bold tracking-wider hover:bg-primary/5 transition-all">
+                PAPER_TRADING
+            </button>
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors cursor-pointer" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors cursor-pointer" data-icon="notifications_active">notifications_active</span>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant overflow-hidden">
+<img alt="User Profile Avatar" data-alt="User profile avatar circle display" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC6OS8MqEiYaeBbLHYWUDECdihNeGwhijVYIEgA6vQ8ADy-siKgvtGYVZC9jzG9kI7Juv0dfyEIn5evC_LlC8aSTD4tRtjiatjEozXzmISYye5PwXsQzfLATUKWYRiVJ-orObPIgMoe0syQY7p2thMkQkEttU9q4OjCx1QzeGTJSsiN96FwKrtncZZYbcQA4dVlP5lXoCnel6jyw9qyL36RxiB53HleMOQJ1-RC0qxr9xHmh-ytKJBgKLlDphodw-LvIAlhtlziWOF0"/>
+</div>
+</div>
+</div>
+</header>
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-[#0e0e0e] border-r border-[#00FFA3]/5 flex flex-col pt-20 pb-6 hidden lg:flex">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3 p-3 rounded-xl bg-[#1a1a1a]/30">
+<div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="terminal">terminal</span>
+</div>
+<div>
+<p class="font-headline font-bold text-primary text-xs tracking-tight">OPERATOR_01</p>
+<p class="font-headline text-[10px] text-on-surface-variant tracking-widest uppercase">PREMIUM_TIER</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-6 py-3 text-slate-500 hover:text-[#64fcc9] hover:bg-[#00FFA3]/5 transition-all font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-slate-500 hover:text-[#64fcc9] hover:bg-[#00FFA3]/5 transition-all font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance">account_balance</span>
+<span>Portfolio</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-slate-500 hover:text-[#64fcc9] hover:bg-[#00FFA3]/5 transition-all font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined" data-icon="swap_vert">swap_vert</span>
+<span>Trade</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-slate-500 hover:text-[#64fcc9] hover:bg-[#00FFA3]/5 transition-all font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined" data-icon="show_chart">show_chart</span>
+<span>Markets</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-slate-500 hover:text-[#64fcc9] hover:bg-[#00FFA3]/5 transition-all font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined" data-icon="currency_bitcoin">currency_bitcoin</span>
+<span>Crypto</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 bg-[#00FFA3]/10 text-[#00FFA3] border-r-4 border-[#00FFA3] shadow-[inset_0_0_15px_rgba(0,255,163,0.1)] font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined" data-icon="school">school</span>
+<span>Academy</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-slate-500 hover:text-[#64fcc9] hover:bg-[#00FFA3]/5 transition-all font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+<span>Trader Insights</span>
+</a>
+</nav>
+<div class="px-6 mt-auto flex flex-col gap-2">
+<button class="w-full bg-gradient-to-br from-primary to-secondary text-on-primary font-headline font-black text-[11px] py-3 rounded-full uppercase tracking-widest active:scale-95 transition-transform">
+                DEPOSIT_FUNDS
+            </button>
+<div class="mt-4 flex flex-col gap-1 border-t border-outline-variant/20 pt-4">
+<a class="flex items-center gap-3 py-2 text-slate-500 hover:text-primary transition-colors font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+<a class="flex items-center gap-3 py-2 text-slate-500 hover:text-primary transition-colors font-headline uppercase tracking-widest text-[10px]" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="contact_support">contact_support</span>
+<span>Support</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="lg:pl-64 pt-16 min-h-screen">
+<div class="max-w-7xl mx-auto px-6 py-12">
+<!-- Hero Header -->
+<section class="mb-16 relative overflow-hidden rounded-3xl bg-surface-container-low p-10 lg:p-16 border border-[#00FFA3]/5">
+<div class="absolute top-0 right-0 w-2/3 h-full bg-gradient-to-l from-primary/5 to-transparent"></div>
+<div class="relative z-10 max-w-2xl">
+<span class="font-headline font-bold text-primary tracking-[0.3em] uppercase text-[11px] mb-4 block">Archive Status: Online</span>
+<h1 class="text-5xl lg:text-7xl font-headline font-black text-on-surface tracking-tighter mb-6 leading-tight">MASTER THE<br/><span class="text-transparent bg-clip-text bg-gradient-to-r from-primary via-secondary to-tertiary">NEBULA_ENGINE</span></h1>
+<p class="text-on-surface-variant text-lg leading-relaxed mb-8 max-w-lg">
+                        Accelerate your technical analysis with our proprietary educational modules. From basic equity structures to complex option Greeks.
+                    </p>
+<div class="flex items-center gap-4">
+<button class="px-8 py-3 rounded-full bg-primary text-on-primary font-headline font-bold tracking-tight hover:shadow-[0_0_20px_rgba(0,255,163,0.3)] transition-all">
+                            Start Fast-Track
+                        </button>
+<div class="flex -space-x-3">
+<img alt="Student" class="w-10 h-10 rounded-full border-2 border-background" data-alt="Student profile small avatar 1" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKUPXc_kNPbx6IOEo2BFDUoCNsCmpW-7CLFiXRZNSQcwUXVuonvQWhiwHXuwLmhYEIP6N49pwnCvdIVCUuHEOE-xxEjPq4CajjbTIDOhksTPdWO5PlWOYF7T2rG5mnTHK4UL0g2udheqZWl6ijZmYwZsuytVK5gWbTR66qAHCXccrR7r-gDMQC_RXYxwkfmvgg38VarK7lzU05T6Vm1KBKFi79wusHHpM06Y9RSVFFqmf5bNZNxd8M4jgJdeco1KFJu8q_WuHibssl"/>
+<img alt="Student" class="w-10 h-10 rounded-full border-2 border-background" data-alt="Student profile small avatar 2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCqK1tZdxatDTQ26ltdLP9kzkS-9OjSgdXisZSNGSYZ1M7oHotRRDYVd4PocwAXq4E3snmLEMq0qXJdB_7Xbc5u4tL8dw_-GJ9Ht1NiwmBJ45lBRMz2GSOUktbB4KpZ5OCui61Ml4UqwS900pjQGgiPH6mWBxNhOL9DPJyp7v5p59rnJ1TAIWA3g-mJ4QMUDQdyu1XEVCzBfjkgMOxXyA2mZN9mihi7kpzNOWPcRGMpADe7vMmFbJwrWQ5h_dARI89Zd3qF6fDg08xe"/>
+<img alt="Student" class="w-10 h-10 rounded-full border-2 border-background" data-alt="Student profile small avatar 3" src="https://lh3.googleusercontent.com/aida-public/AB6AXuChcAbAgKEhWTjJkltfxIY2qy9a966oBoViSIFtKPBDaKSVaPToTnWotSc1YMxboLi4ttuA8OskbzCArXjCorX9k1veA5JCMZistqBUQGh0iyjztQAPtKUL7sDHMp3o_orKFTSr5Ih2XQuxWT9Ts94RKDeN1U1fNP12aOIqiErydrvnv96LEVOsm0PcWzYUSS8-Cu92Y3MB9MWCsnX6YO1Pxad6ZHo3I4SGoI_8swQMivTE7IoK_BZwa2laqgG09tOP3pT0EHp53y0u"/>
+<div class="w-10 h-10 rounded-full border-2 border-background bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-primary">
+                                +12K
+                            </div>
+</div>
+<span class="text-xs text-on-surface-variant font-headline uppercase tracking-widest ml-2">Traders Learning Now</span>
+</div>
+</div>
+</section>
+<!-- Curated Archive Grid -->
+<div class="flex items-center justify-between mb-8">
+<h2 class="text-2xl font-headline font-bold tracking-tight flex items-center gap-3">
+<span class="w-1.5 h-6 bg-primary rounded-full"></span>
+                    CORE_CURRICULUM
+                </h2>
+<div class="flex items-center gap-2">
+<button class="px-4 py-2 rounded-lg bg-surface-container-highest text-xs font-headline font-bold text-primary border border-primary/20">All Modules</button>
+<button class="px-4 py-2 rounded-lg hover:bg-surface-container text-xs font-headline font-bold text-on-surface-variant transition-colors">Beginner</button>
+<button class="px-4 py-2 rounded-lg hover:bg-surface-container text-xs font-headline font-bold text-on-surface-variant transition-colors">Advanced</button>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Course Card 1 -->
+<article class="group relative bg-surface-container p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/30 transition-all duration-300 kinetic-glow flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+<span class="material-symbols-outlined text-primary text-3xl" data-icon="query_stats">query_stats</span>
+</div>
+<span class="px-3 py-1 rounded-full bg-secondary-container/30 text-secondary-fixed text-[10px] font-headline font-bold tracking-widest uppercase border border-secondary/10">Beginner</span>
+</div>
+<h3 class="text-xl font-headline font-bold text-on-surface mb-2 group-hover:text-primary transition-colors">What is a Stock?</h3>
+<p class="text-on-surface-variant text-sm mb-6 flex-1">Understand the fundamental architecture of equity ownership and public market dynamics.</p>
+<div class="flex items-center justify-between pt-4 border-t border-outline-variant/10">
+<div class="flex items-center gap-3 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">15m</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="play_circle">play_circle</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">4 Parts</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Course Card 2 -->
+<article class="group relative bg-surface-container p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/30 transition-all duration-300 kinetic-glow flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-xl bg-tertiary/10 flex items-center justify-center border border-tertiary/20">
+<span class="material-symbols-outlined text-tertiary text-3xl" data-icon="candlestick_chart">candlestick_chart</span>
+</div>
+<span class="px-3 py-1 rounded-full bg-surface-container-highest text-on-surface-variant text-[10px] font-headline font-bold tracking-widest uppercase border border-outline-variant/20">Intermediate</span>
+</div>
+<h3 class="text-xl font-headline font-bold text-on-surface mb-2 group-hover:text-primary transition-colors">Technical Patterns 101</h3>
+<p class="text-on-surface-variant text-sm mb-6 flex-1">Decoding the visual language of price action. Master RSI, MACD, and Bollinger Bands.</p>
+<div class="flex items-center justify-between pt-4 border-t border-outline-variant/10">
+<div class="flex items-center gap-3 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">45m</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="play_circle">play_circle</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">12 Parts</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Course Card 3 -->
+<article class="group relative bg-surface-container p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/30 transition-all duration-300 kinetic-glow flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-xl bg-error/10 flex items-center justify-center border border-error/20">
+<span class="material-symbols-outlined text-error text-3xl" data-icon="psychology">psychology</span>
+</div>
+<span class="px-3 py-1 rounded-full bg-error-container/20 text-error text-[10px] font-headline font-bold tracking-widest uppercase border border-error/10">Advanced</span>
+</div>
+<h3 class="text-xl font-headline font-bold text-on-surface mb-2 group-hover:text-primary transition-colors">Options Trading 101</h3>
+<p class="text-on-surface-variant text-sm mb-6 flex-1">Leverage and hedging strategies. A deep dive into Delta, Gamma, and Theta decay.</p>
+<div class="flex items-center justify-between pt-4 border-t border-outline-variant/10">
+<div class="flex items-center gap-3 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">1.5h</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="play_circle">play_circle</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">18 Parts</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Course Card 4 -->
+<article class="group relative bg-surface-container p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/30 transition-all duration-300 kinetic-glow flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+<span class="material-symbols-outlined text-primary text-3xl" data-icon="lan">lan</span>
+</div>
+<span class="px-3 py-1 rounded-full bg-secondary-container/30 text-secondary-fixed text-[10px] font-headline font-bold tracking-widest uppercase border border-secondary/10">Beginner</span>
+</div>
+<h3 class="text-xl font-headline font-bold text-on-surface mb-2 group-hover:text-primary transition-colors">Blockchain Infrastructure</h3>
+<p class="text-on-surface-variant text-sm mb-6 flex-1">How decentralized ledgers work. The transition from PoW to PoS and Layer 2 scaling.</p>
+<div class="flex items-center justify-between pt-4 border-t border-outline-variant/10">
+<div class="flex items-center gap-3 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">30m</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="play_circle">play_circle</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">6 Parts</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Course Card 5 -->
+<article class="group relative bg-surface-container p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/30 transition-all duration-300 kinetic-glow flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-xl bg-tertiary/10 flex items-center justify-center border border-tertiary/20">
+<span class="material-symbols-outlined text-tertiary text-3xl" data-icon="monitoring">monitoring</span>
+</div>
+<span class="px-3 py-1 rounded-full bg-surface-container-highest text-on-surface-variant text-[10px] font-headline font-bold tracking-widest uppercase border border-outline-variant/20">Intermediate</span>
+</div>
+<h3 class="text-xl font-headline font-bold text-on-surface mb-2 group-hover:text-primary transition-colors">Portfolio Management</h3>
+<p class="text-on-surface-variant text-sm mb-6 flex-1">Asset allocation and risk-adjusted returns. Learning to balance aggressive and passive plays.</p>
+<div class="flex items-center justify-between pt-4 border-t border-outline-variant/10">
+<div class="flex items-center gap-3 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">1h</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="play_circle">play_circle</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">10 Parts</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Course Card 6 -->
+<article class="group relative bg-surface-container p-6 rounded-2xl border border-outline-variant/10 hover:border-primary/30 transition-all duration-300 kinetic-glow flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div class="w-12 h-12 rounded-xl bg-error/10 flex items-center justify-center border border-error/20">
+<span class="material-symbols-outlined text-error text-3xl" data-icon="precision_manufacturing">precision_manufacturing</span>
+</div>
+<span class="px-3 py-1 rounded-full bg-error-container/20 text-error text-[10px] font-headline font-bold tracking-widest uppercase border border-error/10">Advanced</span>
+</div>
+<h3 class="text-xl font-headline font-bold text-on-surface mb-2 group-hover:text-primary transition-colors">Algorithmic Strategies</h3>
+<p class="text-on-surface-variant text-sm mb-6 flex-1">Introduction to automated trading systems. Building logic gates for high-frequency execution.</p>
+<div class="flex items-center justify-between pt-4 border-t border-outline-variant/10">
+<div class="flex items-center gap-3 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">2.5h</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="play_circle">play_circle</span>
+<span class="text-[11px] font-headline uppercase tracking-widest">24 Parts</span>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+</div>
+<!-- Bento Featured Section -->
+<section class="mt-20">
+<h2 class="text-2xl font-headline font-bold tracking-tight flex items-center gap-3 mb-8">
+<span class="w-1.5 h-6 bg-tertiary rounded-full"></span>
+                    TRADER_INSIGHTS_PRO
+                </h2>
+<div class="grid grid-cols-1 md:grid-cols-4 grid-rows-2 gap-4 h-[600px]">
+<div class="md:col-span-2 md:row-span-2 bg-surface-container-highest rounded-3xl p-8 relative overflow-hidden group">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent"></div>
+<div class="relative z-10 flex flex-col h-full">
+<div class="mb-auto">
+<span class="px-3 py-1 rounded-full bg-primary/20 text-primary text-[10px] font-headline font-bold tracking-widest uppercase mb-4 inline-block">Exclusive Report</span>
+<h3 class="text-3xl font-headline font-bold text-on-surface leading-tight mb-4">Macro-Level Shifts:<br/>The 2024 Market Forecast</h3>
+<p class="text-on-surface-variant">A deep-dive analysis by our head of research on interest rates, inflation trajectories, and sector rotation.</p>
+</div>
+<button class="flex items-center gap-2 text-primary font-headline font-bold tracking-tight hover:gap-4 transition-all">
+                                Download Analysis <span class="material-symbols-outlined">download</span>
+</button>
+</div>
+<div class="absolute -bottom-10 -right-10 opacity-20 group-hover:opacity-40 transition-opacity">
+<span class="material-symbols-outlined text-[200px]" data-icon="analytics">analytics</span>
+</div>
+</div>
+<div class="md:col-span-2 bg-surface-container rounded-3xl p-6 border border-outline-variant/10 flex items-center justify-between group cursor-pointer hover:bg-surface-container-high transition-colors">
+<div>
+<h4 class="font-headline font-bold text-lg mb-1">Live Technical Webinar</h4>
+<p class="text-on-surface-variant text-sm">Join Operator_01 for a live session.</p>
+<span class="text-error font-headline text-[10px] font-bold tracking-widest uppercase mt-4 inline-block">Live in 2h 15m</span>
+</div>
+<div class="w-14 h-14 rounded-full bg-error/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-error" data-icon="podcasts">podcasts</span>
+</div>
+</div>
+<div class="bg-surface-container rounded-3xl p-6 border border-outline-variant/10 flex flex-col justify-between">
+<span class="material-symbols-outlined text-tertiary" data-icon="menu_book">menu_book</span>
+<div>
+<p class="text-xs font-headline font-bold text-on-surface-variant tracking-widest uppercase mb-1">PDF Guide</p>
+<p class="font-bold">Candlestick Bible</p>
+</div>
+</div>
+<div class="bg-surface-container rounded-3xl p-6 border border-outline-variant/10 flex flex-col justify-between">
+<span class="material-symbols-outlined text-primary" data-icon="quiz">quiz</span>
+<div>
+<p class="text-xs font-headline font-bold text-on-surface-variant tracking-widest uppercase mb-1">Interactive</p>
+<p class="font-bold">Risk Score Quiz</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Footer -->
+<footer class="mt-20 border-t border-outline-variant/10 bg-surface-container-low py-12 px-6">
+<div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+<div class="flex flex-col items-center md:items-start">
+<span class="text-xl font-black tracking-tighter text-[#00FFA3] font-headline mb-2">NEBULA_TERMINAL</span>
+<p class="text-on-surface-variant text-xs font-headline tracking-widest uppercase">Proprietary Training System v4.2.0</p>
+</div>
+<div class="flex gap-8 text-[11px] font-headline font-bold text-on-surface-variant tracking-widest uppercase">
+<a class="hover:text-primary transition-colors" href="#">Privacy</a>
+<a class="hover:text-primary transition-colors" href="#">Terms</a>
+<a class="hover:text-primary transition-colors" href="#">Compliance</a>
+</div>
+<div class="flex gap-4">
+<div class="w-10 h-10 rounded-full border border-outline-variant/20 flex items-center justify-center text-on-surface-variant hover:text-primary hover:border-primary transition-all cursor-pointer">
+<span class="material-symbols-outlined text-lg">terminal</span>
+</div>
+<div class="w-10 h-10 rounded-full border border-outline-variant/20 flex items-center justify-center text-on-surface-variant hover:text-primary hover:border-primary transition-all cursor-pointer">
+<span class="material-symbols-outlined text-lg">public</span>
+</div>
+</div>
+</div>
+</footer>
+</main>
+<!-- Mobile Navigation Shell -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full h-16 bg-[#0e0e0e]/90 backdrop-blur-xl border-t border-[#00FFA3]/10 flex items-center justify-around px-4 z-50">
+<a class="flex flex-col items-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-[9px] font-headline uppercase tracking-widest">Dash</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="show_chart">show_chart</span>
+<span class="text-[9px] font-headline uppercase tracking-widest">Markets</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-[#00FFA3]" href="#">
+<span class="material-symbols-outlined" data-icon="school" style="font-variation-settings: 'FILL' 1;">school</span>
+<span class="text-[9px] font-headline uppercase tracking-widest">Academy</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="text-[9px] font-headline uppercase tracking-widest">Funds</span>
+</a>
+</nav>
+</body></html>

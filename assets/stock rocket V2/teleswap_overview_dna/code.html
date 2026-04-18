@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>TeleSwap Brand OS</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-bright": "#2c2c2c",
+              "error-container": "#9f0519",
+              "secondary-container": "#006c51",
+              "on-secondary": "#005d46",
+              "surface-container-low": "#131313",
+              "on-error-container": "#ffa8a3",
+              "on-primary": "#00663e",
+              "surface-container-highest": "#262626",
+              "primary-fixed": "#00ffa3",
+              "primary": "#b1ffce",
+              "tertiary-fixed": "#00d2ff",
+              "on-error": "#490006",
+              "secondary-dim": "#53edbc",
+              "primary-dim": "#00ef99",
+              "tertiary": "#72dcff",
+              "on-primary-fixed-variant": "#00673f",
+              "on-tertiary-container": "#004252",
+              "error": "#ff716c",
+              "on-secondary-fixed": "#004936",
+              "inverse-primary": "#006d43",
+              "surface-variant": "#262626",
+              "surface": "#0e0e0e",
+              "primary-container": "#00ffa3",
+              "inverse-on-surface": "#565554",
+              "secondary-fixed-dim": "#53edbc",
+              "secondary-fixed": "#64fcc9",
+              "surface-container-lowest": "#000000",
+              "on-surface": "#ffffff",
+              "on-primary-container": "#005c38",
+              "on-secondary-container": "#dfffef",
+              "on-tertiary-fixed-variant": "#004c5e",
+              "surface-container-high": "#201f1f",
+              "on-tertiary-fixed": "#002c38",
+              "surface-tint": "#b1ffce",
+              "tertiary-dim": "#00c3ed",
+              "on-background": "#ffffff",
+              "outline-variant": "#494847",
+              "outline": "#777575",
+              "error-dim": "#d7383b",
+              "on-secondary-fixed-variant": "#00684e",
+              "primary-fixed-dim": "#00ef99",
+              "surface-dim": "#0e0e0e",
+              "background": "#0e0e0e",
+              "on-primary-fixed": "#00472a",
+              "secondary": "#64fcc9",
+              "inverse-surface": "#fcf8f8",
+              "tertiary-container": "#00d2ff",
+              "surface-container": "#1a1919",
+              "on-tertiary": "#004c5e",
+              "on-surface-variant": "#adaaaa",
+              "tertiary-fixed-dim": "#00c3ed"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #0e0e0e;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(26, 25, 25, 0.4);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(177, 255, 206, 0.1);
+        }
+        .kinetic-glow {
+            box-shadow: 0 0 40px rgba(0, 255, 163, 0.05);
+        }
+        .neon-text-glow {
+            text-shadow: 0 0 12px rgba(0, 255, 163, 0.4);
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0e0e0e; }
+        ::-webkit-scrollbar-thumb { background: #262626; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #00ffa3; }
+    </style>
+</head>
+<body class="bg-background text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+<!-- Top Navigation Bar -->
+<header class="fixed top-0 w-full z-50 bg-emerald-950/20 backdrop-blur-xl shadow-[0_0_20px_rgba(0,255,163,0.05)]">
+<div class="flex justify-between items-center px-8 py-4 w-full">
+<div class="flex items-center gap-4">
+<span class="text-2xl font-bold tracking-tighter text-emerald-400 font-headline">TeleSwap Brand OS</span>
+</div>
+<div class="hidden md:flex items-center gap-8">
+<nav class="flex gap-6">
+<a class="font-headline font-bold tracking-tight text-emerald-400 border-b-2 border-emerald-400 transition-colors" href="#">Overview</a>
+<a class="font-headline font-bold tracking-tight text-zinc-400 hover:text-emerald-300 transition-colors" href="#">Documentation</a>
+<a class="font-headline font-bold tracking-tight text-zinc-400 hover:text-emerald-300 transition-colors" href="#">Assets</a>
+</nav>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-zinc-400 hover:text-emerald-300 cursor-pointer transition-all scale-95 active:opacity-80" data-icon="settings">settings</span>
+<span class="material-symbols-outlined text-zinc-400 hover:text-emerald-300 cursor-pointer transition-all scale-95 active:opacity-80" data-icon="notifications">notifications</span>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant overflow-hidden">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="User profile avatar icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_y0PVcVp3K7Kz4tO8Ago9-XwoG9q7NKPycy4Bby24YDdXBSCDDX-8HjoLcj3jkgF5SeoZIxi0BkiIkSrNWMzXG-i495hHNBUqZYWsSKMzAQXsDYmnc1iuFvkI5WxcGkBoAG65q-yP6aPZgpfM-H-jEr_nzCJmkh8McynKgWgamzXDA1uTiP9CKcmkMwQBszjFa_1WMLiuf75m7KZwT1DypmZjybKhIGNkYUdfhkjt8J0x4I8zAANHu_4vm06C5yUYXezdzJtvOJ8a"/>
+</div>
+</div>
+</div>
+</div>
+</header>
+<!-- Side Navigation Bar -->
+<aside class="h-screen w-72 fixed left-0 top-0 pt-20 bg-zinc-950 hidden md:flex flex-col gap-2 px-6 py-8 z-40">
+<div class="mb-8 px-2">
+<h2 class="text-emerald-400 font-black font-headline text-xl">TeleSwap</h2>
+<p class="font-headline uppercase text-xs tracking-widest text-zinc-500">Brand OS v1.0</p>
+</div>
+<nav class="flex flex-col gap-1 overflow-y-auto pr-2">
+<a class="flex items-center gap-3 px-4 py-3 text-emerald-400 bg-emerald-400/10 rounded-lg border-r-2 border-emerald-400 font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                Overview
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="fingerprint">fingerprint</span>
+                Brand DNA
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="palette">palette</span>
+                Colors
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="text_fields">text_fields</span>
+                Typography
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="star">star</span>
+                Logos
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="widgets">widgets</span>
+                UI Elements
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="grid_view">grid_view</span>
+                Layout / Grid
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="image">image</span>
+                Imagery / Iconography
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="chat_bubble">chat_bubble</span>
+                Voice / Messaging
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="ads_click">ads_click</span>
+                Interaction Patterns
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+                Brand Recipes
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg font-headline uppercase text-xs tracking-widest hover:translate-x-1 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+                Notes / Confidence
+            </a>
+</nav>
+</aside>
+<!-- Main Content Canvas -->
+<main class="md:ml-72 pt-24 px-8 pb-12 min-h-screen bg-surface">
+<!-- Hero Section: Bento Grid Hybrid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Main Title Card -->
+<div class="lg:col-span-8 flex flex-col justify-between p-10 rounded-xl bg-surface-container-low kinetic-glow relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[100px] rounded-full -mr-20 -mt-20"></div>
+<div class="relative z-10">
+<span class="font-headline uppercase text-xs tracking-[0.3em] text-primary-fixed mb-4 block">TeleSwap Landing Page Extraction</span>
+<h1 class="text-6xl md:text-7xl font-headline font-bold tracking-tighter leading-[0.9] mb-6">TeleSwap Brand <span class="text-primary-fixed neon-text-glow">Operating System</span></h1>
+<p class="text-xl text-on-surface-variant max-w-2xl font-body leading-relaxed">
+                        TeleSwap is a bridge protocol bringing Bitcoin into DeFi. The brand aesthetic is 'Kinetic Obsidian'—a fusion of deep hardware-inspired surfaces and high-intensity neon signals.
+                    </p>
+</div>
+<div class="mt-12 flex flex-wrap gap-4">
+<div class="px-4 py-2 bg-surface-container-highest rounded-full border border-outline-variant/30 text-xs font-headline uppercase tracking-widest flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary-fixed shadow-[0_0_8px_#00ffa3]"></span>
+                        Technical
+                    </div>
+<div class="px-4 py-2 bg-surface-container-highest rounded-full border border-outline-variant/30 text-xs font-headline uppercase tracking-widest flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary-fixed shadow-[0_0_8px_#00ffa3]"></span>
+                        Secure
+                    </div>
+<div class="px-4 py-2 bg-surface-container-highest rounded-full border border-outline-variant/30 text-xs font-headline uppercase tracking-widest flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary-fixed shadow-[0_0_8px_#00ffa3]"></span>
+                        High-Velocity
+                    </div>
+<div class="px-4 py-2 bg-surface-container-highest rounded-full border border-outline-variant/30 text-xs font-headline uppercase tracking-widest flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary-fixed shadow-[0_0_8px_#00ffa3]"></span>
+                        Future-Proof
+                    </div>
+</div>
+</div>
+<!-- Featured Visual: Bitcoin Bridge Symbol -->
+<div class="lg:col-span-4 rounded-xl glass-panel relative overflow-hidden flex items-center justify-center p-8 group">
+<div class="absolute inset-0 bg-gradient-to-br from-emerald-900/20 to-transparent opacity-50"></div>
+<img alt="Bitcoin Bridge Symbol" class="relative z-10 w-full aspect-square object-cover rounded-lg mix-blend-screen opacity-90 group-hover:scale-105 transition-transform duration-700" data-alt="Abstract glowing Bitcoin symbol with technological bridge elements" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZrBwRDbrm-GKx3mTqsbIN58450V_c6vFmYlyOxxiViHjzq46MHjWsulnTPlYemDLyn3Dr1TH7wPgbiqy6PVassXq4C14SX6uycYPMGIeVwU_e5417e4SDzCgN-QpAFYYMg6sKx4XvDbCCLVQIw0-A2vwH-fee33EjvrAebdtDODvnHGuOZH49hzx3m7VtgyW1Ri9JlbF3kpHLL7pott3YHFjZjLcOdLihOHM9ORzlv7727cSKVu0htkxjvxnH0TONzE47CtB8LFNI"/>
+<div class="absolute bottom-6 left-6 right-6 p-4 bg-zinc-950/80 backdrop-blur-md rounded-lg border border-primary/20">
+<p class="text-[10px] font-headline uppercase tracking-widest text-primary-fixed mb-1">Featured Visual</p>
+<p class="text-sm font-body font-medium text-on-surface">Central Bitcoin Bridge Node</p>
+</div>
+</div>
+<!-- Confidence Matrix -->
+<div class="lg:col-span-5 p-8 rounded-xl bg-surface-container-low border border-outline-variant/10 flex flex-col gap-8">
+<div class="flex justify-between items-end">
+<div>
+<h3 class="text-2xl font-headline font-bold text-on-surface">Confidence Matrix</h3>
+<p class="text-sm text-on-surface-variant font-body">Extracted metadata validation scores</p>
+</div>
+<span class="text-5xl font-headline font-bold text-primary-fixed neon-text-glow">98%</span>
+</div>
+<div class="space-y-6">
+<div class="space-y-2">
+<div class="flex justify-between text-[10px] font-headline uppercase tracking-[0.2em] text-on-surface-variant">
+<span>Visual Identity</span>
+<span class="text-primary-fixed">100%</span>
+</div>
+<div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-fixed shadow-[0_0_12px_#00ffa3]" style="width: 100%"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-[10px] font-headline uppercase tracking-[0.2em] text-on-surface-variant">
+<span>Color Science</span>
+<span class="text-primary-fixed">96%</span>
+</div>
+<div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-fixed shadow-[0_0_12px_#00ffa3]" style="width: 96%"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-[10px] font-headline uppercase tracking-[0.2em] text-on-surface-variant">
+<span>Product Architecture</span>
+<span class="text-primary-fixed">94%</span>
+</div>
+<div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-fixed shadow-[0_0_12px_#00ffa3]" style="width: 94%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Design Principles Cards -->
+<div class="lg:col-span-7 grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="p-6 rounded-xl bg-surface-container-low border border-outline-variant/10 hover:bg-surface-container-highest transition-colors flex flex-col justify-between group">
+<div class="w-12 h-12 rounded-lg bg-emerald-400/10 flex items-center justify-center mb-6 text-emerald-400">
+<span class="material-symbols-outlined" data-icon="shield">shield</span>
+</div>
+<div>
+<span class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest block mb-2">Principle 01</span>
+<h4 class="text-lg font-headline font-bold text-on-surface mb-2">Trustless Custodianship</h4>
+<p class="text-xs text-on-surface-variant font-body leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity">Eliminating centralized risk through cryptographic verification protocols.</p>
+</div>
+</div>
+<div class="p-6 rounded-xl bg-surface-container-low border border-outline-variant/10 hover:bg-surface-container-highest transition-colors flex flex-col justify-between group">
+<div class="w-12 h-12 rounded-lg bg-emerald-400/10 flex items-center justify-center mb-6 text-emerald-400">
+<span class="material-symbols-outlined" data-icon="bolt">bolt</span>
+</div>
+<div>
+<span class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest block mb-2">Principle 02</span>
+<h4 class="text-lg font-headline font-bold text-on-surface mb-2">Light-Client Verification</h4>
+<p class="text-xs text-on-surface-variant font-body leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity">Ultra-fast validation logic optimized for high-velocity decentralized finance.</p>
+</div>
+</div>
+<div class="p-6 rounded-xl bg-surface-container-low border border-outline-variant/10 hover:bg-surface-container-highest transition-colors flex flex-col justify-between group">
+<div class="w-12 h-12 rounded-lg bg-emerald-400/10 flex items-center justify-center mb-6 text-emerald-400">
+<span class="material-symbols-outlined" data-icon="hub">hub</span>
+</div>
+<div>
+<span class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest block mb-2">Principle 03</span>
+<h4 class="text-lg font-headline font-bold text-on-surface mb-2">Cross-Chain Harmony</h4>
+<p class="text-xs text-on-surface-variant font-body leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity">Seamless interoperability across Bitcoin and EVM ecosystems.</p>
+</div>
+</div>
+</div>
+<!-- Kinetic Obsidian Visualizer -->
+<div class="lg:col-span-12 p-1 rounded-xl bg-gradient-to-r from-emerald-500/20 via-primary-fixed/20 to-tertiary-fixed/20">
+<div class="bg-surface-container-low rounded-lg p-10 flex flex-col md:flex-row items-center justify-between gap-12 relative overflow-hidden">
+<div class="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+<div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#00ffa3_0%,transparent_50%)]"></div>
+</div>
+<div class="relative z-10 md:w-1/2">
+<h2 class="text-4xl font-headline font-bold mb-6">Visual Identity Strategy</h2>
+<p class="text-on-surface-variant font-body leading-relaxed mb-8">
+                            The "Kinetic Obsidian" aesthetic is moving away from flat SaaS predictably. We use large-scale typography, deep tonal shifts, and hardware-inspired glow to create a digital environment that feels tactile and proprietary.
+                        </p>
+<div class="flex gap-4">
+<button class="px-8 py-3 rounded-full bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-bold text-sm hover:scale-105 active:opacity-80 transition-all">Download Brand Pack</button>
+<button class="px-8 py-3 rounded-full bg-surface-container-highest border border-outline-variant/50 text-on-surface font-headline font-bold text-sm hover:bg-surface-bright transition-all">Style Guide v1</button>
+</div>
+</div>
+<div class="md:w-1/2 grid grid-cols-2 gap-4 relative">
+<div class="h-32 rounded-lg bg-surface-container-lowest border border-primary/20 flex flex-col justify-center items-center gap-2">
+<div class="w-12 h-2 bg-primary-fixed shadow-[0_0_10px_#00ffa3] rounded-full"></div>
+<span class="text-[10px] font-headline uppercase tracking-widest text-primary-fixed">Active Signal</span>
+</div>
+<div class="h-32 rounded-lg bg-surface-container-highest border border-outline-variant/20 flex flex-col justify-center items-center gap-2">
+<div class="w-12 h-12 rounded-full border-2 border-dashed border-outline-variant"></div>
+<span class="text-[10px] font-headline uppercase tracking-widest text-on-surface-variant">Hardware Shell</span>
+</div>
+<div class="h-32 rounded-lg bg-emerald-950/40 backdrop-blur-xl border border-primary/10 flex flex-col justify-center items-center gap-2">
+<div class="w-10 h-10 bg-primary/20 rounded-lg animate-pulse"></div>
+<span class="text-[10px] font-headline uppercase tracking-widest text-primary">Tonal Glass</span>
+</div>
+<div class="h-32 rounded-lg bg-zinc-950 border border-outline-variant/10 flex flex-col justify-center items-center gap-2">
+<div class="w-16 h-1 bg-zinc-800 rounded-full"></div>
+<span class="text-[10px] font-headline uppercase tracking-widest text-zinc-600">Deep Void</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Navigation Shell Mobile (Bottom Bar) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-emerald-950/20 backdrop-blur-xl py-4 px-8 flex justify-around items-center z-50">
+<span class="material-symbols-outlined text-emerald-400" data-icon="dashboard">dashboard</span>
+<span class="material-symbols-outlined text-zinc-400" data-icon="palette">palette</span>
+<span class="material-symbols-outlined text-zinc-400" data-icon="star">star</span>
+<span class="material-symbols-outlined text-zinc-400" data-icon="settings">settings</span>
+</nav>
+</body></html>

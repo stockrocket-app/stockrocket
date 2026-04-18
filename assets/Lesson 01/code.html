@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lesson 1: What is a Stock? | StockRocket Academy</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6-72,400;0,6-72,700;1,6-72,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary-dim": "#00ef99",
+                        "on-background": "#ffffff",
+                        "on-surface-variant": "#9ca3af",
+                        "secondary": "#64fcc9",
+                        "surface": "#0a0a0a",
+                        "surface-dim": "#050505",
+                        "surface-container": "#111111",
+                        "surface-container-low": "#161616",
+                        "surface-container-high": "#1c1c1c",
+                        "background": "#0a0a0a",
+                        "primary": "#00FFA3",
+                        "on-primary": "#003924",
+                        "outline": "#262626",
+                        "outline-variant": "#333333"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Space Grotesk"],
+                        "serif": ["Newsreader"]
+                    },
+                    borderRadius: {"DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #0a0a0a;
+            scroll-behavior: smooth;
+        }
+        .content-card {
+            background-color: #111111;
+            border: 1px solid #1c1c1c;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .content-card:hover {
+            border-color: #333333;
+            transform: translateY(-4px);
+        }
+        .hero-gradient {
+            background: radial-gradient(circle at 50% 50%, rgba(0, 255, 163, 0.05) 0%, rgba(10, 10, 10, 1) 100%);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary/30 selection:text-white">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full flex justify-between items-center px-8 h-20 bg-black/90 backdrop-blur-md z-50 border-b border-outline">
+<div class="flex items-center gap-10">
+<span class="text-2xl font-bold tracking-tighter text-primary font-headline">STOCK ROCKET</span>
+<div class="hidden md:flex gap-8 items-center">
+<a class="text-gray-400 hover:text-primary transition-colors duration-200 font-label text-sm font-semibold tracking-wide" href="#">Dashboard</a>
+<a class="text-primary font-semibold transition-colors duration-200 font-label text-sm tracking-wide" href="#">Lessons</a>
+<a class="text-gray-400 hover:text-primary transition-colors duration-200 font-label text-sm font-semibold tracking-wide" href="#">Strategy</a>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden sm:block relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">search</span>
+<input class="bg-surface-container border-none rounded-full pl-12 pr-6 py-2.5 text-sm focus:ring-1 focus:ring-primary w-64 transition-all" placeholder="Search lessons..." type="text"/>
+</div>
+<span class="material-symbols-outlined text-gray-400 hover:text-primary cursor-pointer transition-colors text-2xl">notifications</span>
+<span class="material-symbols-outlined text-gray-400 hover:text-primary cursor-pointer transition-colors text-2xl" style="font-variation-settings: 'FILL' 1;">account_circle</span>
+</div>
+</nav>
+<!-- SideNavBar (Fixed Collapsed State) -->
+<aside class="fixed left-0 top-20 h-[calc(100vh-80px)] flex flex-col pt-10 bg-black border-r border-outline w-20 z-40 overflow-hidden">
+<div class="flex flex-col gap-4 items-center w-full">
+<div class="p-3 text-primary">
+<span class="material-symbols-outlined text-2xl">school</span>
+</div>
+<a class="p-3 text-gray-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl">dashboard</span>
+</a>
+<a class="p-3 bg-primary/10 text-primary border-r-2 border-primary" href="#">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">auto_stories</span>
+</a>
+<a class="p-3 text-gray-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-2xl">insights</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-20 pt-20 min-h-screen">
+<!-- Expanded Hero Section -->
+<header class="px-8 py-32 md:py-48 hero-gradient">
+<div class="max-w-5xl mx-auto">
+<button class="flex items-center gap-3 text-primary hover:text-primary-dim transition-colors mb-16 group">
+<span class="material-symbols-outlined text-base transition-transform group-hover:-translate-x-2">arrow_back</span>
+<span class="font-label text-xs uppercase tracking-[0.3em] font-bold">Back to Lessons</span>
+</button>
+<div class="max-w-3xl">
+<p class="text-primary font-label text-xs tracking-[0.4em] uppercase mb-8 font-bold">Module 01 • Introduction</p>
+<h1 class="text-6xl md:text-9xl font-serif font-bold text-on-surface leading-[1.1] mb-12">
+                        Lesson 1: <br/><span class="text-on-surface">What is a Stock?</span>
+</h1>
+<p class="text-xl md:text-3xl text-on-surface-variant font-light leading-relaxed max-w-2xl">
+                        A foundational guide to understanding ownership, shares, and how the global market functions for beginners.
+                    </p>
+</div>
+</div>
+</header>
+<!-- Lesson Content: Modular Stack with Generous Spacing -->
+<section class="px-8 pb-32">
+<div class="max-w-5xl mx-auto space-y-32">
+<!-- Module 1: The Concept -->
+<div class="content-card rounded-2xl p-10 md:p-20">
+<div class="flex flex-col md:flex-row gap-16 items-center">
+<div class="md:w-1/2">
+<div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-10">
+<span class="material-symbols-outlined text-primary text-3xl">pie_chart</span>
+</div>
+<h2 class="text-4xl font-serif font-bold mb-8">Ownership via Shares</h2>
+<p class="text-xl text-on-surface-variant leading-relaxed mb-6">
+                                Think of a company as a giant pizza. A <strong class="text-white font-bold underline decoration-primary/40 decoration-2 underline-offset-4">share</strong> represents a single slice of that pizza.
+                            </p>
+<p class="text-xl text-on-surface-variant leading-relaxed">
+                                When you own a share, you own a literal piece of the company’s physical assets and a claim to its future earnings.
+                            </p>
+</div>
+<div class="md:w-1/2 bg-surface-container-low p-12 md:p-16 rounded-2xl border border-outline/50 flex flex-col justify-center">
+<p class="text-xs font-label text-primary uppercase tracking-[0.3em] mb-8 font-bold">The Golden Rule</p>
+<p class="text-2xl md:text-4xl font-serif italic text-on-surface leading-tight">"Your ownership is simply the ratio of slices you hold compared to the whole pizza."</p>
+</div>
+</div>
+</div>
+<!-- Module 2: Why it matters -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<div class="content-card rounded-2xl p-12 md:p-16">
+<div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-10">
+<span class="material-symbols-outlined text-primary text-3xl">rocket_launch</span>
+</div>
+<h3 class="text-3xl font-serif font-bold mb-8">Why do companies do this?</h3>
+<p class="text-lg text-on-surface-variant leading-relaxed mb-10">
+                            Growth requires massive capital. Instead of borrowing money from a bank (debt), companies sell small pieces of themselves to raise money for new projects and innovation.
+                        </p>
+<ul class="space-y-6">
+<li class="flex items-center gap-5 text-base text-on-surface">
+<span class="material-symbols-outlined text-primary text-2xl" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-medium">Building new factories</span>
+</li>
+<li class="flex items-center gap-5 text-base text-on-surface">
+<span class="material-symbols-outlined text-primary text-2xl" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-medium">Hiring world-class talent</span>
+</li>
+<li class="flex items-center gap-5 text-base text-on-surface">
+<span class="material-symbols-outlined text-primary text-2xl" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-medium">Global infrastructure expansion</span>
+</li>
+</ul>
+</div>
+<div class="content-card rounded-2xl p-12 md:p-16">
+<div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-10">
+<span class="material-symbols-outlined text-primary text-3xl">payments</span>
+</div>
+<h3 class="text-3xl font-serif font-bold mb-8">How you earn money</h3>
+<div class="space-y-10">
+<div>
+<p class="text-sm font-bold text-primary uppercase tracking-widest mb-3">1. Dividends</p>
+<p class="text-lg text-on-surface-variant leading-relaxed">Think of this as a 'thank you' check. Some companies share a portion of their profits with you every few months.</p>
+</div>
+<div class="pt-6 border-t border-outline">
+<p class="text-sm font-bold text-primary uppercase tracking-widest mb-3">2. Price Growth</p>
+<p class="text-lg text-on-surface-variant leading-relaxed">As the company becomes more successful, the market value of your 'slice' increases. You can sell it later for more than you paid.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- New: Quick Summary Section -->
+<div class="py-24 border-y border-outline/30">
+<div class="max-w-3xl mx-auto text-center">
+<p class="text-primary font-label text-xs tracking-[0.4em] uppercase mb-10 font-bold">Quick Summary</p>
+<h4 class="text-4xl md:text-5xl font-serif font-medium leading-tight text-white mb-6 italic">
+                            "A stock is a tiny piece of a company. When you own a stock, you become a <span class="text-primary">part-owner</span> of that business!"
+                        </h4>
+<div class="w-20 h-1 bg-primary/30 mx-auto mt-12 rounded-full"></div>
+</div>
+</div>
+<!-- Action / Quiz Trigger -->
+<div class="py-24 text-center">
+<h3 class="text-3xl md:text-4xl font-serif italic mb-12">Ready to test your knowledge?</h3>
+<div class="flex flex-col sm:flex-row gap-6 justify-center">
+<button class="px-14 py-6 bg-primary text-on-primary font-label text-sm font-bold uppercase tracking-[0.2em] rounded-full hover:bg-primary-dim transition-all active:scale-95 shadow-2xl shadow-primary/20">
+                            Continue to Lesson 2
+                        </button>
+<button class="px-14 py-6 bg-surface-container-high text-on-surface font-label text-sm font-bold uppercase tracking-[0.2em] rounded-full border border-outline hover:bg-surface-container-low transition-all active:scale-95">
+                            Quick Quiz
+                        </button>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<footer class="px-8 py-24 border-t border-outline bg-black text-on-surface-variant">
+<div class="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12">
+<div class="text-center md:text-left">
+<span class="text-2xl font-bold tracking-tighter text-primary font-headline">STOCK ROCKET</span>
+<p class="text-xs uppercase tracking-[0.3em] mt-3 font-semibold">Trading Academy for Beginners</p>
+</div>
+<div class="flex gap-12 text-xs font-label uppercase tracking-[0.2em] font-bold">
+<a class="hover:text-primary transition-colors" href="#">Privacy</a>
+<a class="hover:text-primary transition-colors" href="#">Terms</a>
+<a class="hover:text-primary transition-colors" href="#">Help</a>
+</div>
+<div class="text-xs uppercase tracking-[0.2em] opacity-50 font-medium">
+                    © 2024 StockRocket
+                </div>
+</div>
+</footer>
+</main>
+</body></html>

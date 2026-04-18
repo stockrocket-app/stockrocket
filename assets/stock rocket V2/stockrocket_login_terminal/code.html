@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>StockRocket | Secure Terminal Access</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "secondary-fixed-dim": "#53edbc",
+                        "on-primary-fixed-variant": "#00673f",
+                        "on-tertiary-fixed": "#002c38",
+                        "on-surface-variant": "#adaaaa",
+                        "on-error-container": "#ffa8a3",
+                        "surface-tint": "#b1ffce",
+                        "on-secondary-container": "#dfffef",
+                        "on-secondary-fixed": "#004936",
+                        "on-primary-fixed": "#00472a",
+                        "secondary-dim": "#53edbc",
+                        "surface-container-high": "#201f1f",
+                        "surface-container": "#1a1919",
+                        "secondary": "#64fcc9",
+                        "tertiary-dim": "#00c3ed",
+                        "tertiary-container": "#00d2ff",
+                        "on-tertiary": "#004c5e",
+                        "outline-variant": "#494847",
+                        "tertiary-fixed": "#00d2ff",
+                        "on-primary": "#00663e",
+                        "outline": "#777575",
+                        "on-primary-container": "#005c38",
+                        "error": "#ff716c",
+                        "on-surface": "#ffffff",
+                        "primary-fixed-dim": "#00ef99",
+                        "on-error": "#490006",
+                        "secondary-container": "#006c51",
+                        "background": "#0e0e0e",
+                        "error-dim": "#d7383b",
+                        "surface-variant": "#262626",
+                        "inverse-on-surface": "#565554",
+                        "inverse-primary": "#006d43",
+                        "on-tertiary-fixed-variant": "#004c5e",
+                        "primary-fixed": "#00ffa3",
+                        "surface-bright": "#2c2c2c",
+                        "primary-container": "#00ffa3",
+                        "surface": "#0e0e0e",
+                        "on-secondary": "#005d46",
+                        "tertiary": "#72dcff",
+                        "surface-container-highest": "#262626",
+                        "primary": "#b1ffce",
+                        "inverse-surface": "#fcf8f8",
+                        "on-tertiary-container": "#004252",
+                        "surface-dim": "#0e0e0e",
+                        "tertiary-fixed-dim": "#00c3ed",
+                        "primary-dim": "#00ef99",
+                        "surface-container-low": "#131313",
+                        "surface-container-lowest": "#000000",
+                        "on-secondary-fixed-variant": "#00684e",
+                        "secondary-fixed": "#64fcc9",
+                        "error-container": "#9f0519",
+                        "on-background": "#ffffff"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Space Grotesk"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .kinetic-bg {
+            background: radial-gradient(circle at 50% 50%, #00ffa30a 0%, #0e0e0e 70%);
+        }
+        .glass-panel {
+            background: rgba(26, 25, 25, 0.4);
+            backdrop-filter: blur(40px);
+            border: 1px solid rgba(0, 255, 163, 0.05);
+        }
+        .glow-button {
+            background: linear-gradient(135deg, #b1ffce 0%, #00ffa3 100%);
+            box-shadow: 0 0 20px rgba(0, 255, 163, 0.3);
+        }
+        .glow-button:hover {
+            box-shadow: 0 0 35px rgba(0, 255, 163, 0.5);
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-on-surface selection:bg-primary/30 min-h-screen flex items-center justify-center p-6 kinetic-bg overflow-hidden">
+<!-- Ambient Nebula Accents -->
+<div class="fixed top-[-10%] right-[-5%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
+<div class="fixed bottom-[-10%] left-[-5%] w-[400px] h-[400px] bg-tertiary/5 rounded-full blur-[100px] pointer-events-none"></div>
+<main class="w-full max-w-[480px] relative z-10">
+<!-- Brand Header (Floating above card) -->
+<div class="flex flex-col items-center mb-10">
+<div class="mb-4 relative">
+<div class="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
+<div class="relative w-16 h-16 bg-surface-container-highest rounded-xl flex items-center justify-center border border-primary/20">
+<span class="material-symbols-outlined text-primary-fixed text-4xl" data-icon="rocket_launch" style="font-variation-settings: 'FILL' 1;">rocket_launch</span>
+</div>
+</div>
+<h1 class="font-headline font-black text-4xl tracking-tighter text-on-surface">
+                STOCK<span class="text-primary-fixed drop-shadow-[0_0_8px_rgba(0,255,163,0.4)]">ROCKET</span>
+</h1>
+<p class="font-label text-on-surface-variant text-[10px] uppercase tracking-[0.3em] mt-2">Nebula Terminal Access</p>
+</div>
+<!-- Login Card -->
+<div class="glass-panel rounded-xl p-10 shadow-2xl relative overflow-hidden group">
+<!-- Top Accent Line -->
+<div class="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-primary/30 to-transparent"></div>
+<form class="space-y-6">
+<!-- Input Group: Identity -->
+<div class="space-y-2">
+<label class="font-label text-[11px] uppercase tracking-widest text-on-surface-variant ml-1">Operator Identity</label>
+<div class="relative">
+<span class="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-lg" data-icon="alternate_email">alternate_email</span>
+<input class="w-full bg-surface-container-highest border-outline-variant/15 border rounded-lg py-4 pl-12 pr-4 text-on-surface placeholder:text-outline focus:outline-none focus:border-primary-fixed/60 focus:ring-1 focus:ring-primary-fixed/20 transition-all font-headline tracking-wide" placeholder="TERMINAL_ID" type="text"/>
+</div>
+</div>
+<!-- Input Group: Security -->
+<div class="space-y-2">
+<div class="flex justify-between items-center ml-1">
+<label class="font-label text-[11px] uppercase tracking-widest text-on-surface-variant">Access Protocol</label>
+<a class="font-label text-[10px] uppercase tracking-wider text-primary-fixed hover:text-secondary-fixed transition-colors" href="#">Recover Key</a>
+</div>
+<div class="relative">
+<span class="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-lg" data-icon="lock">lock</span>
+<input class="w-full bg-surface-container-highest border-outline-variant/15 border rounded-lg py-4 pl-12 pr-4 text-on-surface placeholder:text-outline focus:outline-none focus:border-primary-fixed/60 focus:ring-1 focus:ring-primary-fixed/20 transition-all font-headline tracking-widest" placeholder="••••••••••••" type="password"/>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface" type="button">
+<span class="material-symbols-outlined text-lg" data-icon="visibility">visibility</span>
+</button>
+</div>
+</div>
+<!-- Remember Me Toggle -->
+<div class="flex items-center gap-3 ml-1">
+<div class="relative flex items-center">
+<input class="peer h-5 w-5 rounded border-outline-variant bg-surface-container-highest text-primary-fixed focus:ring-primary-fixed/20" id="remember" type="checkbox"/>
+</div>
+<label class="font-body text-sm text-on-surface-variant cursor-pointer select-none" for="remember">Persist Session in This Terminal</label>
+</div>
+<!-- Primary Action -->
+<button class="w-full glow-button text-on-primary py-5 rounded-full font-headline font-bold text-lg uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]" type="submit">
+<span>Launch In</span>
+<span class="material-symbols-outlined text-xl" data-icon="north_east">north_east</span>
+</button>
+</form>
+<!-- Secondary Actions -->
+<div class="mt-10 flex flex-col gap-4">
+<div class="flex items-center gap-4">
+<div class="h-[1px] flex-1 bg-outline-variant/20"></div>
+<span class="font-label text-[10px] text-outline uppercase tracking-widest">Alternative Path</span>
+<div class="h-[1px] flex-1 bg-outline-variant/20"></div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<button class="flex items-center justify-center gap-2 bg-surface-container-low border border-outline-variant/10 py-3 rounded-lg hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-lg text-tertiary" data-icon="science">science</span>
+<span class="font-label text-[10px] uppercase tracking-wider">Paper Trading</span>
+</button>
+<button class="flex items-center justify-center gap-2 bg-surface-container-low border border-outline-variant/10 py-3 rounded-lg hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-lg" data-icon="qr_code_2">qr_code_2</span>
+<span class="font-label text-[10px] uppercase tracking-wider">Mobile Auth</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Footer Legal/Status -->
+<div class="mt-12 flex justify-between items-center px-4">
+<div class="flex items-center gap-2">
+<div class="w-1.5 h-1.5 rounded-full bg-primary-fixed animate-pulse shadow-[0_0_8px_#00FFA3]"></div>
+<span class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest">System Status: Optimal</span>
+</div>
+<div class="flex gap-6">
+<a class="font-label text-[10px] text-outline hover:text-on-surface uppercase tracking-widest transition-colors" href="#">Privacy</a>
+<a class="font-label text-[10px] text-outline hover:text-on-surface uppercase tracking-widest transition-colors" href="#">Terms</a>
+</div>
+</div>
+</main>
+<!-- Background Decorative Elements -->
+<div class="absolute top-1/4 left-1/4 w-px h-24 bg-gradient-to-b from-transparent via-primary/20 to-transparent"></div>
+<div class="absolute bottom-1/4 right-1/4 w-px h-32 bg-gradient-to-b from-transparent via-tertiary/20 to-transparent"></div>
+<div class="absolute top-20 right-[15%] flex flex-col gap-1 opacity-20">
+<div class="h-1 w-8 bg-primary"></div>
+<div class="h-1 w-4 bg-primary"></div>
+<div class="h-1 w-6 bg-primary"></div>
+</div>
+</body></html>

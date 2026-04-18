@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>TeleSwap Brand OS | Visual Identity</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-bright": "#2c2c2c",
+              "error-container": "#9f0519",
+              "secondary-container": "#006c51",
+              "on-secondary": "#005d46",
+              "surface-container-low": "#131313",
+              "on-error-container": "#ffa8a3",
+              "on-primary": "#00663e",
+              "surface-container-highest": "#262626",
+              "primary-fixed": "#00ffa3",
+              "primary": "#b1ffce",
+              "tertiary-fixed": "#00d2ff",
+              "on-error": "#490006",
+              "secondary-dim": "#53edbc",
+              "primary-dim": "#00ef99",
+              "tertiary": "#72dcff",
+              "on-primary-fixed-variant": "#00673f",
+              "on-tertiary-container": "#004252",
+              "error": "#ff716c",
+              "on-secondary-fixed": "#004936",
+              "inverse-primary": "#006d43",
+              "surface-variant": "#262626",
+              "surface": "#0e0e0e",
+              "primary-container": "#00ffa3",
+              "inverse-on-surface": "#565554",
+              "secondary-fixed-dim": "#53edbc",
+              "secondary-fixed": "#64fcc9",
+              "surface-container-lowest": "#000000",
+              "on-surface": "#ffffff",
+              "on-primary-container": "#005c38",
+              "on-secondary-container": "#dfffef",
+              "on-tertiary-fixed-variant": "#004c5e",
+              "surface-container-high": "#201f1f",
+              "on-tertiary-fixed": "#002c38",
+              "surface-tint": "#b1ffce",
+              "tertiary-dim": "#00c3ed",
+              "on-background": "#ffffff",
+              "outline-variant": "#494847",
+              "outline": "#777575",
+              "error-dim": "#d7383b",
+              "on-secondary-fixed-variant": "#00684e",
+              "primary-fixed-dim": "#00ef99",
+              "surface-dim": "#0e0e0e",
+              "background": "#0e0e0e",
+              "on-primary-fixed": "#00472a",
+              "secondary": "#64fcc9",
+              "inverse-surface": "#fcf8f8",
+              "tertiary-container": "#00d2ff",
+              "surface-container": "#1a1919",
+              "on-tertiary": "#004c5e",
+              "on-surface-variant": "#adaaaa",
+              "tertiary-fixed-dim": "#00c3ed"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #0e0e0e;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(22, 22, 22, 0.4);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+        }
+        .kinetic-spark {
+            background: linear-gradient(135deg, #b1ffce 0%, #00ffa3 100%);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-8 py-4 bg-emerald-950/20 backdrop-blur-xl shadow-[0_0_20px_rgba(0,255,163,0.05)]">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-bold tracking-tighter text-emerald-400 font-['Space_Grotesk']">TeleSwap Brand OS</span>
+<div class="hidden md:flex gap-6 items-center">
+<a class="font-['Space_Grotesk'] font-bold tracking-tight text-emerald-400 border-b-2 border-emerald-400 hover:text-emerald-300 transition-colors py-1" href="#">Overview</a>
+<a class="font-['Space_Grotesk'] font-bold tracking-tight text-zinc-400 hover:text-emerald-300 transition-colors py-1" href="#">Brand DNA</a>
+<a class="font-['Space_Grotesk'] font-bold tracking-tight text-zinc-400 hover:text-emerald-300 transition-colors py-1" href="#">Guidelines</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:flex items-center bg-surface-container-highest px-4 py-2 rounded-full border border-outline-variant/20">
+<span class="material-symbols-outlined text-zinc-500 text-sm">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-48 text-on-surface ml-2" placeholder="Search parameters..." type="text"/>
+</div>
+<button class="p-2 text-zinc-400 hover:text-emerald-300 scale-95 active:opacity-80 transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-zinc-400 hover:text-emerald-300 scale-95 active:opacity-80 transition-all">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-emerald-400/30">
+<img alt="User Profile" data-alt="Abstract emerald user profile avatar pattern" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyPdVhDfXBtrkp5_J5N7TTGPUXnnTCTnfkA1fzLD0tYd-bspAqSPsZzYPJzF4zBxvTBXelQKbT4CobbZq0yJRxiCNU2rQ9PVKMnXfOPUH-NsVtw45DwI40GcoO9XMmhLyPWNnSKEz8pz7al9fh9OeH-zmVaSXcQ7WDXW48l13FYZRSRoA7XK6kStzN8_-m6Fie8OApq_j6-A7NDibbMViujbSrZhQxWMGwoUKzb4qsA-ZF8QrpYN47DmN8z3LzEtvOe8c70aqot8SO"/>
+</div>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="h-screen w-72 fixed left-0 top-0 pt-20 bg-zinc-950 flex flex-col gap-2 px-6 py-8 hidden lg:flex z-40 border-r border-outline-variant/10">
+<div class="mb-6 px-2">
+<h2 class="text-emerald-400 font-black text-xl font-headline">TeleSwap</h2>
+<p class="text-zinc-500 text-[10px] tracking-[0.2em] font-headline">BRAND OS V1.0</p>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-3 text-emerald-400 bg-emerald-400/10 rounded-lg border-r-2 border-emerald-400 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">Overview</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-all duration-300 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="fingerprint">fingerprint</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">Brand DNA</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-emerald-400 bg-emerald-400/10 rounded-lg border-r-2 border-emerald-400 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="palette">palette</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">Colors</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-all duration-300 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="text_fields">text_fields</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">Typography</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-all duration-300 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="star">star</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">Logos</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-all duration-300 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="widgets">widgets</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">UI Elements</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-all duration-300 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="grid_view">grid_view</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">Layout / Grid</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-all duration-300 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="image">image</span>
+<span class="font-['Space_Grotesk'] uppercase text-xs tracking-widest">Imagery / Iconography</span>
+</a>
+</nav>
+</aside>
+<!-- Main Canvas -->
+<main class="lg:ml-72 pt-24 pb-12 px-8 min-h-screen">
+<!-- Hero Section -->
+<section class="mb-20">
+<div class="max-w-6xl mx-auto">
+<div class="flex flex-col gap-4">
+<span class="font-headline uppercase text-emerald-400 tracking-[0.4em] text-sm flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#00ffa3]"></span>
+                        The Kinetic Obsidian
+                    </span>
+<h1 class="font-headline font-bold text-7xl md:text-[120px] leading-[0.85] tracking-[-0.04em] text-on-surface">
+                        Visual <br/>
+<span class="text-transparent bg-clip-text kinetic-spark">Identity.</span>
+</h1>
+<div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-12 items-end">
+<p class="font-body text-xl text-on-surface-variant leading-relaxed max-w-lg">
+                            TeleSwap is built upon high-performance, tactile machinery. We bridge sophisticated editorial with high-end hardware interfaces.
+                        </p>
+<div class="flex justify-end">
+<div class="glass-panel p-6 rounded-xl border border-outline-variant/20 inline-flex flex-col gap-2">
+<span class="font-headline text-[10px] text-zinc-500 tracking-widest uppercase">System Core Version</span>
+<span class="font-headline text-3xl font-bold text-emerald-400">v1.0.4-BETA</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Color Palette Bento Grid -->
+<section class="mb-24">
+<div class="flex items-end justify-between mb-8">
+<h2 class="font-headline text-4xl font-bold tracking-tight">The Core Palette</h2>
+<span class="text-zinc-500 font-label text-sm">SECTION 02 / 12</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-4 auto-rows-[240px]">
+<!-- Primary Color -->
+<div class="md:col-span-8 md:row-span-2 kinetic-spark rounded-xl p-8 flex flex-col justify-between group overflow-hidden relative">
+<div class="relative z-10">
+<h3 class="font-headline text-on-primary font-bold text-5xl tracking-tighter">Nebula Emerald</h3>
+<p class="text-on-primary font-medium mt-2">"The kinetic spark"</p>
+</div>
+<div class="relative z-10 flex justify-between items-end">
+<div class="font-headline font-bold text-on-primary space-y-1">
+<p class="text-xl">#00FFA3</p>
+<p class="text-sm opacity-60">RGB (0, 255, 163)</p>
+</div>
+<span class="material-symbols-outlined text-on-primary text-6xl opacity-20 group-hover:opacity-100 transition-opacity" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<!-- Hardware texture overlay -->
+<div class="absolute inset-0 opacity-10 pointer-events-none" data-alt="Subtle dot matrix hardware texture pattern" style="background-image: radial-gradient(#000 1px, transparent 0); background-size: 20px 20px;"></div>
+</div>
+<!-- Background Color -->
+<div class="md:col-span-4 bg-[#050505] rounded-xl p-8 border border-outline-variant/10 flex flex-col justify-between">
+<div>
+<h3 class="font-headline text-on-surface font-bold text-2xl tracking-tight">Deep Space</h3>
+<p class="text-zinc-500 text-sm mt-1">"Infinite depth"</p>
+</div>
+<div class="font-headline font-bold text-on-surface">
+<p class="text-lg">#050505</p>
+</div>
+</div>
+<!-- Surface Color -->
+<div class="md:col-span-4 glass-panel rounded-xl p-8 border border-outline-variant/20 flex flex-col justify-between relative overflow-hidden">
+<div class="absolute inset-0 bg-emerald-400/5 -z-10"></div>
+<div>
+<h3 class="font-headline text-on-surface font-bold text-2xl tracking-tight">Obsidian Glass</h3>
+<p class="text-zinc-500 text-sm mt-1">40% Blur Surface</p>
+</div>
+<div class="font-headline font-bold text-on-surface">
+<p class="text-lg">RGBA(17, 17, 17, 0.4)</p>
+</div>
+</div>
+<!-- Accent Color -->
+<div class="md:col-span-12 bg-[#004D31] rounded-xl p-8 border border-emerald-400/20 flex items-center justify-between">
+<div class="flex gap-8 items-center">
+<div class="w-16 h-16 rounded-full bg-emerald-400/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-emerald-400" data-icon="sensors">sensors</span>
+</div>
+<div>
+<h3 class="font-headline text-on-surface font-bold text-3xl tracking-tight">Void Green</h3>
+<p class="text-emerald-400/60 font-medium">"The core depth"</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-headline font-bold text-2xl text-on-surface">#004D31</p>
+<p class="text-zinc-500 text-xs tracking-widest">ACCENT SIGNAL</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Typography Section -->
+<section class="mb-24">
+<div class="flex items-end justify-between mb-8">
+<h2 class="font-headline text-4xl font-bold tracking-tight">Typography</h2>
+<span class="text-zinc-500 font-label text-sm">SECTION 03 / 12</span>
+</div>
+<div class="bg-surface-container-low rounded-xl p-12 border border-outline-variant/10">
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-12">
+<!-- Display Label -->
+<div class="lg:col-span-1 space-y-6">
+<div>
+<p class="text-[10px] font-headline tracking-[0.3em] text-emerald-400 mb-2 uppercase">Type Hierarchy</p>
+<h4 class="font-headline font-bold text-xl">The Editorial Brute</h4>
+</div>
+<div class="p-4 bg-surface-container-highest rounded-lg border border-outline-variant/20">
+<p class="text-xs text-zinc-400 leading-relaxed font-body">
+                                Use Space Grotesk for architectural headlines. High contrast weights command attention in financial contexts.
+                            </p>
+</div>
+</div>
+<!-- Type Samples -->
+<div class="lg:col-span-3 space-y-16">
+<!-- Headline -->
+<div class="group">
+<div class="flex justify-between items-baseline mb-4">
+<span class="font-headline text-[10px] text-zinc-500 uppercase tracking-widest">Headline Display</span>
+<span class="font-headline text-xs text-emerald-400">Space Grotesk Bold / 80px / -0.04em</span>
+</div>
+<div class="border-t border-outline-variant/20 pt-6">
+<h1 class="font-headline font-bold text-7xl md:text-8xl tracking-[-0.04em] text-on-surface group-hover:text-emerald-400 transition-colors">
+                                    Obsidian Engine
+                                </h1>
+</div>
+</div>
+<!-- Subhead -->
+<div class="group">
+<div class="flex justify-between items-baseline mb-4">
+<span class="font-headline text-[10px] text-zinc-500 uppercase tracking-widest">Subhead</span>
+<span class="font-headline text-xs text-emerald-400">Space Grotesk Medium / 32px</span>
+</div>
+<div class="border-t border-outline-variant/20 pt-6">
+<h2 class="font-headline font-medium text-3xl text-on-surface">
+                                    Kinetic performance at the core of digital asset management.
+                                </h2>
+</div>
+</div>
+<!-- Body -->
+<div class="group">
+<div class="flex justify-between items-baseline mb-4">
+<span class="font-headline text-[10px] text-zinc-500 uppercase tracking-widest">Body Copy</span>
+<span class="font-headline text-xs text-emerald-400">Inter Regular / 16px / 1.6lh</span>
+</div>
+<div class="border-t border-outline-variant/20 pt-6 max-w-2xl">
+<p class="font-body text-base text-on-surface-variant leading-[1.6]">
+                                    TeleSwap utilizes a proprietary hardware aesthetic to deliver high-fidelity data visualization. Our typography strategy relies on the contrast between the technical precision of Space Grotesk and the modern readability of Inter. Body copy is optimized for clarity in high-density data environments.
+                                </p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Identity Strategy / Hardware Glow -->
+<section class="mb-24">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="glass-panel p-10 rounded-xl border border-outline-variant/20 overflow-hidden relative">
+<div class="absolute -right-20 -top-20 w-64 h-64 bg-emerald-400/10 rounded-full blur-[80px]"></div>
+<h3 class="font-headline font-bold text-3xl mb-6">Identity Strategy</h3>
+<ul class="space-y-6">
+<li class="flex gap-4">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-2 shadow-[0_0_8px_#00ffa3]"></span>
+<div>
+<p class="font-headline text-sm font-bold text-on-surface uppercase tracking-wider">Tonal Layering</p>
+<p class="text-on-surface-variant text-sm mt-1">Boundaries established through surface tier shifts rather than lines.</p>
+</div>
+</li>
+<li class="flex gap-4">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-2 shadow-[0_0_8px_#00ffa3]"></span>
+<div>
+<p class="font-headline text-sm font-bold text-on-surface uppercase tracking-wider">Hardware Luminescence</p>
+<p class="text-on-surface-variant text-sm mt-1">Use of glow signals to mimic physical LED status indicators.</p>
+</div>
+</li>
+<li class="flex gap-4">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-2 shadow-[0_0_8px_#00ffa3]"></span>
+<div>
+<p class="font-headline text-sm font-bold text-on-surface uppercase tracking-wider">Editorial Brute</p>
+<p class="text-on-surface-variant text-sm mt-1">Oversized typography to denote hierarchy and premium positioning.</p>
+</div>
+</li>
+</ul>
+</div>
+<div class="bg-surface-container-highest p-10 rounded-xl border border-emerald-400/10 flex flex-col justify-center items-center gap-8 relative overflow-hidden group">
+<div class="absolute inset-0 bg-gradient-to-tr from-emerald-400/5 to-transparent"></div>
+<div class="flex gap-4 items-center">
+<div class="px-6 py-3 bg-background border border-emerald-400/40 rounded-full shadow-[0_0_15px_rgba(0,255,163,0.15)] group-hover:shadow-[0_0_25px_rgba(0,255,163,0.25)] transition-all">
+<span class="font-headline font-bold text-emerald-400 text-lg">PRIMARY ACTION</span>
+</div>
+<div class="w-12 h-12 rounded-full kinetic-spark flex items-center justify-center text-on-primary shadow-[0_0_20px_rgba(0,255,163,0.3)]">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+<div class="flex flex-col items-center gap-2">
+<span class="font-headline text-[10px] text-zinc-500 tracking-[0.4em] uppercase">Visual Weight Check</span>
+<div class="flex gap-2">
+<div class="w-12 h-1 bg-emerald-400 rounded-full"></div>
+<div class="w-8 h-1 bg-emerald-400/40 rounded-full"></div>
+<div class="w-4 h-1 bg-emerald-400/20 rounded-full"></div>
+</div>
+</div>
+<!-- Data Node Sample -->
+<div class="mt-4 px-4 py-2 bg-emerald-400/10 rounded-lg border border-emerald-400/30 backdrop-blur-sm">
+<span class="font-headline text-xs font-bold text-emerald-400 tracking-tighter uppercase">NODE_STATUS: ACTIVE</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation for Mobile -->
+<div class="fixed bottom-0 left-0 w-full bg-zinc-950/80 backdrop-blur-xl border-t border-outline-variant/10 md:hidden flex justify-around items-center py-4 px-2 z-50">
+<button class="flex flex-col items-center gap-1 text-emerald-400">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-[10px] font-headline uppercase tracking-widest">Core</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-zinc-500">
+<span class="material-symbols-outlined" data-icon="palette">palette</span>
+<span class="text-[10px] font-headline uppercase tracking-widest">Visuals</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-zinc-500">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="text-[10px] font-headline uppercase tracking-widest">Notes</span>
+</button>
+</div>
+</body></html>

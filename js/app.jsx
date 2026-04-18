@@ -1,0 +1,3967 @@
+// =============================================
+// STOCK ROCKET -- StockRocket V2
+// React Application
+// =============================================
+
+const { useState, useEffect, useCallback, useRef, createContext, useContext } = React;
+
+// ==================== MOCK DATA ====================
+const MOCK_STOCKS = [
+  // Mega-Cap Tech
+  { symbol: 'AAPL', name: 'Apple Inc.', price: 227.48, change: 3.12, changePercent: 1.39, sector: 'Tech', marketCap: '$3.5T' },
+  { symbol: 'MSFT', name: 'Microsoft Corp.', price: 441.20, change: -2.45, changePercent: -0.55, sector: 'Tech', marketCap: '$3.3T' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 178.35, change: 4.67, changePercent: 2.69, sector: 'Tech', marketCap: '$2.2T' },
+  { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 214.78, change: 1.89, changePercent: 0.89, sector: 'Tech', marketCap: '$2.2T' },
+  { symbol: 'NVDA', name: 'NVIDIA Corp.', price: 924.15, change: 18.42, changePercent: 2.03, sector: 'Tech', marketCap: '$2.3T' },
+  { symbol: 'META', name: 'Meta Platforms', price: 582.30, change: 7.15, changePercent: 1.24, sector: 'Tech', marketCap: '$1.5T' },
+  { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.92, change: -8.34, changePercent: -3.24, sector: 'Auto', marketCap: '$790B' },
+  // Finance
+  { symbol: 'JPM', name: 'JPMorgan Chase', price: 218.45, change: 1.23, changePercent: 0.57, sector: 'Finance', marketCap: '$630B' },
+  { symbol: 'V', name: 'Visa Inc.', price: 296.80, change: 2.34, changePercent: 0.80, sector: 'Finance', marketCap: '$580B' },
+  { symbol: 'MA', name: 'Mastercard Inc.', price: 518.60, change: 3.10, changePercent: 0.60, sector: 'Finance', marketCap: '$510B' },
+  { symbol: 'GS', name: 'Goldman Sachs', price: 592.30, change: -4.20, changePercent: -0.70, sector: 'Finance', marketCap: '$195B' },
+  // Healthcare
+  { symbol: 'UNH', name: 'UnitedHealth Group', price: 512.40, change: 5.80, changePercent: 1.15, sector: 'Healthcare', marketCap: '$470B' },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', price: 158.90, change: -0.65, changePercent: -0.41, sector: 'Healthcare', marketCap: '$382B' },
+  { symbol: 'PFE', name: 'Pfizer Inc.', price: 26.45, change: 0.32, changePercent: 1.22, sector: 'Healthcare', marketCap: '$149B' },
+  // Consumer / Retail
+  { symbol: 'WMT', name: 'Walmart Inc.', price: 92.56, change: -0.45, changePercent: -0.48, sector: 'Retail', marketCap: '$680B' },
+  { symbol: 'COST', name: 'Costco Wholesale', price: 925.70, change: 8.40, changePercent: 0.92, sector: 'Retail', marketCap: '$410B' },
+  { symbol: 'NKE', name: 'Nike Inc.', price: 78.30, change: -1.20, changePercent: -1.51, sector: 'Retail', marketCap: '$118B' },
+  { symbol: 'SBUX', name: 'Starbucks Corp.', price: 98.45, change: 0.90, changePercent: 0.92, sector: 'Consumer', marketCap: '$112B' },
+  { symbol: 'DIS', name: 'Walt Disney Co.', price: 112.80, change: 2.15, changePercent: 1.94, sector: 'Entertainment', marketCap: '$206B' },
+  // Energy
+  { symbol: 'XOM', name: 'Exxon Mobil', price: 108.25, change: -1.40, changePercent: -1.28, sector: 'Energy', marketCap: '$450B' },
+  // Industrial
+  { symbol: 'BA', name: 'Boeing Co.', price: 178.90, change: 3.45, changePercent: 1.97, sector: 'Industrial', marketCap: '$110B' },
+  // Communication
+  { symbol: 'NFLX', name: 'Netflix Inc.', price: 945.20, change: 12.30, changePercent: 1.32, sector: 'Entertainment', marketCap: '$410B' },
+  { symbol: 'SPOT', name: 'Spotify', price: 612.40, change: -5.80, changePercent: -0.94, sector: 'Entertainment', marketCap: '$120B' },
+  // Growth
+  { symbol: 'AMD', name: 'Advanced Micro Devices', price: 168.50, change: 6.20, changePercent: 3.82, sector: 'Tech', marketCap: '$272B' },
+  { symbol: 'CRM', name: 'Salesforce Inc.', price: 312.80, change: 4.50, changePercent: 1.46, sector: 'Tech', marketCap: '$300B' },
+];
+
+const MOCK_CRYPTO = [
+  { symbol: 'BTC', name: 'Bitcoin', price: 97245.00, change: 2145.30, changePercent: 2.25, marketCap: '$1.9T' },
+  { symbol: 'ETH', name: 'Ethereum', price: 3842.15, change: -52.40, changePercent: -1.34, marketCap: '$462B' },
+  { symbol: 'SOL', name: 'Solana', price: 198.72, change: 12.45, changePercent: 6.68, marketCap: '$92B' },
+  { symbol: 'ADA', name: 'Cardano', price: 0.78, change: 0.04, changePercent: 5.41, marketCap: '$28B' },
+  { symbol: 'DOT', name: 'Polkadot', price: 8.92, change: -0.21, changePercent: -2.30, marketCap: '$12B' },
+];
+
+const TRADER_INSIGHTS = [
+  'The market can stay irrational longer than you can stay solvent.',
+  'Price is what you pay. Value is what you get.',
+  'The trend is your friend until it ends.',
+  'Bull markets breed confidence. Bear markets reveal character.',
+  'Stocks transfer money from the impatient to the patient.',
+  'What feels safest at the top is often riskiest.',
+  'The crowd is usually right in trends and wrong at extremes.',
+  'A rising stock is not proof of a good business.',
+  'A great company can still be a terrible investment at the wrong price.',
+  'Volatility is not the same thing as risk, but it exposes it.',
+  'The easy money is rarely easy.',
+  'When everyone agrees, the opportunity is usually gone.',
+  'Markets reward discipline more than intelligence.',
+  'You do not need to catch the bottom or top to make money.',
+  'The first loss is usually the cheapest.',
+  'Hope is not a risk-management strategy.',
+  'Liquidity feels abundant until everyone wants out at once.',
+  'If you cannot explain why you own it, you should not own it.',
+  'News moves prices short term. Earnings move them long term.',
+  'The market punishes arrogance faster than ignorance.',
+  'Most investors want outsized returns with average conviction.',
+  'The more exciting the story, the more careful you should be.',
+  'Diversification is protection against being wrong.',
+  'Time in the market matters more than timing the market for most people.',
+  'The biggest enemy of returns is often the person pressing the buttons.',
+  'Markets climb a wall of worry and fall down a staircase of panic.',
+  'The best setups often feel uncomfortable before they feel obvious.',
+  'A stock making new highs is not expensive by definition.',
+  'Cheap stocks are often cheap for a reason.',
+  'You get paid for uncertainty, not comfort.',
+  'Being early feels the same as being wrong until the market agrees.',
+  'The market does not care what price you bought it at.',
+  'Conviction without discipline is just stubbornness.',
+  'Cutting winners too early and letting losers run is the amateur’s tax.',
+  'The chart shows behavior. The business explains it.',
+  'Every parabolic move eventually meets gravity.',
+  'Good risk management looks boring until it saves you.',
+  'A thesis is only useful if you know what would prove it wrong.',
+  'Strong opinions should come with small position sizes unless earned.',
+  'The market discounts the future, then overreacts to the present.',
+  'Most blowups start as small exceptions to clear rules.',
+  'You do not need more information. You need fewer bad decisions.',
+  'The stock market is full of people who confuse activity with progress.',
+  'When volatility rises, position size matters more than conviction.',
+  'The best trades are often obvious in hindsight and difficult in real time.',
+  'Narratives can drive a stock far past fundamentals, in both directions.',
+  'Risk comes from not knowing what would make you sell.',
+  'The market often humiliates the largest number of people possible.',
+  'You can be right on the company and wrong on the stock.',
+  'There is no prize for holding through a preventable collapse.',
+  'Patience is a competitive advantage because so few investors truly have it.',
+  'Compounding looks slow at first, then suddenly looks like genius.',
+  'The market rewards those who can stay calm while others chase noise.',
+  'A good process can survive a bad quarter.',
+  'Wealth is often built in silence, not excitement.',
+  'The best investments usually start with simple ideas understood deeply.',
+  'Time turns small edges into meaningful outcomes.',
+  'The longer your horizon, the more short-term chaos works in your favor.',
+  'Every bear market plants the seeds of the next bull market.',
+  'Discipline today creates freedom later.',
+  'A portfolio grows strongest when decisions are made with clarity, not urgency.',
+  'Markets test conviction before they reward it.',
+  'Consistency beats intensity in investing.',
+  'The investor who keeps learning keeps compounding.',
+  'Uncertainty is not the enemy of returns; it is the price of them.',
+  'The market gives opportunity to those prepared before the headlines arrive.',
+  'Small, smart decisions repeated over time can outperform brilliance in bursts.',
+  'Good investing is less about predicting and more about preparing.',
+  'The strongest portfolios are built on habits, not hunches.',
+  'Staying invested through discomfort is often where the real gains begin.',
+  'Great returns often come from a few decisions held with patience.',
+  'The market favors the investor who can think independently and wait.',
+  'A calm mind sees opportunities that panic hides.',
+  'Long-term success comes from surviving the short term.',
+  'You do not need perfect timing when you have sound judgment.',
+  'The future belongs to businesses that keep earning trust, profits, and time.',
+  'Every correction resets expectations and creates new entry points.',
+  'The market is one of the few places where humility can be highly profitable.',
+  'Owning quality for long enough can look boring before it looks brilliant.',
+  'The investor who respects risk gets to enjoy reward longer.',
+  'The best investors are not fearless; they are prepared.',
+  'A stock’s past return does not obligate its future return.',
+  'When the facts change, the smart investor changes too.',
+  'Confidence should come from preparation, not prediction.',
+  'You make your money in the buy, but prove it in the hold.',
+  'A watchlist is where patience turns into opportunity.',
+  'The market rarely rewards comfort at the moment of decision.',
+  'Owning fewer things well understood can beat owning many things barely understood.',
+  'The goal is not to trade often. The goal is to compound well.',
+  'Strong businesses can survive weak headlines.',
+  'The market pays for endurance more often than brilliance.',
+  'A lower price can be a gift or a warning. Know which.',
+  'The hardest part of investing is often doing nothing on purpose.',
+  'Returns improve when ego stops needing to be right immediately.',
+  'The quality of your decisions matters more than the quantity of your ideas.',
+  'A good investor studies downside before dreaming about upside.',
+  'Buying well is important. Holding well is rarer.',
+  'The market rewards clarity of thought under pressure.',
+  'The more leverage you use, the less room you have to be human.',
+  'You cannot control the market, only your exposure to it.',
+  'An investment without a time horizon is just a guess with paperwork.',
+  'The strongest edge is often emotional, not informational.',
+  'Markets are noisy every day and meaningful only sometimes.',
+  'A disciplined investor knows when not to participate.',
+  'Big winners often spend long periods looking unremarkable.',
+  'The market offers endless prices and very few true bargains.',
+  'A good balance sheet gives a company time. Time gives management options.',
+  'Chasing certainty usually means paying too much for it.',
+  'The right question is not ‘Will it go up?’ but ‘What is the risk if I am wrong?’',
+  'The market loves optimism in moderation and punishes it in excess.',
+  'Owning quality through doubt is where conviction earns its keep.',
+  'Your process is your protection when headlines get loud.',
+  'Cash is not failure. Sometimes it is disciplined patience.',
+  'Not every dip is an opportunity, but every opportunity usually begins with discomfort.',
+  'A great entry helps. A durable thesis matters more.',
+  'The market gives second chances, but rarely to those who refuse to learn.',
+  'There is a difference between temporary pain and permanent damage.',
+  'The best investments often look reasonable, not exciting.',
+  'The investor who survives mistakes gets to benefit from future wisdom.',
+  'The real power of compounding is not just returns, but time spent being right.',
+];
+
+// The 4 characters -- avatar images in images/avatars/
+const SQUAD_MEMBERS = {
+  'Ella': { avatar: 'images/avatars/ella.png', color: '#00ffa3', strategy: 'Momentum Scalping' },
+  'Lawson': { avatar: 'images/avatars/lawson.png', color: '#72dcff', strategy: 'Liquidity Probing' },
+  'PCM': { avatar: 'images/avatars/pcm.png', color: '#ff716c', strategy: 'High-Frequency Vol' },
+  'Milburn Pennybags': { avatar: 'images/avatars/milburn.png', color: '#64fcc9', strategy: 'Value Preservation' },
+};
+
+const getSquadMember = (name) => SQUAD_MEMBERS[name] || { avatar: null, color: '#64748b', strategy: 'Learning' };
+
+// Reusable avatar component
+function CharacterAvatar({ name, size = 44, style = {} }) {
+  const member = getSquadMember(name);
+  return member.avatar ? (
+    <img src={member.avatar} alt={name} style={{ width: size, height: size, borderRadius: 'var(--radius-lg)', objectFit: 'cover', background: `${member.color}15`, border: `2px solid ${member.color}30`, ...style }} />
+  ) : (
+    <div style={{ width: size, height: size, borderRadius: 'var(--radius-lg)', background: `${member.color}20`, border: `2px solid ${member.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: size * 0.35, color: member.color, ...style }}>
+      {name?.[0]?.toUpperCase() || '?'}
+    </div>
+  );
+}
+
+const MOCK_CHAT_ROOMS = [
+  { id: 'general', name: 'Group Chat', icon: 'forum', unread: 3, lastMessage: 'Watching the 15m candle closely...', members: 7, type: 'group' },
+  { id: 'trades', name: 'Trade Alerts', icon: 'swap_vert', unread: 2, lastMessage: 'Ella bought 10 NVDA', members: 7, type: 'feed' },
+  { id: 'milburn', name: 'Ask Milburn', icon: 'support_agent', unread: 0, lastMessage: 'Happy to help! What questions do you have?', members: 2, type: 'dm' },
+];
+
+const QUICK_EMOJIS = ['🚀', '🔥', '💎', '📈', '📉', '🐻', '🐂', '💰', '⚡', '👀', '🎯', '💪'];
+
+// Custom emoji GIFs for reactions
+const CUSTOM_REACTION_EMOJIS = [
+  { id: '100', label: '100', url: 'content/gifs/Custom Emojis/100.gif' },
+  { id: 'yes', label: 'Yes', url: 'content/gifs/Custom Emojis/yes.gif' },
+  { id: 'ohyes', label: 'Oh Yes', url: 'content/gifs/Custom Emojis/Oh Yes.gif' },
+  { id: 'cash', label: 'Cash', url: 'content/gifs/Custom Emojis/Cash.gif' },
+  { id: 'fire', label: 'Fire', url: 'content/gifs/Custom Emojis/Fire.gif' },
+  { id: 'boss', label: 'Boss Mode', url: 'content/gifs/Custom Emojis/Boss Mode.gif' },
+  { id: 'party', label: 'Party', url: 'content/gifs/Custom Emojis/Party.gif' },
+];
+
+// Helper: render a reaction (either Unicode emoji or custom GIF)
+function ReactionEmoji({ emoji, size = 16 }) {
+  const custom = CUSTOM_REACTION_EMOJIS.find(e => e.id === emoji);
+  if (custom) return <img src={custom.url} alt={custom.label} style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block', verticalAlign: 'middle' }} />;
+  return <span style={{ fontSize: size }}>{emoji}</span>;
+}
+
+const MOCK_MESSAGES = [
+  { id: 1, user: 'Lawson', content: "Just following the flow. The order block at $42k is holding firm. Watching the 15m candle.", time: '2:18 PM', own: false, reactions: [{ emoji: '🐟', users: ['PCM'] }], read: true },
+  { id: 2, user: 'PCM', content: "Lambo mooning soon. Fast break above resistance. Revving up for the spike! 🚀", time: '2:20 PM', own: false, reactions: [{ emoji: '🚀', users: ['Ella', 'Lawson'] }, { emoji: '🔥', users: ['Ella'] }], read: true },
+  { id: 3, user: 'Ella', content: "Relax boys. MACD just crossed on the 1H. It's a textbook entry. Positioning for the breakout now.", time: '2:22 PM', own: true, reactions: [], read: true },
+  { id: 4, user: 'Milburn Pennybags', content: "I'm tightening my stops. Volatility is getting a bit uncivilized for my portfolio.", time: '2:22 PM', own: false, reactions: [], read: true },
+  { id: 5, user: 'Lawson', content: "BTC volume spike! This could be the move. Everyone watching the same level.", time: '2:25 PM', own: false, reactions: [{ emoji: '👀', users: ['Ella', 'PCM'] }], read: false },
+  { id: 6, user: 'PCM', content: "@Ella what's your take on the SOL setup? Seeing a bull flag on the 4H", time: '2:27 PM', own: false, reactions: [], read: false, mention: 'Ella' },
+];
+
+// ==================== ACADEMY LESSONS DATA ====================
+const ACADEMY_LESSONS = [
+  // ========== PART 1: STOCKS ==========
+  {
+    id: 'what-is-a-stock', number: 1, module: 'Stocks', title: 'What is a Stock?',
+    subtitle: 'A foundational guide to understanding ownership, shares, and how the global market functions for beginners.',
+    level: 'Beginner', icon: 'menu_book', duration: '5 min read',
+    sections: [
+      { type: 'concept', icon: 'pie_chart', title: 'Ownership via Shares',
+        body: "Think of a company as a giant pizza. A **share** represents a single slice of that pizza.\n\nWhen you own a share, you own a literal piece of the company's physical assets and a claim to its future earnings.",
+        quote: { label: 'The Golden Rule', text: 'Your ownership is simply the ratio of slices you hold compared to the whole pizza.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'rocket_launch', title: 'Why do companies do this?',
+          body: 'Growth requires massive capital. Instead of borrowing money from a bank (debt), companies sell small pieces of themselves to raise money for new projects and innovation.',
+          bullets: ['Building new factories', 'Hiring world-class talent', 'Global infrastructure expansion']
+        },
+        { icon: 'payments', title: 'How you earn money', body: null,
+          numbered: [
+            { label: 'Dividends', text: 'Think of this as a "thank you" check. Some companies share a portion of their profits with you every few months.' },
+            { label: 'Price Growth', text: 'As the company becomes more successful, the market value of your slice increases. You can sell it later for more than you paid.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'A stock is a tiny piece of a company. When you own a stock, you become a **part-owner** of that business!' }
+    ],
+    quiz: [], nextLesson: 'how-the-stock-market-works'
+  },
+  {
+    id: 'how-the-stock-market-works', number: 2, module: 'Stocks', title: 'How the Stock Market Works',
+    subtitle: 'Understanding exchanges, buyers and sellers, bid/ask prices, and when the market is open.',
+    level: 'Beginner', icon: 'storefront', duration: '6 min read',
+    sections: [
+      { type: 'concept', icon: 'account_balance', title: 'The Stock Exchange',
+        body: "The stock market is like a giant digital marketplace. Instead of buying shoes or phones, people buy and sell tiny pieces of companies.\n\nThe two biggest exchanges in the US are the **NYSE** (New York Stock Exchange) and **NASDAQ**. Think of them as two competing shopping malls -- both sell stocks, but different companies choose to list on each one.",
+        quote: { label: 'Fun Fact', text: 'The NYSE started in 1792 when 24 stockbrokers signed an agreement under a buttonwood tree on Wall Street. Today it handles trillions of dollars every day.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'groups', title: 'Buyers and Sellers',
+          body: 'Every stock trade needs two people -- someone who wants to buy and someone who wants to sell. The price of a stock is simply whatever the last buyer and seller agreed on.',
+          bullets: ['**Bid** -- the highest price a buyer is willing to pay right now', '**Ask** -- the lowest price a seller is willing to accept right now', '**Spread** -- the gap between bid and ask (smaller spread = more liquid stock)']
+        },
+        { icon: 'schedule', title: 'Market Hours', body: null,
+          numbered: [
+            { label: 'Regular Hours', text: 'The US stock market is open Monday through Friday, 9:30 AM to 4:00 PM Eastern Time.' },
+            { label: 'Pre-Market', text: 'Some trading happens from 4:00 AM to 9:30 AM. Prices can move on overnight news before the market officially opens.' },
+            { label: 'After-Hours', text: 'Trading continues from 4:00 PM to 8:00 PM. Big earnings reports often drop right after the close.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'The stock market is a **marketplace** where buyers and sellers agree on prices. It runs on set hours, and the price you see is just the last deal someone made.' }
+    ],
+    quiz: [], nextLesson: 'how-money-is-made-in-stocks'
+  },
+  {
+    id: 'how-money-is-made-in-stocks', number: 3, module: 'Stocks', title: 'How Money Is Made in Stocks',
+    subtitle: 'The actual mechanics of making money -- price appreciation, dividends, compounding, and why time is your biggest advantage.',
+    level: 'Beginner', icon: 'savings', duration: '7 min read',
+    sections: [
+      { type: 'concept', icon: 'trending_up', title: 'Price Appreciation',
+        body: "The most common way to make money is simple: **buy low, sell high**. If you buy a stock at $50 and sell it at $75, you made $25 per share.\n\nBut here is what most beginners miss -- you do not actually make (or lose) money until you sell. If your stock drops from $50 to $40, you have not lost anything yet. That is called an **unrealized loss**. It only becomes real when you hit the sell button.",
+        quote: { label: 'Key Insight', text: 'You only lock in a profit or a loss when you sell. Until then, it is just a number on a screen.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'redeem', title: 'Dividends',
+          body: "Some companies pay you just for owning their stock. These payments are called **dividends** -- think of them as a thank-you check that arrives every few months.\n\nNot all companies pay dividends. Younger, fast-growing companies usually reinvest profits into growth. Older, stable companies (like Coca-Cola) tend to pay reliable dividends.",
+          bullets: ['Dividends are usually paid quarterly (4 times a year)', 'Dividend yield tells you the annual payout as a percentage of the stock price', 'You can reinvest dividends to buy more shares automatically']
+        },
+        { icon: 'auto_graph', title: 'The Power of Compounding', body: null,
+          numbered: [
+            { label: 'What It Is', text: 'Compounding means your money earns money, and then THAT money earns money too. Like a snowball rolling downhill -- it gets bigger on its own.' },
+            { label: 'Real Example', text: 'If you invest $1,000 and earn 10% per year, after 10 years you have $2,594 -- not $2,000. The extra $594 came from compounding.' },
+            { label: 'Why Time Matters', text: 'A 20-year-old who invests $200/month will likely have MORE money at 60 than a 35-year-old who invests $400/month. Starting early is the single biggest advantage.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'There are two ways to make money: **price appreciation** (buy low, sell high) and **dividends** (getting paid to hold). Combine both with **compounding** over time, and your money grows exponentially.' }
+    ],
+    quiz: [], nextLesson: 'index-funds-vs-individual-stocks'
+  },
+  {
+    id: 'index-funds-vs-individual-stocks', number: 4, module: 'Stocks', title: 'Index Funds vs Individual Stocks',
+    subtitle: 'One of the most important decisions for any investor -- should you pick stocks yourself or buy the whole market at once?',
+    level: 'Beginner', icon: 'balance', duration: '6 min read',
+    sections: [
+      { type: 'concept', icon: 'donut_large', title: 'What Is an Index Fund?',
+        body: "Imagine instead of picking one meal at a restaurant, you order a sampler platter with a tiny bit of everything. That is an **index fund**. It is a single investment that holds hundreds (or thousands) of stocks at once.\n\nThe most famous is the **S&P 500 index fund**, which owns a small piece of the 500 largest US companies. When you buy one share of an S&P 500 ETF, you instantly own a slice of Apple, Google, Amazon, Microsoft, and 496 other companies.",
+        quote: { label: 'Warren Buffett Says', text: 'Most investors, both institutional and individual, will find that the best way to own common stocks is through an index fund.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'thumb_up', title: 'Why Index Funds Win for Most People',
+          body: 'Over the last 20 years, the S&P 500 has beaten about 90% of professional fund managers. If the pros cannot beat the index, picking individual stocks is even harder for beginners.',
+          bullets: ['**Instant diversification** -- if one company fails, you barely notice', '**Low fees** -- index funds charge almost nothing (0.03% per year)', '**Zero research needed** -- no earnings reports to read, no stress', '**Historically reliable** -- the S&P 500 has averaged about 10% per year since 1926']
+        },
+        { icon: 'casino', title: 'When Individual Stocks Make Sense', body: null,
+          numbered: [
+            { label: 'You Know the Company', text: 'If you deeply understand a business and its industry, you might spot opportunities the market has missed.' },
+            { label: 'You Can Handle Volatility', text: 'Individual stocks swing much more than index funds. A 30% drop in one stock is normal. Can you hold through that?' },
+            { label: 'The Smart Combo', text: 'Many investors do both -- put 80-90% in index funds for the foundation, and use 10-20% for individual picks they believe in.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'For most people, **index funds** are the best starting point. They give you instant diversification, low fees, and historically strong returns. Individual stocks are for when you are ready to do the research.' }
+    ],
+    quiz: [], nextLesson: 'market-orders-and-order-types'
+  },
+  {
+    id: 'market-orders-and-order-types', number: 5, module: 'Stocks', title: 'Market Orders, Limit Orders, and Order Types',
+    subtitle: 'The practical mechanics of placing a trade -- what happens when you press the buy or sell button.',
+    level: 'Beginner', icon: 'receipt_long', duration: '5 min read',
+    sections: [
+      { type: 'concept', icon: 'shopping_cart', title: 'Placing Your First Trade',
+        body: "When you want to buy or sell a stock, you do not just click a button and hope for the best. You tell your broker exactly how you want the trade to happen by choosing an **order type**.\n\nThink of it like ordering food. You can say 'Give me whatever is available right now' (market order) or 'I will only buy it if the price drops to $10' (limit order). The order type determines the rules.",
+        quote: { label: 'Key Rule', text: 'A market order guarantees your trade happens. A limit order guarantees your price. You cannot guarantee both.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'bolt', title: 'Market Orders',
+          body: 'A **market order** buys or sells immediately at whatever the current price is. It is the fastest and simplest order type.',
+          bullets: ['Executes instantly during market hours', 'You get filled at the best available price', 'Best for: large, liquid stocks where the price is not moving fast', 'Risk: in a fast-moving market, the price might change between when you click and when it fills']
+        },
+        { icon: 'tune', title: 'Limit and Stop Orders', body: null,
+          numbered: [
+            { label: 'Limit Order', text: 'You set the maximum price you will pay (for buys) or the minimum you will accept (for sells). The trade only happens if the market hits your price.' },
+            { label: 'Stop Order', text: 'A safety net. If a stock drops to your stop price, it automatically sells to limit your losses. Think of it as an emergency exit.' },
+            { label: 'When to Use Each', text: 'Use market orders for quick trades. Use limit orders when you want a specific price. Use stop orders to protect yourself from big losses.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: '**Market orders** trade instantly at the current price. **Limit orders** let you name your price. **Stop orders** protect you from big losses. Know all three before you trade.' }
+    ],
+    quiz: [], nextLesson: 'how-to-read-a-stock-quote'
+  },
+  {
+    id: 'how-to-read-a-stock-quote', number: 6, module: 'Stocks', title: 'How to Read a Stock Quote',
+    subtitle: 'Decoding the numbers you see on every stock page -- ticker, price, volume, market cap, and more.',
+    level: 'Beginner', icon: 'data_usage', duration: '6 min read',
+    sections: [
+      { type: 'concept', icon: 'tag', title: 'The Ticker Symbol',
+        body: "Every publicly traded company has a short code called a **ticker symbol**. Apple is AAPL. Tesla is TSLA. Google is GOOGL.\n\nWhen you look up a stock, you will see a screen full of numbers. It can feel overwhelming at first, but every number tells you something specific. Let us break down the most important ones.",
+        quote: { label: 'Pro Tip', text: 'The ticker is like a username for a company. Once you know it, you can find any stock instantly.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'monitoring', title: 'Price and Movement',
+          body: 'The most visible numbers on any stock page tell you what is happening right now.',
+          bullets: ['**Current Price** -- what the stock is trading at right now', '**Daily Change** -- how much the price moved today (green = up, red = down)', '**Volume** -- how many shares traded today (high volume = lots of interest)', '**52-Week Range** -- the highest and lowest prices over the past year']
+        },
+        { icon: 'analytics', title: 'Key Metrics', body: null,
+          numbered: [
+            { label: 'Market Cap', text: 'The total value of all shares combined. Stock price times total shares. Apple at $3.5 trillion is a "mega-cap" stock.' },
+            { label: 'P/E Ratio', text: 'Price-to-Earnings ratio. How much you pay per dollar of profit. A P/E of 30 means you pay $30 for every $1 the company earns. Lower can mean cheaper, but not always.' },
+            { label: 'Dividend Yield', text: 'The annual dividend payment as a percentage of the stock price. A 2% yield on a $100 stock pays you $2 per year per share.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'A stock quote tells you the **price**, how much it **moved**, how actively it is **trading**, and key metrics like **market cap** and **P/E ratio**. Learn to read these and you can evaluate any stock at a glance.' }
+    ],
+    quiz: [], nextLesson: 'reading-stock-charts'
+  },
+  {
+    id: 'reading-stock-charts', number: 7, module: 'Stocks', title: 'Reading Basic Stock Charts',
+    subtitle: 'Learn to read line charts and candlestick charts, spot trends, and understand what price movements are telling you.',
+    level: 'Beginner', icon: 'candlestick_chart', duration: '7 min read',
+    sections: [
+      { type: 'concept', icon: 'candlestick_chart', title: 'The Language of Price',
+        body: "Stock charts are like a heartbeat monitor for a company. They show you the story of what buyers and sellers are doing over time.\n\nThe most common chart type is the **candlestick chart**. Each candle shows four pieces of data: the open price, close price, high, and low for that time period. But remember -- charts show you where price HAS been, not where it WILL go.",
+        quote: { label: 'Important', text: 'Charts do not predict the future. They show you the footprints of where big money has been. Use them as one tool, not a crystal ball.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'trending_up', title: 'Green Candles (Bullish)',
+          body: 'A green candle means the price went UP during that period. The bottom of the body is the open, the top is the close.',
+          bullets: ['Price closed higher than it opened', 'Buyers were stronger than sellers', 'Multiple green candles in a row = uptrend']
+        },
+        { icon: 'trending_down', title: 'Red Candles (Bearish)',
+          body: 'A red candle means the price went DOWN. The top of the body is the open, the bottom is the close.',
+          bullets: ['Price closed lower than it opened', 'Sellers were stronger than buyers', '**Support** = a price floor where buyers tend to step in', '**Resistance** = a price ceiling where sellers tend to appear']
+        }
+      ]},
+      { type: 'summary', text: 'Charts tell the story of **supply and demand**. Green candles mean buyers are winning. Red candles mean sellers are winning. Learn the basics, but never rely on charts alone.' }
+    ],
+    quiz: [], nextLesson: 'how-to-evaluate-a-company'
+  },
+  {
+    id: 'how-to-evaluate-a-company', number: 8, module: 'Stocks', title: 'How to Evaluate a Company',
+    subtitle: 'The bridge from speculation to real investing -- understanding revenue, profit, debt, and competitive advantage.',
+    level: 'Intermediate', icon: 'search_insights', duration: '8 min read',
+    sections: [
+      { type: 'concept', icon: 'corporate_fare', title: 'Looking Under the Hood',
+        body: "Buying a stock without understanding the company is like buying a car without ever opening the hood. You need to know what is driving the business.\n\nThe good news: you do not need an accounting degree. There are a handful of key numbers that tell you most of what you need to know about any company's health.",
+        quote: { label: 'Peter Lynch', text: 'Know what you own, and know why you own it.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'monitoring', title: 'The Key Numbers',
+          body: 'These are the vital signs of any company. If you can read these, you are ahead of most beginners.',
+          bullets: ['**Revenue** -- total money coming in (the "top line")', '**Profit** -- what is left after all expenses (the "bottom line")', '**Debt** -- how much the company owes. Too much debt is risky.', '**Growth Rate** -- how fast revenue and profit are increasing year over year', '**Margins** -- profit as a percentage of revenue. Higher margins = more efficient business.']
+        },
+        { icon: 'shield', title: 'Competitive Advantage', body: null,
+          numbered: [
+            { label: 'What Is a Moat?', text: 'Warren Buffett looks for companies with a "moat" -- something that protects them from competitors. Apple has brand loyalty. Google has data. Amazon has logistics.' },
+            { label: 'Why It Matters', text: 'A company without an advantage can be copied easily. A company with a strong moat can grow for decades because competitors cannot catch up.' },
+            { label: 'Red Flags', text: 'Watch for: shrinking revenue, growing debt, falling margins, or a product that competitors are making cheaper. These signal trouble ahead.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'Great investing starts with understanding the business. Check the **revenue**, **profit**, **debt**, and **competitive advantage**. If you would not buy the whole company, do not buy the stock.' }
+    ],
+    quiz: [], nextLesson: 'valuation-for-beginners'
+  },
+  {
+    id: 'valuation-for-beginners', number: 9, module: 'Stocks', title: 'Valuation for Beginners',
+    subtitle: 'Why a great company can still be a bad buy -- and how to tell if a stock is overpriced or undervalued.',
+    level: 'Intermediate', icon: 'price_check', duration: '6 min read',
+    sections: [
+      { type: 'concept', icon: 'price_check', title: 'Price vs Value',
+        body: "Here is something that trips up every beginner: a **great company** is not always a **great stock**. Why? Because the price might already be too high.\n\nImagine a lemonade stand that earns $10 per year. Would you pay $10,000 to own it? Of course not. The business is fine, but the price is insane. This is exactly what happens with overhyped stocks.",
+        quote: { label: 'Key Concept', text: 'Price is what you pay. Value is what you get. They are not always the same thing.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'calculate', title: 'Simple Valuation Tools',
+          body: 'You do not need complex math. These two ratios give you a quick read on whether a stock is expensive or cheap relative to its earnings.',
+          bullets: ['**P/E Ratio** -- Price divided by Earnings per share. Lower P/E = cheaper relative to profits.', '**P/S Ratio** -- Price divided by Sales per share. Useful for companies not yet profitable.', 'Compare these to the company\'s own history and to competitors in the same industry', 'A "cheap" P/E in tech (25) would be expensive in banking (10). Context matters.']
+        },
+        { icon: 'compare', title: 'Growth vs Value', body: null,
+          numbered: [
+            { label: 'Growth Stocks', text: 'Companies growing revenue fast (like tech). They often have high P/E ratios because investors are paying for future potential. Risky but potentially rewarding.' },
+            { label: 'Value Stocks', text: 'Companies that look cheap relative to their earnings or assets. They may be boring but steady. Warren Buffett built his fortune on value investing.' },
+            { label: 'The Trap', text: 'A stock with a low P/E is not always a bargain. It might be cheap for a reason -- the company could be in decline. Always ask WHY the price is low.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'A good company at the wrong price is a bad investment. Use **P/E** and **P/S ratios** to check if you are paying a fair price. Always compare to peers and ask why.' }
+    ],
+    quiz: [], nextLesson: 'building-a-starter-portfolio'
+  },
+  {
+    id: 'building-a-starter-portfolio', number: 10, module: 'Stocks', title: 'Building a Simple Starter Portfolio',
+    subtitle: 'Turning theory into action -- position sizing, diversification, time horizon, and setting real goals.',
+    level: 'Beginner', icon: 'inventory_2', duration: '7 min read',
+    sections: [
+      { type: 'concept', icon: 'pie_chart', title: 'Your First Portfolio',
+        body: "A **portfolio** is just a fancy word for all the investments you own. Building one does not have to be complicated.\n\nThe goal is simple: spread your money across different types of investments so that if one does badly, the others can pick up the slack. This is called **diversification** -- and it is the closest thing to a free lunch in investing.",
+        quote: { label: 'Rule of Thumb', text: 'Never put all your eggs in one basket. If you only own one stock and it crashes, your whole portfolio crashes with it.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'build', title: 'Building Blocks',
+          body: 'A solid starter portfolio does not need to be complicated. Start with the basics and add complexity as you learn.',
+          bullets: ['**Start with an index fund** -- this is your foundation (S&P 500 or total market)', '**Add 2-3 individual stocks** you believe in and have researched', '**Keep 5-10% in cash** -- so you can buy when opportunities appear', '**Do not invest money you need soon** -- this is for money you will not touch for 5+ years']
+        },
+        { icon: 'target', title: 'Setting Goals', body: null,
+          numbered: [
+            { label: 'Time Horizon', text: 'How long until you need this money? Longer time = more risk you can take. Shorter time = play it safe with index funds.' },
+            { label: 'Position Sizing', text: 'No single stock should be more than 10-15% of your portfolio. If it doubles, great. If it goes to zero, you survive.' },
+            { label: 'Avoid Concentration', text: 'Owning 5 tech stocks is not diversified -- they all move together. Mix in different sectors: tech, healthcare, finance, consumer.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'Start simple: **index fund foundation**, a few **researched individual picks**, and **cash on the side**. Diversify across sectors. Set a time horizon. And never invest money you cannot afford to lose.' }
+    ],
+    quiz: [], nextLesson: 'biggest-beginner-mistakes'
+  },
+  {
+    id: 'biggest-beginner-mistakes', number: 11, module: 'Stocks', title: 'Biggest Beginner Mistakes',
+    subtitle: 'The most common (and expensive) mistakes new investors make -- and exactly how to avoid every single one.',
+    level: 'Beginner', icon: 'warning', duration: '7 min read',
+    sections: [
+      { type: 'concept', icon: 'error', title: 'Learning from Others',
+        body: "Every experienced investor has a graveyard of mistakes. The good news is you can skip most of them by learning what NOT to do before you start.\n\nThese are not rare traps. These are the most common mistakes that cost beginners real money -- and every single one is avoidable.",
+        quote: { label: 'Charlie Munger', text: 'It is remarkable how much long-term advantage people have gotten by trying to be consistently not stupid, instead of trying to be very intelligent.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'trending_down', title: 'The Expensive Mistakes',
+          body: 'These mistakes have cost beginners billions of dollars collectively. Read each one carefully.',
+          bullets: ['**Chasing hype** -- buying a stock because everyone is talking about it (you are usually too late)', '**Panic selling** -- selling when the market drops 10% (it always recovers, and you lock in losses)', '**Overtrading** -- buying and selling constantly (fees and taxes eat your returns)', '**Confusing luck with skill** -- making money in a bull market does not mean you are good at this']
+        },
+        { icon: 'shield', title: 'More Traps to Avoid', body: null,
+          numbered: [
+            { label: 'Ignoring Fees and Taxes', text: 'Every trade can trigger taxes. Short-term gains (held less than 1 year) are taxed at your normal income rate. Hold longer to pay less.' },
+            { label: 'Investing Money You Need Soon', text: 'Never invest your rent money, emergency fund, or money you need within 1-2 years. The market can drop 30% at any time.' },
+            { label: 'No Plan', text: 'Know why you are buying BEFORE you buy. "It is going up" is not a plan. Have a target price and know when you would sell.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'The best investors are not the smartest -- they are the most **disciplined**. Avoid hype, do not panic sell, keep fees low, and never invest money you need soon. Boring wins.' }
+    ],
+    quiz: [], nextLesson: 'what-is-cryptocurrency'
+  },
+  // ========== PART 2: CRYPTO ==========
+  {
+    id: 'what-is-cryptocurrency', number: 12, module: 'Crypto', title: 'What Is Cryptocurrency?',
+    subtitle: 'Understanding digital money, blockchain technology, and why crypto is different from stocks and cash.',
+    level: 'Beginner', icon: 'currency_bitcoin', duration: '6 min read',
+    sections: [
+      { type: 'concept', icon: 'currency_bitcoin', title: 'Digital Money',
+        body: "Imagine money that exists only on computers -- no paper bills, no metal coins. That is cryptocurrency. It is digital money secured by math instead of banks.\n\nBitcoin was the first cryptocurrency, created in 2009. Today there are thousands, each with different purposes. But the core idea is the same: money that no single person or government controls.",
+        quote: { label: 'Key Concept', text: 'Cryptocurrency is money that lives on the internet, protected by unbreakable math called cryptography.' }
+      },
+      { type: 'two-column', cards: [
+        { icon: 'hub', title: 'What is Blockchain?',
+          body: 'Think of a blockchain as a shared notebook that everyone can read but nobody can erase. Every transaction is recorded permanently.',
+          bullets: ['No single person controls it', 'Every transaction is public and verified by the network', 'Cannot be changed once recorded', 'Runs on thousands of computers around the world']
+        },
+        { icon: 'compare_arrows', title: 'Crypto vs Regular Money', body: null,
+          numbered: [
+            { label: 'Decentralized', text: 'No bank or government controls it. It is run by a network of computers around the world.' },
+            { label: 'Limited Supply', text: 'Most crypto has a cap. Bitcoin only has 21 million coins -- ever. This scarcity can drive value up over time.' },
+            { label: '24/7 Trading', text: 'Unlike stocks, crypto markets never close. You can trade Bitcoin at 3 AM on a Sunday.' }
+          ]
+        }
+      ]},
+      { type: 'summary', text: 'Cryptocurrency is **digital money** secured by blockchain technology. It is decentralized, transparent, and trades around the clock. It is a new kind of asset -- different from both stocks and cash.' }
+    ],
+    quiz: [], nextLesson: null
+  }
+];
+
+// ==================== WEEKLY REPORTS DATA ====================
+const WEEKLY_REPORTS = [
+  {
+    id: 'week-2026-03-17', weekStart: 'Mar 17', weekEnd: 'Mar 21, 2026', volume: 43, isCurrent: true,
+    pulse: {
+      heartbeat: { value: '+2.48%', direction: 'up', label: 'The market is moving up.', breakdown: 'Most stocks in the S&P 500 (the 500 largest US companies) rose this week, showing strong buyer interest.' },
+      breadth: { winners: 7, losers: 3, label: 'More winners than losers.', breakdown: 'For every 10 stocks, 7 went up and 3 went down. This is like a sports team where most players are performing well.' },
+      mood: { sentiment: 'Cautiously Optimistic', meterPercent: 68, breakdown: "Investors are hopeful but careful. It's like driving in clear weather but keeping your hands firmly on the wheel." }
+    },
+    crypto: {
+      dailyBars: [50, 40, 65, 85, 60, 75, 95], peakDay: 6,
+      chartBreakdown: "This bar chart shows Bitcoin's price each day. Higher bars mean the price was higher. We are currently at a Peak.",
+      smartMoney: { insight: 'Whale accumulation in BTC has increased by 14%.', breakdown: '"Whales" are investors with huge amounts of money. When they buy, it usually suggests confidence that prices will go up.' },
+      gossip: [
+        { label: 'ETF Momentum', text: 'Bitcoin ETF inflows hit $2B this week. More traditional investors are joining the crypto space.' },
+        { label: 'Layer 2 Growth', text: 'Ethereum scaling solutions are processing more transactions than ever. The network is getting faster and cheaper.' }
+      ],
+      table: [
+        { name: 'Bitcoin', subtitle: 'The King', icon: 'currency_bitcoin', change: '+12.4%', marketCap: '$1.9 Trillion', signal: 'Strong Buy', color: 'primary' },
+        { name: 'Ethereum', subtitle: 'The Builder', icon: 'token', change: '+8.2%', marketCap: '$462 Billion', signal: 'Buy', color: 'primary' },
+        { name: 'Solana', subtitle: 'The Speed', icon: 'bolt', change: '-2.1%', marketCap: '$92 Billion', signal: 'Hold', color: 'neutral' },
+      ]
+    },
+    focus: [
+      { number: '01', tag: 'Reports', tagColor: 'primary', title: 'Earnings Season', body: 'Big tech companies are releasing quarterly results. NVDA and AAPL reports could move entire sectors.', simpleTerms: 'Think of this as a school report card for billion-dollar companies.', cta: 'View Calendar' },
+      { number: '02', tag: 'Rates', tagColor: 'tertiary', title: 'Fed Decision', body: 'The Federal Reserve held rates steady. Markets are watching for signals about future cuts.', simpleTerms: "The Fed is like the market's thermostat. They control how expensive it is to borrow money.", cta: 'Rate Analysis' },
+      { number: '03', tag: 'Patterns', tagColor: 'neutral', title: 'Critical Levels', body: 'S&P 500 testing resistance at 5,900. A breakout above could trigger a strong rally.', simpleTerms: "Think of these levels like a ceiling. If the market pushes through, it often runs higher.", cta: 'Technical View' }
+    ],
+    migration: {
+      body: 'Money is moving. We track where the biggest investors are moving their cash to predict where the next profits might hide.',
+      analogy: { title: 'The Rotating Sprinkler', text: "The market is like a garden. Instead of watering everything at once, investors move the water (capital) from one area to another every few months. This is called Sector Rotation." },
+      flows: [
+        { sector: 'Tech', status: 'buying', label: 'Buying Heavily' },
+        { sector: 'Finance', status: 'holding', label: 'Holding Steady' },
+        { sector: 'Retail', status: 'selling', label: 'Selling Off' }
+      ]
+    },
+    glossary: [
+      { term: 'S&P 500', def: 'An index tracking the 500 largest US companies. The main scoreboard for the stock market.' },
+      { term: 'ETF', def: 'Exchange-Traded Fund. A basket of stocks you can buy in one trade, like a sampler platter.' },
+      { term: 'Sector Rotation', def: 'When investors move money from one industry to another based on economic conditions.' },
+      { term: 'Whale', def: 'An investor with a huge amount of money whose trades can move market prices.' },
+      { term: 'Resistance', def: 'A price level where a stock has trouble breaking above. Like a ceiling.' },
+      { term: 'Accumulation', def: 'When big investors quietly buy large amounts over time. A bullish signal.' },
+    ]
+  },
+  {
+    id: 'week-2026-03-10', weekStart: 'Mar 10', weekEnd: 'Mar 14, 2026', volume: 42, isCurrent: false,
+    pulse: {
+      heartbeat: { value: '-1.2%', direction: 'down', label: 'Market pulled back slightly.', breakdown: 'A small dip after weeks of gains. This is normal -- markets breathe in and out like lungs.' },
+      breadth: { winners: 4, losers: 6, label: 'More losers than winners.', breakdown: 'More stocks fell than rose this week. When this happens, traders get cautious.' },
+      mood: { sentiment: 'Mixed Signals', meterPercent: 45, breakdown: 'Some investors are nervous, others see opportunity. Like a crowd that can\'t decide which direction to walk.' }
+    },
+    crypto: {
+      dailyBars: [70, 65, 55, 45, 50, 60, 55], peakDay: 0,
+      chartBreakdown: 'Bitcoin started the week strong but lost momentum. The market is consolidating (resting) before its next move.',
+      smartMoney: { insight: 'Institutional selling pressure decreased by 8%.', breakdown: 'Big investors stopped selling as much. When selling slows down, prices often stabilize.' },
+      gossip: [
+        { label: 'Regulation News', text: 'New crypto rules proposed in Europe. Clarity is generally good for prices long-term.' },
+        { label: 'Mining Costs', text: 'Bitcoin mining just got harder. This can be bullish because it costs more to produce new coins.' }
+      ],
+      table: [
+        { name: 'Bitcoin', subtitle: 'The King', icon: 'currency_bitcoin', change: '-3.1%', marketCap: '$1.8 Trillion', signal: 'Hold', color: 'neutral' },
+        { name: 'Ethereum', subtitle: 'The Builder', icon: 'token', change: '-1.8%', marketCap: '$445 Billion', signal: 'Buy Dip', color: 'primary' },
+      ]
+    },
+    focus: [
+      { number: '01', tag: 'Data', tagColor: 'primary', title: 'Jobs Report', body: 'Employment numbers came in strong, which is good for the economy but might delay rate cuts.', simpleTerms: 'More jobs = more people spending money. But it also means the Fed might keep interest rates high.', cta: 'Read More' },
+      { number: '02', tag: 'Global', tagColor: 'tertiary', title: 'China Stimulus', body: "China announced new economic support measures. This could boost companies that sell products there.", simpleTerms: "When China's economy gets a boost, companies that sell stuff to 1.4 billion people benefit.", cta: 'Analysis' },
+      { number: '03', tag: 'Sector', tagColor: 'neutral', title: 'AI Spending', body: 'Tech companies are spending billions on AI infrastructure. This is creating winners and losers.', simpleTerms: "Companies building AI tools are spending big. The ones making the tools (like NVDA) are profiting.", cta: 'Deep Dive' }
+    ],
+    migration: {
+      body: 'Capital rotated out of growth stocks and into defensive sectors like healthcare and utilities.',
+      analogy: { title: 'Musical Chairs', text: "When investors get nervous, they move money to 'safe' industries like healthcare (people always need medicine) and utilities (everyone needs electricity). It's like musical chairs -- they want the safest seat." },
+      flows: [
+        { sector: 'Healthcare', status: 'buying', label: 'Safe Haven Buying' },
+        { sector: 'Tech', status: 'holding', label: 'Holding Position' },
+        { sector: 'Growth', status: 'selling', label: 'Taking Profits' }
+      ]
+    },
+    glossary: [
+      { term: 'Consolidation', def: 'When a price moves sideways in a range. The market is resting before the next big move.' },
+      { term: 'Rate Cut', def: 'When the Fed lowers interest rates, making borrowing cheaper. Usually good for stocks.' },
+      { term: 'Defensive Stocks', def: 'Companies in stable industries (healthcare, utilities) that hold up well in downturns.' },
+      { term: 'Buy the Dip', def: 'A strategy of buying stocks after a price drop, betting they will recover.' },
+    ]
+  }
+];
+
+// ==================== LIVE DATA LAYER ====================
+// Finnhub: Free tier -- get your key at https://finnhub.io/register
+// CoinGecko: Free, no key needed
+const FINNHUB_KEY = (() => { try { return localStorage.getItem('stockrocket_finnhub_key') || ''; } catch { return ''; } })();
+
+const LiveData = {
+  // Fetch real stock quotes from Finnhub
+  async fetchStockQuote(symbol) {
+    if (!FINNHUB_KEY) return null;
+    try {
+      const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`);
+      const data = await res.json();
+      if (data.c) return { price: data.c, change: data.d, changePercent: data.dp, high: data.h, low: data.l, open: data.o, prevClose: data.pc };
+      return null;
+    } catch { return null; }
+  },
+
+  // Fetch all stock quotes, fall back to mock
+  async fetchAllStocks(symbols) {
+    if (!FINNHUB_KEY) return null;
+    try {
+      const promises = symbols.map(s => LiveData.fetchStockQuote(s));
+      const results = await Promise.all(promises);
+      return results;
+    } catch { return null; }
+  },
+
+  // Fetch real crypto prices from CoinGecko
+  async fetchCrypto() {
+    try {
+      const ids = 'bitcoin,ethereum,solana,cardano,polkadot';
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`);
+      const data = await res.json();
+      const map = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', cardano: 'ADA', polkadot: 'DOT' };
+      const nameMap = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', solana: 'Solana', cardano: 'Cardano', polkadot: 'Polkadot' };
+      return Object.entries(data).map(([id, d]) => ({
+        symbol: map[id], name: nameMap[id], price: d.usd,
+        change: d.usd * (d.usd_24h_change / 100), changePercent: d.usd_24h_change || 0,
+        marketCap: d.usd_market_cap ? '$' + (d.usd_market_cap / 1e9).toFixed(0) + 'B' : 'N/A'
+      }));
+    } catch { return null; }
+  },
+
+  // Fetch market news from Finnhub
+  async fetchMarketNews() {
+    if (!FINNHUB_KEY) return null;
+    try {
+      const res = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${FINNHUB_KEY}`);
+      return await res.json();
+    } catch { return null; }
+  },
+
+  // Fetch company news for a specific stock
+  async fetchCompanyNews(symbol, daysBack = 7) {
+    if (!FINNHUB_KEY) return null;
+    try {
+      const to = new Date().toISOString().split('T')[0];
+      const from = new Date(Date.now() - daysBack * 86400000).toISOString().split('T')[0];
+      const res = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${from}&to=${to}&token=${FINNHUB_KEY}`);
+      return await res.json();
+    } catch { return null; }
+  },
+
+  // Fetch trending tickers from CoinGecko
+  async fetchTrendingCrypto() {
+    try {
+      const res = await fetch('https://api.coingecko.com/api/v3/search/trending');
+      const data = await res.json();
+      return data.coins?.slice(0, 5).map(c => ({ symbol: c.item.symbol.toUpperCase(), name: c.item.name, rank: c.item.market_cap_rank })) || [];
+    } catch { return []; }
+  }
+};
+
+// Hook to fetch live data with fallback to mock
+function useLiveData() {
+  const [stocks, setStocks] = useState(MOCK_STOCKS);
+  const [crypto, setCrypto] = useState(MOCK_CRYPTO);
+  const [isLive, setIsLive] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const refresh = useCallback(async () => {
+    // Try crypto first (no key needed)
+    const liveCrypto = await LiveData.fetchCrypto();
+    if (liveCrypto && liveCrypto.length > 0) {
+      setCrypto(liveCrypto);
+      setIsLive(true);
+    }
+
+    // Try stocks (needs key)
+    if (FINNHUB_KEY) {
+      const symbols = MOCK_STOCKS.map(s => s.symbol);
+      const quotes = await LiveData.fetchAllStocks(symbols);
+      if (quotes) {
+        const updated = MOCK_STOCKS.map((s, i) => {
+          const q = quotes[i];
+          if (!q) return s;
+          return { ...s, price: q.price, change: q.change, changePercent: q.changePercent };
+        });
+        setStocks(updated);
+        setIsLive(true);
+      }
+    }
+    setLastUpdated(new Date());
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const interval = setInterval(refresh, 60000); // Refresh every 60s
+    return () => clearInterval(interval);
+  }, [refresh]);
+
+  return { stocks, crypto, isLive, lastUpdated, refresh };
+}
+
+// ==================== MARKET STATUS ====================
+function useMarketCountdown() {
+  const [status, setStatus] = useState({ isOpen: false, label: '', countdown: '' });
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const day = et.getDay();
+      const h = et.getHours();
+      const m = et.getMinutes();
+      const mins = h * 60 + m;
+      const open = 9 * 60 + 30; // 9:30 AM ET
+      const close = 16 * 60; // 4:00 PM ET
+      const isWeekday = day >= 1 && day <= 5;
+      const isOpen = isWeekday && mins >= open && mins < close;
+
+      if (isOpen) {
+        const left = close - mins;
+        const lh = Math.floor(left / 60);
+        const lm = left % 60;
+        setStatus({ isOpen: true, label: 'Market Open', countdown: lh + 'h ' + lm + 'm until close' });
+      } else {
+        // Calculate time until next open
+        let nextOpen = new Date(et);
+        if (isWeekday && mins < open) {
+          // Today before open
+          nextOpen.setHours(9, 30, 0, 0);
+        } else {
+          // After close or weekend -- find next weekday
+          nextOpen.setDate(nextOpen.getDate() + 1);
+          while (nextOpen.getDay() === 0 || nextOpen.getDay() === 6) {
+            nextOpen.setDate(nextOpen.getDate() + 1);
+          }
+          nextOpen.setHours(9, 30, 0, 0);
+        }
+        const diff = nextOpen - et;
+        const dh = Math.floor(diff / 3600000);
+        const dm = Math.floor((diff % 3600000) / 60000);
+        setStatus({ isOpen: false, label: 'Market Closed', countdown: dh + 'h ' + dm + 'm until open' });
+      }
+    };
+    update();
+    const interval = setInterval(update, 30000); // update every 30s
+    return () => clearInterval(interval);
+  }, []);
+  return status;
+}
+
+// ==================== ACHIEVEMENTS ====================
+const ACHIEVEMENTS = [
+  { id: 'first_trade', icon: '🎯', title: 'First Trade', desc: 'Execute your first trade', check: (p) => p.trades.length >= 1 },
+  { id: 'five_trades', icon: '⚡', title: 'Active Trader', desc: 'Complete 5 trades', check: (p) => p.trades.length >= 5 },
+  { id: 'ten_trades', icon: '🔥', title: 'On Fire', desc: 'Complete 10 trades', check: (p) => p.trades.length >= 10 },
+  { id: 'first_profit', icon: '💰', title: 'In The Green', desc: 'Have a profitable position', check: (p) => p.holdings.some(h => h.gain > 0) },
+  { id: 'diversified', icon: '🎨', title: 'Diversified', desc: 'Hold 3 or more different assets', check: (p) => p.holdings.length >= 3 },
+  { id: 'five_holdings', icon: '💼', title: 'Portfolio Builder', desc: 'Hold 5 different assets', check: (p) => p.holdings.length >= 5 },
+  { id: 'crypto_trader', icon: '🪙', title: 'Crypto Explorer', desc: 'Buy your first cryptocurrency', check: (p) => p.trades.some(t => ['BTC','ETH','SOL','ADA','DOT'].includes(t.symbol)) },
+  { id: 'big_spender', icon: '🏦', title: 'Big Spender', desc: 'Make a single trade over $10,000', check: (p) => p.trades.some(t => t.total > 10000) },
+  { id: 'portfolio_110k', icon: '📈', title: 'Growth Mode', desc: 'Grow your portfolio past $110,000', check: (p) => { const tv = p.cash + p.holdings.reduce((s, h) => s + h.value, 0); return tv > 110000; } },
+  { id: 'portfolio_150k', icon: '🚀', title: 'Moon Shot', desc: 'Grow your portfolio past $150,000', check: (p) => { const tv = p.cash + p.holdings.reduce((s, h) => s + h.value, 0); return tv > 150000; } },
+  { id: 'diamond_hands', icon: '💎', title: 'Diamond Hands', desc: 'Hold a position through a 5% loss', check: (p) => p.holdings.some(h => h.returnPercent < -5) },
+  { id: 'seller', icon: '🏷️', title: 'Profit Taker', desc: 'Sell a position', check: (p) => p.trades.some(t => t.type === 'SELL') },
+];
+
+function useAchievements(portfolio) {
+  const [unlocked, setUnlocked] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('stockrocket_achievements') || '[]'); } catch { return []; }
+  });
+  const [newAchievement, setNewAchievement] = useState(null);
+
+  useEffect(() => {
+    const newly = [];
+    ACHIEVEMENTS.forEach(a => {
+      if (!unlocked.includes(a.id) && a.check(portfolio)) {
+        newly.push(a.id);
+      }
+    });
+    if (newly.length > 0) {
+      const updated = [...unlocked, ...newly];
+      setUnlocked(updated);
+      try { localStorage.setItem('stockrocket_achievements', JSON.stringify(updated)); } catch {}
+      // Show the first new achievement
+      const achievement = ACHIEVEMENTS.find(a => a.id === newly[0]);
+      setNewAchievement(achievement);
+      setTimeout(() => setNewAchievement(null), 4000);
+    }
+  }, [portfolio]);
+
+  return { unlocked, newAchievement, total: ACHIEVEMENTS.length };
+}
+
+// Achievement toast component
+function AchievementToast({ achievement }) {
+  if (!achievement) return null;
+  return (
+    <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 200, padding: '16px 32px', borderRadius: 'var(--radius-xl)', background: 'rgba(0,255,163,0.15)', border: '1px solid rgba(0,255,163,0.3)', backdropFilter: 'blur(20px)', display: 'flex', alignItems: 'center', gap: 16, animation: 'slideIn 0.3s ease', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+      <div style={{ fontSize: 36 }}>{achievement.icon}</div>
+      <div>
+        <div style={{ fontFamily: 'var(--font-headline)', fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--primary-fixed)', marginBottom: 2 }}>Achievement Unlocked!</div>
+        <div style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>{achievement.title}</div>
+        <div style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>{achievement.desc}</div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== LEADERBOARD ====================
+// Simulated player data for the 4 users. In production, this comes from Supabase.
+function useLeaderboard(currentUser, currentPortfolio, stocks, crypto) {
+  const allAssets = [...(stocks || []), ...(crypto || [])];
+
+  // Simulate the other 3 players (stored in localStorage, updated periodically)
+  const [otherPlayers] = useState(() => {
+    const names = Object.keys(SQUAD_MEMBERS).filter(n => n !== currentUser);
+    return names.map(name => {
+      // Generate consistent simulated portfolios per player
+      const seed = name.length * 7 + name.charCodeAt(0);
+      const cash = 40000 + (seed * 137) % 30000;
+      const invested = 100000 - cash;
+      const gainPct = ((seed * 31) % 40) - 15; // -15% to +25%
+      const totalValue = 100000 + (100000 * gainPct / 100);
+      const trades = 5 + (seed * 3) % 30;
+      const topHolding = ['AAPL', 'NVDA', 'BTC', 'TSLA', 'GOOGL', 'META'][(seed * 2) % 6];
+      const worstTrade = ['TSLA', 'NKE', 'PFE', 'BA', 'DOT'][(seed * 4) % 5];
+      const bestTrade = ['NVDA', 'BTC', 'AMD', 'NFLX', 'SOL'][(seed * 5) % 5];
+      const bestReturn = 5 + (seed * 7) % 35;
+      const worstReturn = -3 - (seed * 2) % 20;
+
+      return {
+        name, cash, invested, totalValue,
+        gain: totalValue - 100000,
+        gainPct,
+        trades,
+        holdings: 2 + (seed % 4),
+        topHolding,
+        bestTrade: { symbol: bestTrade, returnPct: bestReturn },
+        worstTrade: { symbol: worstTrade, returnPct: worstReturn },
+        achievements: 2 + (seed % 6),
+        winRate: 40 + (seed * 3) % 40,
+      };
+    });
+  });
+
+  // Build current user's entry from real portfolio
+  const totalValue = currentPortfolio.cash + currentPortfolio.holdings.reduce((s, h) => {
+    const live = allAssets.find(a => a.symbol === h.symbol);
+    return s + (h.shares * (live ? live.price : h.currentPrice));
+  }, 0);
+  const totalGain = totalValue - 100000;
+  const bestH = currentPortfolio.holdings.length > 0 ? [...currentPortfolio.holdings].sort((a, b) => b.returnPercent - a.returnPercent)[0] : null;
+  const worstH = currentPortfolio.holdings.length > 0 ? [...currentPortfolio.holdings].sort((a, b) => a.returnPercent - b.returnPercent)[0] : null;
+  const wins = currentPortfolio.holdings.filter(h => h.gain > 0).length;
+  const total = currentPortfolio.holdings.length;
+
+  const currentEntry = {
+    name: currentUser, cash: currentPortfolio.cash, invested: 100000 - currentPortfolio.cash,
+    totalValue, gain: totalGain, gainPct: (totalGain / 100000) * 100,
+    trades: currentPortfolio.trades.length, holdings: currentPortfolio.holdings.length,
+    topHolding: bestH?.symbol || '--',
+    bestTrade: bestH ? { symbol: bestH.symbol, returnPct: bestH.returnPercent } : { symbol: '--', returnPct: 0 },
+    worstTrade: worstH ? { symbol: worstH.symbol, returnPct: worstH.returnPercent } : { symbol: '--', returnPct: 0 },
+    achievements: 0, // filled by parent
+    winRate: total > 0 ? Math.round((wins / total) * 100) : 0,
+    isYou: true,
+  };
+
+  const all = [currentEntry, ...otherPlayers].sort((a, b) => b.totalValue - a.totalValue);
+  all.forEach((p, i) => p.rank = i + 1);
+
+  return all;
+}
+
+function LeaderboardSection({ players, user }) {
+  return (
+    <div>
+      {/* Podium -- top 3 */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, justifyContent: 'center', alignItems: 'flex-end' }}>
+        {[1, 0, 2].map(idx => {
+          const p = players[idx];
+          if (!p) return null;
+          const isFirst = idx === 0;
+          const medals = ['🥇', '🥈', '🥉'];
+          const heights = [180, 220, 160];
+          const member = getSquadMember(p.name);
+          return (
+            <div key={p.name} style={{ textAlign: 'center', width: isFirst ? 180 : 150 }}>
+              <div style={{ height: heights[idx], background: `linear-gradient(to top, ${member.color}15, ${member.color}05)`, borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', border: `1px solid ${member.color}30`, borderBottom: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '16px 12px', position: 'relative' }}>
+                <div style={{ position: 'absolute', top: 12, fontSize: 28 }}>{medals[p.rank - 1]}</div>
+                <CharacterAvatar name={p.name} size={isFirst ? 72 : 56} style={{ marginBottom: 8 }} />
+                <div style={{ fontFamily: 'var(--font-headline)', fontSize: isFirst ? 14 : 12, fontWeight: 700, marginBottom: 4, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}{p.isYou ? ' (You)' : ''}</div>
+                <div style={{ fontFamily: 'var(--font-headline)', fontSize: isFirst ? 20 : 16, fontWeight: 900, color: p.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{p.gain >= 0 ? '+' : ''}{p.gainPct.toFixed(1)}%</div>
+                <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, color: 'var(--on-surface-variant)', marginTop: 2 }}>{formatCurrency(p.totalValue)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Full stats table */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table className="data-table">
+          <thead><tr><th>#</th><th>Player</th><th>Portfolio</th><th>Return</th><th>Trades</th><th>Win Rate</th><th>Best Move</th><th>Worst Move</th></tr></thead>
+          <tbody>
+            {players.map(p => {
+              const member = getSquadMember(p.name);
+              return (
+                <tr key={p.name} style={p.isYou ? { background: 'rgba(0,255,163,0.03)' } : {}}>
+                  <td style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 900, color: p.rank === 1 ? 'var(--primary-fixed)' : 'var(--on-surface-variant)' }}>{p.rank}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <CharacterAvatar name={p.name} size={40} />
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}{p.isYou ? ' (You)' : ''}</div>
+                        <div className="stock-name-text">{member.strategy}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 16 }}>{formatCurrency(p.totalValue)}</td>
+                  <td>
+                    <span className={`badge ${p.gain >= 0 ? 'badge-primary' : 'badge-error'}`} style={{ fontSize: 12 }}>{p.gain >= 0 ? '+' : ''}{p.gainPct.toFixed(1)}%</span>
+                  </td>
+                  <td style={{ fontFamily: 'var(--font-headline)' }}>{p.trades}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="ticker-progress" style={{ width: 48, height: 4 }}><div className="ticker-progress-fill" style={{ width: `${p.winRate}%` }}></div></div>
+                      <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 600 }}>{p.winRate}%</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: 'var(--primary-fixed)' }}>{p.bestTrade.symbol} +{p.bestTrade.returnPct.toFixed(0)}%</span>
+                  </td>
+                  <td>
+                    <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: 'var(--error)' }}>{p.worstTrade.symbol} {p.worstTrade.returnPct.toFixed(0)}%</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ==================== QUICK TRADE BUTTON ====================
+function QuickTradeBtn({ symbol, setActivePage }) {
+  return (
+    <button className="btn btn-ghost btn-sm" onClick={() => setActivePage('trade')} style={{ fontSize: 10 }}>
+      <Icon name="swap_vert" size={14} /> Trade {symbol}
+    </button>
+  );
+}
+
+// ==================== STOCK DETAIL PAGE ====================
+function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setNotification, onBack }) {
+  const allAssets = [...(stocks || []), ...(crypto || [])];
+  const asset = allAssets.find(a => a.symbol === symbol);
+  const holding = portfolio?.holdings?.find(h => h.symbol === symbol);
+  const [tradeType, setTradeType] = useState('BUY');
+  const [shares, setShares] = useState('');
+  const chartData = asset ? generateChartData(90, asset.price * 0.85) : [];
+  if (chartData.length && asset) chartData[chartData.length - 1].price = asset.price;
+  const total = asset ? parseFloat(shares || 0) * asset.price : 0;
+
+  const executeTrade = () => {
+    if (!asset || !shares || parseFloat(shares) <= 0) return;
+    const qty = parseFloat(shares), cost = qty * asset.price;
+    if (tradeType === 'BUY' && cost > portfolio.cash) { setNotification({ type: 'error', message: 'Not enough cash' }); return; }
+    const newTrade = { date: new Date().toLocaleDateString(), type: tradeType, symbol: asset.symbol, name: asset.name, shares: qty, price: asset.price, total: cost, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) };
+    let newHoldings = [...portfolio.holdings], newCash = portfolio.cash;
+    const idx = newHoldings.findIndex(h => h.symbol === asset.symbol);
+    if (tradeType === 'BUY') {
+      newCash -= cost;
+      if (idx >= 0) { const h = newHoldings[idx], ns = h.shares + qty, na = (h.avgCost * h.shares + cost) / ns; newHoldings[idx] = { ...h, shares: ns, avgCost: na, currentPrice: asset.price, value: ns * asset.price, gain: (asset.price - na) * ns, returnPercent: ((asset.price - na) / na) * 100 }; }
+      else newHoldings.push({ symbol: asset.symbol, name: asset.name, shares: qty, avgCost: asset.price, currentPrice: asset.price, value: cost, gain: 0, returnPercent: 0 });
+    } else {
+      if (idx < 0) { setNotification({ type: 'error', message: 'No position to sell' }); return; }
+      if (qty > newHoldings[idx].shares) { setNotification({ type: 'error', message: 'Not enough shares' }); return; }
+      newCash += cost;
+      const rem = newHoldings[idx].shares - qty;
+      if (rem === 0) newHoldings.splice(idx, 1);
+      else { const h = newHoldings[idx]; newHoldings[idx] = { ...h, shares: rem, value: rem * asset.price, gain: (asset.price - h.avgCost) * rem, returnPercent: ((asset.price - h.avgCost) / h.avgCost) * 100 }; }
+    }
+    setPortfolio({ ...portfolio, cash: newCash, holdings: newHoldings, trades: [...portfolio.trades, newTrade] });
+    setNotification({ type: 'success', message: `${tradeType} ${qty} ${asset.symbol} @ ${formatCurrency(asset.price)}` });
+    setShares('');
+  };
+
+  if (!asset) return <div className="empty-state"><Icon name="error" /><h3>Asset not found</h3><button className="btn btn-secondary" onClick={onBack}>Go Back</button></div>;
+
+  return (
+    <div>
+      <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginBottom: 24 }}><Icon name="arrow_back" size={16} /> Back</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <div className="stock-icon-badge" style={{ width: 48, height: 48, background: asset.change >= 0 ? 'rgba(0,255,163,0.15)' : 'rgba(255,113,108,0.15)', color: asset.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)', fontSize: 14 }}>{asset.symbol.slice(0, 2)}</div>
+            <div>
+              <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 700, letterSpacing: '-0.03em' }}>{asset.symbol}</h1>
+              <p className="text-muted">{asset.name} {asset.sector && <span className="badge badge-neutral" style={{ marginLeft: 8 }}>{asset.sector}</span>}</p>
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900 }}>{formatCurrency(asset.price)}</div>
+          <span className={`badge ${asset.change >= 0 ? 'badge-primary' : 'badge-error'}`} style={{ fontSize: 13, padding: '6px 16px' }}>
+            {asset.change >= 0 ? '+' : ''}{asset.changePercent.toFixed(2)}% today
+          </span>
+        </div>
+      </div>
+
+      <div className="two-col">
+        {/* Chart + Stats */}
+        <div>
+          <div className="card" style={{ marginBottom: 24 }}>
+            <NebulaChart data={chartData} height={280} />
+          </div>
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+            <div className="stat-card"><p className="stat-label">Market Cap</p><p className="stat-value" style={{ fontSize: 20 }}>{asset.marketCap || 'N/A'}</p></div>
+            <div className="stat-card"><p className="stat-label">24h Volume</p><p className="stat-value" style={{ fontSize: 20 }}>High</p></div>
+          </div>
+          {holding && (
+            <div className="card" style={{ marginTop: 24 }}>
+              <h3 className="section-title" style={{ marginBottom: 16 }}>Your Position</h3>
+              <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                  <span className="label-system">Shares</span>
+                  <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginTop: 4 }}>{holding.shares}</p>
+                </div>
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                  <span className="label-system">Avg Cost</span>
+                  <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginTop: 4 }}>{formatCurrency(holding.avgCost)}</p>
+                </div>
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                  <span className="label-system">Value</span>
+                  <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginTop: 4 }}>{formatCurrency(holding.value)}</p>
+                </div>
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                  <span className="label-system">P/L</span>
+                  <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginTop: 4, color: holding.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{holding.gain >= 0 ? '+' : ''}{formatCurrency(holding.gain)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Trade Panel */}
+        <div className="card">
+          <h3 className="section-title" style={{ marginBottom: 20 }}>Quick Trade</h3>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <button className={`btn ${tradeType === 'BUY' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff' } : {}) }} onClick={() => setTradeType('BUY')}>Buy</button>
+            <button className={`btn ${tradeType === 'SELL' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setTradeType('SELL')}>Sell</button>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="input-label">Shares</label>
+            <input className="input-field" type="number" placeholder="0" value={shares} onChange={e => setShares(e.target.value)} min="0" />
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              {[1, 5, 10, 25].map(a => <button key={a} className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => setShares(String(a))}>{a}</button>)}
+            </div>
+          </div>
+          <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="label-system">Total</span>
+              <span style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700 }}>{formatCurrency(total)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span className="label-system">Cash</span>
+              <span className="text-muted" style={{ fontFamily: 'var(--font-headline)', fontSize: 13 }}>{formatCurrency(portfolio?.cash || 0)}</span>
+            </div>
+          </div>
+          <button className="btn btn-primary" style={{ width: '100%', padding: 14, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff' } : {}) }} onClick={executeTrade}>
+            <Icon name={tradeType === 'BUY' ? 'rocket_launch' : 'sell'} size={18} />
+            {tradeType === 'BUY' ? 'Buy' : 'Sell'} {asset.symbol}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== HELPERS ====================
+function generateChartData(days = 30, startPrice = 100) {
+  const data = [];
+  let price = startPrice;
+  const now = Date.now();
+  for (let i = days; i >= 0; i--) {
+    price += (Math.random() - 0.48) * (price * 0.03);
+    price = Math.max(price * 0.5, price);
+    data.push({ date: new Date(now - i * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), price: parseFloat(price.toFixed(2)) });
+  }
+  return data;
+}
+
+function formatCurrency(val, dec = 2) {
+  return '$' + Number(val).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function formatCurrencySplit(val) {
+  const parts = Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).split('.');
+  return { whole: '$' + parts[0], decimal: '.' + parts[1] };
+}
+
+function Icon({ name, size, className, style }) {
+  return <span className={`material-symbols-outlined ${className || ''}`} style={{ ...(size ? { fontSize: size } : {}), ...(style || {}) }}>{name}</span>;
+}
+
+// ==================== SVG CHART ====================
+function NebulaChart({ data, height = 200 }) {
+  if (!data || data.length < 2) return null;
+  const prices = data.map(d => d.price);
+  const min = Math.min(...prices) * 0.998;
+  const max = Math.max(...prices) * 1.002;
+  const range = max - min || 1;
+  const w = 1000, h = 200;
+  const isUp = prices[prices.length - 1] >= prices[0];
+  const color = isUp ? '#00FFA3' : '#ff716c';
+  const pts = prices.map((p, i) => `${(i / (prices.length - 1)) * w},${h - ((p - min) / range) * h}`);
+  const areaPath = `M0,${h} L${pts.join(' L')} L${w},${h} Z`;
+  const lastX = w;
+  const lastY = h - ((prices[prices.length - 1] - min) / range) * h;
+
+  return (
+    <div className="chart-container" style={{ height }}>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill="url(#chartGrad)" />
+        <polyline fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={pts.join(' ')} />
+        <circle cx={lastX} cy={lastY} r="5" fill={color} />
+        <circle cx={lastX} cy={lastY} r="12" fill={color} fillOpacity="0.2" />
+      </svg>
+    </div>
+  );
+}
+
+function Sparkline({ data, color = '#00FFA3', width = 80, height = 32 }) {
+  if (!data || data.length < 2) return null;
+  const min = Math.min(...data), max = Math.max(...data), range = max - min || 1;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * width},${height - ((v - min) / range) * (height - 4) - 2}`).join(' ');
+  return <svg width={width} height={height}><polyline fill="none" stroke={color} strokeWidth="1.5" points={points} /></svg>;
+}
+
+// ==================== ADMIN CONFIG ====================
+const ADMIN_SECRET = 'rocketadmin'; // Secret password for admin access
+
+// ==================== LOGIN PAGE ====================
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (username.trim()) {
+      const isAdmin = password === ADMIN_SECRET;
+      onLogin(username.trim(), isAdmin);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-container">
+        <div className="login-logo">
+          <div className="rocket-icon" style={{ fontSize: 32 }}>🚀</div>
+          <h1>STOCK<span>ROCKET</span></h1>
+        </div>
+        <p className="login-subtitle">Learn. Trade. Launch Your Portfolio.</p>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <div>
+            <div className="login-field-header"><label className="input-label">Your_Name</label></div>
+            <input className="input-field" type="text" placeholder="Ella" value={username} onChange={e => setUsername(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <div className="login-field-header">
+              <label className="input-label">Password</label>
+              <a href="#" className="recover-link">Recover_Key</a>
+            </div>
+            <input className="input-field" type="password" placeholder="Optional" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <label className="login-checkbox"><input type="checkbox" /> Remember me</label>
+          <button type="submit" className="login-btn">Launch In <Icon name="north_east" size={18} /></button>
+          <div className="login-divider">Quick Start</div>
+          <div className="login-alt-btns">
+            <button type="button" className="login-alt-btn" onClick={() => onLogin('Ella', false)}><span style={{ fontSize: 16 }}>🐱</span> Play as Ella</button>
+            <button type="button" className="login-alt-btn" onClick={() => onLogin('Milburn Pennybags', true)}><span style={{ fontSize: 16 }}>🎩</span> Admin Login</button>
+          </div>
+        </form>
+        <div className="login-footer">
+          <span style={{ color: 'var(--primary-fixed)' }}>{'\u25CF'}</span> System Status Optimal {' \u00B7 '} <a href="#">Privacy</a> {' \u00B7 '} <a href="#">Terms</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== HEADER ====================
+function Header({ activePage, setActivePage, user, onMenuToggle }) {
+  return (
+    <header className="app-header">
+      <div className="header-left">
+        <button className="mobile-menu-btn" onClick={onMenuToggle}><Icon name="menu" /></button>
+        <div className="header-logo" onClick={() => setActivePage('dashboard')}>STOCK_ROCKET</div>
+        <nav className="header-nav">
+          {['dashboard', 'portfolio', 'trade'].map(p => (
+            <a key={p} className={activePage === p ? 'active' : ''} onClick={() => setActivePage(p)}>{p}</a>
+          ))}
+        </nav>
+      </div>
+      <div className="header-right">
+        <CharacterAvatar name={user} size={38} style={{ borderRadius: 'var(--radius-full)' }} />
+      </div>
+    </header>
+  );
+}
+
+// ==================== SIDEBAR ====================
+function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin }) {
+  const navItems = [
+    { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+    { id: 'portfolio', icon: 'account_balance', label: 'Portfolio' },
+    { id: 'trade', icon: 'swap_vert', label: 'Trade' },
+    { id: 'market', icon: 'show_chart', label: 'Markets' },
+    { id: 'crypto', icon: 'currency_bitcoin', label: 'Crypto' },
+    { id: 'leaderboard', icon: 'emoji_events', label: 'Leaderboard' },
+    { id: 'chat', icon: 'chat_bubble', label: 'Chat' },
+    { id: 'report', icon: 'summarize', label: 'Weekly Report' },
+  ];
+  const learnItems = [
+    { id: 'learn', icon: 'school', label: 'Academy' },
+    { id: 'insights', icon: 'insights', label: 'Trader Insights' },
+  ];
+  const handleNav = (id) => { setActivePage(id); if (onClose) onClose(); };
+
+  return (
+    <aside className={`app-sidebar ${className || ''}`}>
+      <div className="sidebar-user-card">
+        <CharacterAvatar name={user} size={48} />
+        <div>
+          <div className="sidebar-user-name">{user || 'Ella_Cat'}</div>
+          <div className="sidebar-user-tier">{isAdmin ? 'Admin_Mode' : 'Rocket_Cadet'}</div>
+        </div>
+      </div>
+      <nav className="sidebar-nav">
+        {navItems.map(item => (
+          <button key={item.id} className={`sidebar-nav-item ${activePage === item.id ? 'active' : ''}`} onClick={() => handleNav(item.id)}>
+            <Icon name={item.icon} /> {item.label}
+          </button>
+        ))}
+        <div className="sidebar-section-label">Learn</div>
+        {learnItems.map(item => (
+          <button key={item.id} className={`sidebar-nav-item ${activePage === item.id ? 'active' : ''}`} onClick={() => handleNav(item.id)}>
+            <Icon name={item.icon} /> {item.label}
+          </button>
+        ))}
+        {isAdmin && <>
+          <div className="sidebar-section-label" style={{ color: 'var(--error)' }}>Admin</div>
+          <button className={`sidebar-nav-item ${activePage === 'admin' ? 'active' : ''}`} onClick={() => handleNav('admin')} style={activePage === 'admin' ? { borderRightColor: 'var(--error)', background: 'rgba(255,113,108,0.1)', color: 'var(--error)' } : {}}>
+            <Icon name="admin_panel_settings" /> Command Center
+          </button>
+        </>}
+      </nav>
+      <div className="sidebar-bottom">
+
+      </div>
+    </aside>
+  );
+}
+
+// ==================== DASHBOARD ====================
+function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achievementsUnlocked, achievementsTotal, leaderboard }) {
+  const [chartPeriod, setChartPeriod] = useState('1M');
+  const allAssets = [...(stocks || []), ...(crypto || [])];
+  // Recalculate holdings with current prices
+  const holdings = portfolio.holdings.map(h => {
+    const live = allAssets.find(a => a.symbol === h.symbol);
+    const currentPrice = live ? live.price : h.currentPrice;
+    const value = h.shares * currentPrice;
+    const gain = (currentPrice - h.avgCost) * h.shares;
+    return { ...h, currentPrice, value, gain, returnPercent: h.avgCost > 0 ? ((currentPrice - h.avgCost) / h.avgCost) * 100 : 0 };
+  });
+  const totalInvested = holdings.reduce((sum, h) => sum + (h.avgCost * h.shares), 0);
+  const totalValue = portfolio.cash + holdings.reduce((sum, h) => sum + h.value, 0);
+  const totalGain = holdings.reduce((sum, h) => sum + h.gain, 0);
+  const totalGainPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
+  const periodDays = { '1D': 1, '1W': 7, '1M': 30, '1Y': 365 };
+  const chartData = generateChartData(periodDays[chartPeriod] || 30, totalValue * 0.92);
+  chartData[chartData.length - 1].price = totalValue;
+  const topMovers = [...stocks].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 5);
+  const randomInsight = TRADER_INSIGHTS.length > 0 ? TRADER_INSIGHTS[Math.floor(Date.now() / 86400000) % TRADER_INSIGHTS.length] : 'Markets reward patience.';
+  const { whole, decimal } = formatCurrencySplit(totalValue);
+  const market = useMarketCountdown();
+
+  return (
+    <div>
+      <header style={{ marginBottom: 40, display: 'flex', alignItems: 'center', gap: 24 }}>
+        <CharacterAvatar name={user} size={80} style={{ borderRadius: 'var(--radius-xl)', flexShrink: 0 }} />
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 4vw, 48px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 4 }}>
+            Welcome back, <span className="text-primary">{user}</span>.
+          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 'var(--radius-full)', background: market.isOpen ? 'rgba(0,255,163,0.1)' : 'rgba(255,113,108,0.1)', border: market.isOpen ? '1px solid rgba(0,255,163,0.2)' : '1px solid rgba(255,113,108,0.2)' }}>
+              <span className="pulse-dot" style={{ background: market.isOpen ? 'var(--primary-fixed)' : 'var(--error)' }}></span>
+              <span style={{ fontFamily: 'var(--font-headline)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: market.isOpen ? 'var(--primary-fixed)' : 'var(--error)' }}>{market.label}</span>
+            </span>
+            <span className="text-muted" style={{ fontSize: 12 }}>{market.countdown}</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="bento-grid">
+        {/* Portfolio Spotlight */}
+        <section className="card portfolio-spotlight bento-col-8" style={{ padding: 32 }}>
+          <div className="ambient-glow"></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1, flexWrap: 'wrap', gap: 16 }}>
+            <div>
+              <p className="stat-label" style={{ marginBottom: 8 }}>Total Net Liquidity</p>
+              <h2 className="stat-value lg" style={{ margin: 0 }}>{whole}<span className="decimal">{decimal}</span></h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+                <span className={`badge ${totalGain >= 0 ? 'badge-primary' : 'badge-error'}`}><Icon name={totalGain >= 0 ? 'trending_up' : 'trending_down'} size={14} /> {totalGain >= 0 ? '+' : ''}{totalGainPct.toFixed(1)}%</span>
+                <span className="label-system">{holdings.length} Position{holdings.length !== 1 ? 's' : ''} Active</span>
+              </div>
+            </div>
+            <div className="time-filters">
+              {['1D', '1W', '1M', '1Y'].map(p => (
+                <button key={p} className={`time-filter ${chartPeriod === p ? 'active' : ''}`} onClick={() => setChartPeriod(p)}>{p}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginTop: 48 }}><NebulaChart data={chartData} height={220} /></div>
+        </section>
+
+        {/* Quick Stats */}
+        <div className="bento-col-4" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div className="stat-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div className="stat-icon primary"><Icon name="account_balance" /></div>
+              <span className="label-system">Available_Cash</span>
+            </div>
+            <p className="stat-value">{formatCurrency(portfolio.cash)}</p>
+            <p className="text-muted" style={{ fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}><span className="pulse-dot"></span> Ready to trade</p>
+          </div>
+          <div className="stat-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div className="stat-icon secondary"><Icon name="insights" /></div>
+              <span className="label-system">Total_P/L</span>
+            </div>
+            <p className={`stat-value ${totalGain >= 0 ? 'text-primary' : 'text-error'}`}>{totalGain >= 0 ? '+' : '-'}{formatCurrency(Math.abs(totalGain))}</p>
+            <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>{totalGainPct >= 0 ? '+' : ''}{totalGainPct.toFixed(2)}% all time</p>
+          </div>
+          <div className="insight-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <Icon name="format_quote" size={24} className="text-primary" />
+            <p className="insight-quote" style={{ marginTop: 12 }}>"{randomInsight}"</p>
+            <p className="insight-author">-- Daily Insight</p>
+          </div>
+        </div>
+
+        {/* Achievements */}
+        {achievementsUnlocked && (
+          <section className="bento-col-12">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 className="section-title">Achievements <span className="dot"></span></h3>
+              <span className="label-system">{achievementsUnlocked.length} / {achievementsTotal}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {ACHIEVEMENTS.map(a => {
+                const earned = achievementsUnlocked.includes(a.id);
+                return (
+                  <div key={a.id} title={a.desc} style={{ padding: '8px 14px', borderRadius: 'var(--radius-lg)', background: earned ? 'rgba(0,255,163,0.1)' : 'var(--surface-container-high)', border: earned ? '1px solid rgba(0,255,163,0.2)' : '1px solid rgba(73,72,71,0.1)', opacity: earned ? 1 : 0.4, display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
+                    <span style={{ fontSize: 18 }}>{a.icon}</span>
+                    <span style={{ fontFamily: 'var(--font-headline)', fontSize: 11, fontWeight: 600 }}>{a.title}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Your Holdings */}
+        {holdings.length > 0 && (
+          <section className="bento-col-12 card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 className="section-title">Your Holdings <span className="dot"></span></h3>
+              <span className="label-system">{holdings.length} position{holdings.length !== 1 ? 's' : ''} -- {formatCurrency(totalInvested)} invested</span>
+            </div>
+            <table className="data-table">
+              <thead><tr><th>Asset</th><th>Shares</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>P/L</th></tr></thead>
+              <tbody>
+                {holdings.map(h => (
+                  <tr key={h.symbol} style={{ cursor: 'pointer' }} onClick={() => setStockDetail && setStockDetail(h.symbol)}>
+                    <td><div className="stock-symbol-text" style={{ color: 'var(--primary-fixed)' }}>{h.symbol}</div><div className="stock-name-text">{h.name}</div></td>
+                    <td style={{ fontFamily: 'var(--font-headline)' }}>{h.shares}</td>
+                    <td style={{ fontFamily: 'var(--font-headline)' }}>{formatCurrency(h.avgCost)}</td>
+                    <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(h.currentPrice)}</td>
+                    <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(h.value)}</td>
+                    <td><span className={`badge ${h.gain >= 0 ? 'badge-primary' : 'badge-error'}`}>{h.gain >= 0 ? '+' : ''}{formatCurrency(h.gain)} ({h.returnPercent.toFixed(1)}%)</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {/* Movers */}
+        <section className="bento-col-12">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+            <h3 className="section-title">Today's Movers <span className="dot"></span></h3>
+
+          </div>
+          <div className="movers-grid">
+            {topMovers.map(s => (
+              <div key={s.symbol} className="ticker-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div className="ticker-symbol-box">{s.symbol}</div>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: s.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>
+                    {s.change >= 0 ? '+' : ''}{s.changePercent.toFixed(1)}%
+                  </span>
+                </div>
+                <p style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>{formatCurrency(s.price)}</p>
+                <div className="ticker-progress">
+                  <div className={`ticker-progress-fill ${s.change < 0 ? 'negative' : ''}`} style={{ width: `${Math.min(Math.abs(s.changePercent) * 15, 100)}%` }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Watchlist */}
+        <section className="bento-col-12 card" style={{ padding: 0 }}>
+          <div style={{ padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="label-system" style={{ fontSize: 14, letterSpacing: '0.1em' }}>Terminal Watchlist</h3>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <div className="input-with-icon">
+                <Icon name="search" />
+                <input className="input-field" placeholder="Search signals..." style={{ width: 192, padding: '8px 12px 8px 40px', fontSize: 12 }} />
+              </div>
+              <button className="btn-icon"><Icon name="add" /></button>
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead><tr><th>Instrument</th><th>Last Price</th><th>Market Cap</th><th>Sentiment Signal</th><th>Action</th></tr></thead>
+              <tbody>
+                {[...MOCK_CRYPTO.slice(0, 3), ...stocks.slice(0, 2)].map(s => {
+                  const sentiment = s.changePercent > 2 ? 'Strong_Buy' : s.changePercent > 0 ? 'Stable' : s.changePercent > -2 ? 'Hold' : 'Caution';
+                  const cls = s.changePercent > 2 ? 'badge-primary' : s.changePercent > 0 ? 'badge-secondary' : s.changePercent > -2 ? 'badge-neutral' : 'badge-error';
+                  return (
+                    <tr key={s.symbol}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div className="stock-icon-badge" style={{ background: 'rgba(114,220,255,0.15)', color: 'var(--tertiary)' }}>{s.symbol.slice(0, 2)}</div>
+                          <div><div className="stock-symbol-text">{s.name}</div><div className="stock-name-text">{'marketCap' in s && s.price > 1000 ? 'Crypto_Asset' : 'Equity_Asset'}</div></div>
+                        </div>
+                      </td>
+                      <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</td>
+                      <td className="text-muted">{s.marketCap || 'N/A'}</td>
+                      <td><span className={`badge ${cls}`}><span className="badge-dot glow"></span> {sentiment}</span></td>
+                      <td><button className="btn btn-ghost btn-sm">Execute</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ==================== PORTFOLIO ====================
+function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
+  const totalValue = portfolio.cash + portfolio.holdings.reduce((sum, h) => sum + h.value, 0);
+  const totalGain = portfolio.holdings.reduce((sum, h) => sum + h.gain, 0);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <CharacterAvatar name={user} size={72} style={{ borderRadius: 'var(--radius-xl)', flexShrink: 0 }} />
+          <div>
+            <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 4 }}>{user ? user.toUpperCase() + "'S" : 'YOUR'}_PORTFOLIO</h1>
+            <p className="text-muted" style={{ fontSize: 14 }}>Real-time asset distribution and technical performance analysis.</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm">Overview</button>
+          <button className="btn btn-secondary btn-sm">Analytics</button>
+          <button className="btn btn-secondary btn-sm">Reports</button>
+        </div>
+      </div>
+      <div className="stats-grid" style={{ marginBottom: 32 }}>
+        <div className="stat-card"><p className="stat-label">Total_Portfolio_Value</p><p className="stat-value">{formatCurrency(totalValue)}</p><div style={{ display: 'flex', gap: 12, marginTop: 8 }}><span className="stat-change positive">+{formatCurrency(Math.abs(totalGain))}</span><span className="stat-change positive">+{((totalValue - 100000) / 100000 * 100).toFixed(2)}%</span></div></div>
+        <div className="stat-card"><p className="stat-label">Cash_Balance</p><p className="stat-value">{formatCurrency(portfolio.cash)}</p></div>
+        <div className="stat-card"><p className="stat-label">Risk_Score</p><p className="stat-value text-secondary">Low_Moderate</p></div>
+      </div>
+      <h3 className="section-title" style={{ marginBottom: 20 }}>Active_Holdings</h3>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        {portfolio.holdings.length === 0 ? (
+          <div className="empty-state"><Icon name="rocket_launch" /><h3>No holdings yet</h3><p>Head to the Trade page to make your first investment</p></div>
+        ) : (
+          <table className="data-table">
+            <thead><tr><th>Asset_Name</th><th>Shares</th><th>Price</th><th>Total</th><th>P/L</th><th>Action</th></tr></thead>
+            <tbody>
+              {portfolio.holdings.map(h => (
+                <tr key={h.symbol}>
+                  <td><div className="stock-symbol-text">{h.symbol}</div><div className="stock-name-text">{h.name}</div></td>
+                  <td style={{ fontFamily: 'var(--font-headline)' }}>{h.shares}</td>
+                  <td style={{ fontFamily: 'var(--font-headline)' }}>{formatCurrency(h.currentPrice)}</td>
+                  <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(h.value)}</td>
+                  <td><span className={`badge ${h.gain >= 0 ? 'badge-primary' : 'badge-error'}`}>{h.gain >= 0 ? '+' : ''}{formatCurrency(h.gain)} ({h.returnPercent.toFixed(1)}%)</span></td>
+                  <td><button className="btn btn-ghost btn-sm">Execute</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <div className="two-col" style={{ marginTop: 32 }}>
+        <div>
+          <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="history" size={20} /> Recent_Activity</h3>
+          <div className="card">
+            {portfolio.trades.slice(-4).reverse().map((t, i) => (
+              <div key={i} className="stock-row">
+                <div className="stock-icon-badge" style={{ background: t.type === 'BUY' ? 'rgba(255,113,108,0.15)' : 'rgba(0,255,163,0.15)', color: t.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)' }}>
+                  <Icon name={t.type === 'BUY' ? 'arrow_downward' : 'arrow_upward'} size={16} />
+                </div>
+                <div className="stock-info"><div className="stock-symbol-text">{t.type} {t.symbol}</div><div className="stock-name-text">{t.shares} shares @ {formatCurrency(t.price)}</div></div>
+                <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, color: t.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)' }}>{t.type === 'BUY' ? '-' : '+'}{formatCurrency(t.total)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="auto_awesome" size={20} /> Portfolio_Analysis</h3>
+          {(() => {
+            const totalVal = portfolio.cash + portfolio.holdings.reduce((s, h) => s + h.value, 0);
+            const totalInvested = portfolio.holdings.reduce((s, h) => s + (h.avgCost * h.shares), 0);
+            const totalGainAmt = portfolio.holdings.reduce((s, h) => s + h.gain, 0);
+            const winCount = portfolio.holdings.filter(h => h.gain > 0).length;
+            const loseCount = portfolio.holdings.filter(h => h.gain < 0).length;
+            const bestHolding = portfolio.holdings.length > 0 ? [...portfolio.holdings].sort((a, b) => b.returnPercent - a.returnPercent)[0] : null;
+            const worstHolding = portfolio.holdings.length > 0 ? [...portfolio.holdings].sort((a, b) => a.returnPercent - b.returnPercent)[0] : null;
+            const sectorMap = {};
+            portfolio.holdings.forEach(h => {
+              const stock = stocks.find(s => s.symbol === h.symbol);
+              const sector = stock?.sector || 'Other';
+              sectorMap[sector] = (sectorMap[sector] || 0) + h.value;
+            });
+            return (
+              <div className="card" style={{ padding: 24 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                  <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                    <span className="label-system">Total Invested</span>
+                    <p style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700, marginTop: 4 }}>{formatCurrency(totalInvested)}</p>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                    <span className="label-system">Total Return</span>
+                    <p style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700, marginTop: 4, color: totalGainAmt >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{totalGainAmt >= 0 ? '+' : ''}{formatCurrency(totalGainAmt)}</p>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                    <span className="label-system">Win / Loss</span>
+                    <p style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700, marginTop: 4 }}><span className="text-primary">{winCount}</span> / <span className="text-error">{loseCount}</span></p>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                    <span className="label-system">Total Trades</span>
+                    <p style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700, marginTop: 4 }}>{portfolio.trades.length}</p>
+                  </div>
+                </div>
+                {bestHolding && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid rgba(73,72,71,0.05)' }}>
+                  <span className="label-system">Best Performer</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, color: 'var(--primary-fixed)' }}>{bestHolding.symbol} +{bestHolding.returnPercent.toFixed(1)}%</span>
+                </div>}
+                {worstHolding && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid rgba(73,72,71,0.05)' }}>
+                  <span className="label-system">Worst Performer</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, color: 'var(--error)' }}>{worstHolding.symbol} {worstHolding.returnPercent.toFixed(1)}%</span>
+                </div>}
+                {Object.keys(sectorMap).length > 0 && <>
+                  <div style={{ padding: '10px 0 4px', borderTop: '1px solid rgba(73,72,71,0.05)' }}><span className="label-system">Sector Allocation</span></div>
+                  {Object.entries(sectorMap).sort((a, b) => b[1] - a[1]).map(([sector, val]) => (
+                    <div key={sector} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                      <span style={{ fontSize: 13, flex: 1 }}>{sector}</span>
+                      <div className="ticker-progress" style={{ flex: 2, height: 4 }}><div className="ticker-progress-fill" style={{ width: `${(val / totalVal) * 100}%` }}></div></div>
+                      <span style={{ fontSize: 11, fontFamily: 'var(--font-headline)', fontWeight: 600, width: 40, textAlign: 'right' }}>{((val / totalVal) * 100).toFixed(0)}%</span>
+                    </div>
+                  ))}
+                </>}
+                {portfolio.holdings.length === 0 && <p className="text-muted" style={{ fontSize: 14, textAlign: 'center', padding: 16 }}>Make your first trade to see portfolio analysis here.</p>}
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== TRADE ====================
+function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAsset, setSelectedAsset] = useState(stocks[0]);
+  const [tradeType, setTradeType] = useState('BUY');
+  const [shares, setShares] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [orderType, setOrderType] = useState('market'); // market, limit
+  const [limitPrice, setLimitPrice] = useState('');
+  const [showSuccess, setShowSuccess] = useState(null);
+
+  const allAssets = [...stocks, ...crypto];
+  const filtered = searchTerm ? allAssets.filter(a => a.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || a.name.toLowerCase().includes(searchTerm.toLowerCase())) : allAssets;
+  const execPrice = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : (selectedAsset?.price || 0);
+  const total = selectedAsset ? parseFloat(shares || 0) * execPrice : 0;
+  const chartData = selectedAsset ? generateChartData(30, selectedAsset.price * 0.95) : [];
+  if (chartData.length && selectedAsset) chartData[chartData.length - 1].price = selectedAsset.price;
+
+  // Quick-buy preset amounts
+  const quickAmounts = [1, 5, 10, 25];
+  const existing = selectedAsset ? portfolio.holdings.find(h => h.symbol === selectedAsset.symbol) : null;
+
+  const validateTrade = () => {
+    if (!shares || parseFloat(shares) <= 0) { setNotification({ type: 'error', message: 'Enter a valid number of shares' }); return false; }
+    if (!selectedAsset) { setNotification({ type: 'error', message: 'Select an asset first' }); return false; }
+    const qty = parseFloat(shares);
+    if (tradeType === 'BUY' && total > portfolio.cash) { setNotification({ type: 'error', message: `Not enough cash! You need ${formatCurrency(total)} but have ${formatCurrency(portfolio.cash)}` }); return false; }
+    if (tradeType === 'SELL') {
+      if (!existing) { setNotification({ type: 'error', message: `You don't own any ${selectedAsset.symbol} to sell` }); return false; }
+      if (qty > existing.shares) { setNotification({ type: 'error', message: `You only have ${existing.shares} shares of ${selectedAsset.symbol}` }); return false; }
+    }
+    return true;
+  };
+
+  const handleTradeClick = () => { if (validateTrade()) setShowConfirm(true); };
+
+  const executeTrade = () => {
+    setShowConfirm(false);
+    const qty = parseFloat(shares), cost = qty * execPrice;
+    const newTrade = { date: new Date().toLocaleDateString(), type: tradeType, symbol: selectedAsset.symbol, name: selectedAsset.name, shares: qty, price: execPrice, total: cost, orderType, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) };
+    const existingIdx = portfolio.holdings.findIndex(h => h.symbol === selectedAsset.symbol);
+    let newHoldings = [...portfolio.holdings], newCash = portfolio.cash;
+
+    if (tradeType === 'BUY') {
+      newCash -= cost;
+      if (existingIdx >= 0) {
+        const h = newHoldings[existingIdx], ns = h.shares + qty, na = (h.avgCost * h.shares + cost) / ns;
+        newHoldings[existingIdx] = { ...h, shares: ns, avgCost: na, currentPrice: execPrice, value: ns * execPrice, gain: (execPrice - na) * ns, returnPercent: ((execPrice - na) / na) * 100 };
+      } else {
+        newHoldings.push({ symbol: selectedAsset.symbol, name: selectedAsset.name, shares: qty, avgCost: execPrice, currentPrice: execPrice, value: cost, gain: 0, returnPercent: 0 });
+      }
+    } else {
+      const h = newHoldings[existingIdx];
+      newCash += cost;
+      const rem = h.shares - qty;
+      if (rem === 0) newHoldings.splice(existingIdx, 1);
+      else newHoldings[existingIdx] = { ...h, shares: rem, value: rem * execPrice, gain: (execPrice - h.avgCost) * rem, returnPercent: ((execPrice - h.avgCost) / h.avgCost) * 100 };
+    }
+
+    setPortfolio({ ...portfolio, cash: newCash, holdings: newHoldings, trades: [...portfolio.trades, newTrade] });
+    setShowSuccess(newTrade);
+    setShares('');
+    setLimitPrice('');
+    setTimeout(() => setShowSuccess(null), 4000);
+  };
+
+  // Educational tip based on current action
+  const getTip = () => {
+    if (tradeType === 'BUY' && total > portfolio.cash * 0.5) return { icon: 'warning', text: "Careful! This trade would use more than half your cash. Diversification means spreading your money across different stocks to reduce risk." };
+    if (tradeType === 'BUY') return { icon: 'lightbulb', text: "When you buy a stock, you're buying a tiny piece of that company. If the company does well, your piece becomes more valuable!" };
+    if (tradeType === 'SELL' && existing && existing.gain > 0) return { icon: 'celebration', text: `Nice! You're in profit on ${selectedAsset.symbol}. Selling at a gain is called 'taking profits'. Some traders sell a portion and keep the rest.` };
+    if (tradeType === 'SELL' && existing && existing.gain < 0) return { icon: 'info', text: `Selling at a loss is called 'cutting losses'. Sometimes it's smart to sell a loser to free up cash for better opportunities.` };
+    return { icon: 'school', text: "Paper trading lets you practice with fake money so you can learn without any risk. Every trade here works exactly like the real stock market!" };
+  };
+  const tip = getTip();
+
+  return (
+    <div>
+      <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 8 }}>Trade Terminal</h1>
+      <p className="text-muted" style={{ fontSize: 14, marginBottom: 32 }}>Cash available: {formatCurrency(portfolio.cash)}</p>
+
+      {/* Success Toast */}
+      {showSuccess && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }} />
+          <div style={{ position: 'relative', textAlign: 'center', padding: '48px 64px', maxWidth: 420 }}>
+            {/* Celebration particles */}
+            <div style={{ position: 'absolute', inset: -40, overflow: 'hidden', pointerEvents: 'none' }}>
+              {['🚀','💰','📈','💎','⚡','🎯','🔥','💪'].map((e, i) => (
+                <span key={i} style={{ position: 'absolute', fontSize: 24, left: `${10 + (i * 12)}%`, top: '-20px', animation: `fall ${1.5 + Math.random()}s ease-in forwards`, animationDelay: `${i * 0.1}s`, opacity: 0 }}>{e}</span>
+              ))}
+            </div>
+            <div style={{ fontSize: 64, marginBottom: 16, animation: 'bounceIn 0.5s ease' }}>{showSuccess.type === 'BUY' ? '🚀' : '💰'}</div>
+            <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900, marginBottom: 8, color: 'var(--on-surface)' }}>
+              {showSuccess.type === 'BUY' ? 'Purchase Complete!' : 'Sale Complete!'}
+            </h2>
+            <p style={{ fontSize: 16, color: 'var(--on-surface-variant)', marginBottom: 16 }}>
+              {showSuccess.type === 'BUY' ? 'Bought' : 'Sold'} <strong>{showSuccess.shares} {showSuccess.symbol}</strong> @ {formatCurrency(showSuccess.price)}
+            </p>
+            <div style={{ padding: 20, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-xl)', marginBottom: 20, border: `1px solid ${showSuccess.type === 'BUY' ? 'rgba(255,113,108,0.3)' : 'rgba(0,255,163,0.3)'}` }}>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900, color: showSuccess.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)' }}>
+                {showSuccess.type === 'BUY' ? '-' : '+'}{formatCurrency(showSuccess.total)}
+              </div>
+            </div>
+            <p className="text-muted" style={{ fontSize: 12 }}>Saved to your portfolio</p>
+          </div>
+        </div>
+      )}
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes bounceIn { 0% { transform: scale(0); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        @keyframes fall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(400px) rotate(720deg); opacity: 0; } }
+      `}</style>
+
+      <div className="two-col">
+        {/* Left: Asset Browser + Chart */}
+        <div>
+          <div className="card" style={{ marginBottom: 24 }}>
+            <div className="input-with-icon" style={{ marginBottom: 20 }}><Icon name="search" /><input className="input-field" placeholder="Search stocks & crypto..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
+            <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+              {filtered.slice(0, 10).map(a => {
+                const owned = portfolio.holdings.find(h => h.symbol === a.symbol);
+                return (
+                  <div key={a.symbol} className="stock-row" style={{ cursor: 'pointer', padding: '12px 8px', borderRadius: 'var(--radius-lg)', background: selectedAsset?.symbol === a.symbol ? 'rgba(0,255,163,0.08)' : 'transparent' }} onClick={() => { setSelectedAsset(a); setShares(''); }}>
+                    <div className="stock-icon-badge" style={{ background: a.change >= 0 ? 'rgba(0,255,163,0.15)' : 'rgba(255,113,108,0.15)', color: a.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{a.symbol.slice(0, 2)}</div>
+                    <div className="stock-info">
+                      <div className="stock-symbol-text">{a.symbol} {owned && <span style={{ fontSize: 10, color: 'var(--secondary)' }}>({owned.shares} owned)</span>}</div>
+                      <div className="stock-name-text">{a.name}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(a.price)}</div>
+                      <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, color: a.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{a.change >= 0 ? '+' : ''}{a.changePercent.toFixed(2)}%</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {selectedAsset && (
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700 }}>{selectedAsset.symbol}</div>
+                  <div className="stock-name-text">{selectedAsset.name}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 700 }}>{formatCurrency(selectedAsset.price)}</div>
+                  <span className={`badge ${selectedAsset.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{selectedAsset.change >= 0 ? '+' : ''}{selectedAsset.changePercent.toFixed(2)}%</span>
+                </div>
+              </div>
+              <NebulaChart data={chartData} height={180} />
+              {existing && (
+                <div style={{ marginTop: 16, padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span className="label-system">Your_Position</span>
+                    <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{existing.shares} shares @ {formatCurrency(existing.avgCost)} avg</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
+                    <span className="label-system">P/L</span>
+                    <span className={existing.gain >= 0 ? 'text-primary' : 'text-error'} style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>
+                      {existing.gain >= 0 ? '+' : ''}{formatCurrency(existing.gain)} ({existing.returnPercent.toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right: Order Form */}
+        <div>
+          <div className="card">
+            <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="receipt_long" size={20} /> Place Order</h3>
+
+            {/* Buy/Sell Toggle */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              <button className={`btn ${tradeType === 'BUY' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', boxShadow: '0 0 20px rgba(255,113,108,0.3)', color: '#fff' } : {}) }} onClick={() => setTradeType('BUY')}>
+                <Icon name="add_circle" size={16} /> Buy
+              </button>
+              <button className={`btn ${tradeType === 'SELL' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setTradeType('SELL')}>
+                <Icon name="remove_circle" size={16} /> Sell
+              </button>
+            </div>
+
+            {selectedAsset && <>
+              {/* Asset display */}
+              <div style={{ marginBottom: 16 }}>
+                <label className="input-label">Asset</label>
+                <div className="input-field" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }}>
+                  <div className="stock-icon-badge" style={{ width: 24, height: 24, fontSize: 8, background: 'rgba(0,255,163,0.15)', color: 'var(--primary-fixed)' }}>{selectedAsset.symbol.slice(0, 2)}</div>
+                  <span style={{ fontWeight: 700 }}>{selectedAsset.symbol}</span>
+                  <span className="text-muted" style={{ fontSize: 12 }}>{selectedAsset.name}</span>
+                </div>
+              </div>
+
+              {/* Order Type */}
+              <div style={{ marginBottom: 16 }}>
+                <label className="input-label">Order_Type</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className={`btn btn-sm ${orderType === 'market' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'market' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} onClick={() => setOrderType('market')}>Market</button>
+                  <button className={`btn btn-sm ${orderType === 'limit' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'limit' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} onClick={() => setOrderType('limit')}>Limit</button>
+                </div>
+                <p className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+                  {orderType === 'market' ? 'Market order: buy/sell at the current price right now' : 'Limit order: set the max price you\'re willing to pay (or min to sell at)'}
+                </p>
+              </div>
+
+              {/* Limit Price (only for limit orders) */}
+              {orderType === 'limit' && (
+                <div style={{ marginBottom: 16 }}>
+                  <label className="input-label">{tradeType === 'BUY' ? 'Max_Price' : 'Min_Price'}</label>
+                  <input className="input-field" type="number" placeholder={formatCurrency(selectedAsset.price)} value={limitPrice} onChange={e => setLimitPrice(e.target.value)} min="0" step="0.01" />
+                </div>
+              )}
+
+              {/* Shares + Quick Amounts */}
+              <div style={{ marginBottom: 16 }}>
+                <label className="input-label">Shares</label>
+                <input className="input-field" type="number" placeholder="How many shares?" value={shares} onChange={e => setShares(e.target.value)} min="0" step="1" />
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  {quickAmounts.map(amt => (
+                    <button key={amt} className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => setShares(String(amt))}>{amt}</button>
+                  ))}
+                  {tradeType === 'SELL' && existing && (
+                    <button className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '4px 10px', color: 'var(--error)' }} onClick={() => setShares(String(existing.shares))}>Sell All</button>
+                  )}
+                </div>
+              </div>
+
+              {/* Order Summary */}
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span className="label-system">Price_Per_Share</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{formatCurrency(execPrice)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span className="label-system">Shares</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{shares || '0'}</span>
+                </div>
+                <div style={{ height: 1, background: 'rgba(73,72,71,0.1)', margin: '8px 0' }}></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span className="label-system" style={{ fontSize: 12 }}>Estimated_Total</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700 }}>{formatCurrency(total)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="label-system">Cash_Available</span>
+                  <span className="text-muted" style={{ fontFamily: 'var(--font-headline)', fontSize: 13 }}>{formatCurrency(portfolio.cash)}</span>
+                </div>
+                {tradeType === 'BUY' && total > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="ticker-progress"><div className="ticker-progress-fill" style={{ width: `${Math.min((total / portfolio.cash) * 100, 100)}%`, background: total > portfolio.cash ? 'var(--error)' : 'var(--primary-fixed)' }}></div></div>
+                    <p className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>{((total / portfolio.cash) * 100).toFixed(1)}% of your available cash</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Educational Tip */}
+              <div style={{ padding: 12, background: 'rgba(114,220,255,0.05)', borderRadius: 'var(--radius-lg)', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <Icon name={tip.icon} size={18} className="text-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
+                <p style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--on-surface-variant)' }}>{tip.text}</p>
+              </div>
+
+              {/* Execute Button */}
+              <button className="btn btn-primary" style={{ width: '100%', padding: 14, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff', boxShadow: '0 0 20px rgba(255,113,108,0.3)' } : {}) }} onClick={handleTradeClick}>
+                <Icon name={tradeType === 'BUY' ? 'rocket_launch' : 'sell'} size={18} />
+                {tradeType === 'BUY' ? `Buy ${shares || '0'} ${selectedAsset.symbol}` : `Sell ${shares || '0'} ${selectedAsset.symbol}`}
+              </button>
+            </>}
+          </div>
+
+          {/* Recent Trades */}
+          {portfolio.trades.length > 0 && (
+            <div className="card" style={{ marginTop: 24 }}>
+              <h3 className="label-system" style={{ fontSize: 12, marginBottom: 16 }}>Recent_Trades</h3>
+              {portfolio.trades.slice(-5).reverse().map((t, i) => (
+                <div key={i} className="stock-row" style={{ padding: '8px 0' }}>
+                  <div className="stock-icon-badge" style={{ width: 28, height: 28, background: t.type === 'BUY' ? 'rgba(255,113,108,0.15)' : 'rgba(0,255,163,0.15)', color: t.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)' }}>
+                    <Icon name={t.type === 'BUY' ? 'arrow_downward' : 'arrow_upward'} size={14} />
+                  </div>
+                  <div className="stock-info">
+                    <div style={{ fontSize: 12, fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{t.type} {t.shares} {t.symbol}</div>
+                    <div className="stock-name-text">{t.date} {t.time || ''}</div>
+                  </div>
+                  <div style={{ fontSize: 12, fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(t.total)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Confirmation Modal */}
+      {showConfirm && selectedAsset && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }} onClick={() => setShowConfirm(false)} />
+          <div className="glass-panel" style={{ position: 'relative', padding: 32, maxWidth: 420, width: '100%', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>{tradeType === 'BUY' ? '🚀' : '💰'}</div>
+            <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Confirm {tradeType === 'BUY' ? 'Purchase' : 'Sale'}</h2>
+            <p className="text-muted" style={{ marginBottom: 24 }}>
+              {tradeType === 'BUY' ? 'Buy' : 'Sell'} <strong>{shares} shares</strong> of <strong>{selectedAsset.symbol}</strong> at <strong>{formatCurrency(execPrice)}</strong> per share
+            </p>
+            <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 24 }}>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900 }}>{formatCurrency(total)}</div>
+              <div className="label-system" style={{ marginTop: 4 }}>{orderType === 'market' ? 'Market Order' : 'Limit Order'}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowConfirm(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff' } : {}) }} onClick={executeTrade}>
+                Confirm {tradeType}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== MARKETS ====================
+function MarketsPage({ stocks, setStockDetail }) {
+  const [filter, setFilter] = useState('all');
+  const sectors = ['all', ...new Set(stocks.map(s => s.sector))];
+  const filtered = filter === 'all' ? stocks : stocks.filter(s => s.sector === filter);
+  const gainers = [...stocks].filter(s => s.change > 0).sort((a, b) => b.changePercent - a.changePercent);
+  const losers = [...stocks].filter(s => s.change < 0).sort((a, b) => a.changePercent - b.changePercent);
+
+  return (
+    <div>
+      <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 32 }}>Markets Overview</h1>
+      <div className="stats-grid" style={{ marginBottom: 32 }}>
+        {[{ l: 'S&P_500', v: '5,892.34', c: '+0.82%', u: true }, { l: 'NASDAQ', v: '18,724.51', c: '+1.15%', u: true }, { l: 'DOW_JONES', v: '42,156.78', c: '-0.23%', u: false }].map(i => (
+          <div key={i.l} className="stat-card"><p className="stat-label">{i.l}</p><p className="stat-value">{i.v}</p><p className={`stat-change ${i.u ? 'positive' : 'negative'}`}>{i.c}</p></div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+        {sectors.map(s => <button key={s} className={`btn btn-sm ${filter === s ? 'btn-ghost' : 'btn-secondary'}`} style={filter === s ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} onClick={() => setFilter(s)}>{s === 'all' ? 'All Sectors' : s}</button>)}
+      </div>
+      <div className="two-col" style={{ marginBottom: 32 }}>
+        <div className="card">
+          <h3 className="section-title text-primary" style={{ marginBottom: 16 }}><Icon name="trending_up" size={20} /> Top_Gainers</h3>
+          {gainers.slice(0, 5).map(s => <div key={s.symbol} className="stock-row"><div className="stock-icon-badge" style={{ background: 'rgba(0,255,163,0.15)', color: 'var(--primary-fixed)' }}>{s.symbol.slice(0, 2)}</div><div className="stock-info"><div className="stock-symbol-text">{s.symbol}</div><div className="stock-name-text">{s.name}</div></div><div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</div><span className="badge badge-primary">+{s.changePercent.toFixed(2)}%</span></div></div>)}
+        </div>
+        <div className="card">
+          <h3 className="section-title text-error" style={{ marginBottom: 16 }}><Icon name="trending_down" size={20} /> Top_Losers</h3>
+          {losers.slice(0, 5).map(s => <div key={s.symbol} className="stock-row"><div className="stock-icon-badge" style={{ background: 'rgba(255,113,108,0.15)', color: 'var(--error)' }}>{s.symbol.slice(0, 2)}</div><div className="stock-info"><div className="stock-symbol-text">{s.symbol}</div><div className="stock-name-text">{s.name}</div></div><div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</div><span className="badge badge-error">{s.changePercent.toFixed(2)}%</span></div></div>)}
+        </div>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: 24 }}><h3 className="label-system" style={{ fontSize: 14 }}>All_Instruments</h3></div>
+        <table className="data-table">
+          <thead><tr><th>Symbol</th><th>Name</th><th>Sector</th><th>Price</th><th>Change</th><th>% Change</th></tr></thead>
+          <tbody>{filtered.map(s => <tr key={s.symbol}><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{s.symbol}</td><td>{s.name}</td><td><span className="badge badge-neutral">{s.sector}</span></td><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{formatCurrency(s.price)}</td><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 600, color: s.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{s.change >= 0 ? '+' : ''}{formatCurrency(Math.abs(s.change))}</td><td><span className={`badge ${s.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{s.change >= 0 ? '+' : ''}{s.changePercent.toFixed(2)}%</span></td></tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ==================== CRYPTO ====================
+function CryptoPage({ crypto, portfolio, setPortfolio, setNotification }) {
+  const [selectedCrypto, setSelectedCrypto] = useState(null);
+  const [tradeType, setTradeType] = useState('BUY');
+  const [amount, setAmount] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(null);
+
+  const selected = selectedCrypto ? crypto.find(c => c.symbol === selectedCrypto) : null;
+  const qty = parseFloat(amount || 0);
+  const total = selected ? qty * selected.price : 0;
+  const existing = selected ? portfolio?.holdings?.find(h => h.symbol === selected.symbol) : null;
+
+  const executeCryptoTrade = () => {
+    if (!selected || qty <= 0) return;
+    setShowConfirm(false);
+    const cost = qty * selected.price;
+    const newTrade = { date: new Date().toLocaleDateString(), type: tradeType, symbol: selected.symbol, name: selected.name, shares: qty, price: selected.price, total: cost, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) };
+    let newHoldings = [...portfolio.holdings], newCash = portfolio.cash;
+    const existingIdx = newHoldings.findIndex(h => h.symbol === selected.symbol);
+
+    if (tradeType === 'BUY') {
+      if (cost > portfolio.cash) { setNotification({ type: 'error', message: 'Not enough cash' }); return; }
+      newCash -= cost;
+      if (existingIdx >= 0) {
+        const h = newHoldings[existingIdx], ns = h.shares + qty, na = (h.avgCost * h.shares + cost) / ns;
+        newHoldings[existingIdx] = { ...h, shares: ns, avgCost: na, currentPrice: selected.price, value: ns * selected.price, gain: (selected.price - na) * ns, returnPercent: ((selected.price - na) / na) * 100 };
+      } else {
+        newHoldings.push({ symbol: selected.symbol, name: selected.name, shares: qty, avgCost: selected.price, currentPrice: selected.price, value: cost, gain: 0, returnPercent: 0 });
+      }
+    } else {
+      if (existingIdx < 0 || qty > newHoldings[existingIdx].shares) { setNotification({ type: 'error', message: 'Not enough to sell' }); return; }
+      newCash += cost;
+      const rem = newHoldings[existingIdx].shares - qty;
+      if (rem === 0) newHoldings.splice(existingIdx, 1);
+      else { const h = newHoldings[existingIdx]; newHoldings[existingIdx] = { ...h, shares: rem, value: rem * selected.price, gain: (selected.price - h.avgCost) * rem, returnPercent: ((selected.price - h.avgCost) / h.avgCost) * 100 }; }
+    }
+    setPortfolio({ ...portfolio, cash: newCash, holdings: newHoldings, trades: [...portfolio.trades, newTrade] });
+    setShowSuccess(newTrade);
+    setAmount('');
+    setTimeout(() => setShowSuccess(null), 4000);
+  };
+
+  return (
+    <div>
+      <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 32 }}>Crypto Terminal</h1>
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 32 }}>
+        <div className="stat-card"><p className="stat-label">Crypto Market Cap</p><p className="stat-value">$3.42T</p><p className="stat-change positive">+2.1% 24h</p></div>
+        <div className="stat-card"><p className="stat-label">BTC Dominance</p><p className="stat-value">52.4%</p><p className="stat-change neutral">Stable</p></div>
+      </div>
+
+      {/* Success celebration */}
+      {showSuccess && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }} />
+          <div style={{ position: 'relative', textAlign: 'center', padding: '48px 64px' }}>
+            <div style={{ fontSize: 64, marginBottom: 16, animation: 'bounceIn 0.5s ease' }}>{showSuccess.type === 'BUY' ? '🚀' : '💰'}</div>
+            <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900, marginBottom: 8 }}>{showSuccess.type === 'BUY' ? 'Purchase Complete!' : 'Sale Complete!'}</h2>
+            <p className="text-muted" style={{ fontSize: 16, marginBottom: 16 }}>{showSuccess.type === 'BUY' ? 'Bought' : 'Sold'} <strong>{showSuccess.shares} {showSuccess.symbol}</strong> @ {formatCurrency(showSuccess.price)}</p>
+            <div style={{ padding: 20, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-xl)', border: `1px solid ${showSuccess.type === 'BUY' ? 'rgba(255,113,108,0.3)' : 'rgba(0,255,163,0.3)'}` }}>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900, color: showSuccess.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)' }}>{showSuccess.type === 'BUY' ? '-' : '+'}{formatCurrency(showSuccess.total)}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="two-col">
+        {/* Crypto Table */}
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table className="data-table">
+            <thead><tr><th>#</th><th>Asset</th><th>Price</th><th>24h</th><th>Action</th></tr></thead>
+            <tbody>{crypto.map((c, i) => {
+              const owned = portfolio?.holdings?.find(h => h.symbol === c.symbol);
+              return <tr key={c.symbol} style={{ cursor: 'pointer', background: selectedCrypto === c.symbol ? 'rgba(0,255,163,0.05)' : 'transparent' }} onClick={() => setSelectedCrypto(c.symbol)}>
+                <td className="text-muted">{i + 1}</td>
+                <td><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div className="stock-icon-badge" style={{ background: 'rgba(114,220,255,0.15)', color: 'var(--tertiary)', borderRadius: '50%' }}>{c.symbol.slice(0, 2)}</div>
+                  <div><div className="stock-symbol-text">{c.symbol} {owned && <span style={{ fontSize: 10, color: 'var(--secondary)' }}>({owned.shares} owned)</span>}</div><div className="stock-name-text">{c.name}</div></div>
+                </div></td>
+                <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(c.price)}</td>
+                <td><span className={`badge ${c.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{c.change >= 0 ? '+' : ''}{c.changePercent.toFixed(2)}%</span></td>
+                <td><button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); setSelectedCrypto(c.symbol); }}>Trade</button></td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+
+        {/* Quick Trade Panel */}
+        <div>
+          {selected ? (
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 700 }}>{selected.symbol}</div>
+                  <div className="stock-name-text">{selected.name}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 700 }}>{formatCurrency(selected.price)}</div>
+                  <span className={`badge ${selected.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{selected.change >= 0 ? '+' : ''}{selected.changePercent.toFixed(2)}%</span>
+                </div>
+              </div>
+
+              {existing && (
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span className="label-system">Your Position</span>
+                    <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{existing.shares} @ {formatCurrency(existing.avgCost)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
+                    <span className="label-system">P/L</span>
+                    <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, color: existing.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{existing.gain >= 0 ? '+' : ''}{formatCurrency(existing.gain)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <button className={`btn ${tradeType === 'BUY' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff', boxShadow: '0 0 20px rgba(255,113,108,0.3)' } : {}) }} onClick={() => setTradeType('BUY')}>Buy</button>
+                <button className={`btn ${tradeType === 'SELL' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setTradeType('SELL')}>Sell</button>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label className="input-label">Amount ({selected.symbol})</label>
+                <input className="input-field" type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} min="0" step="0.01" />
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  {[0.01, 0.1, 0.5, 1].map(a => (
+                    <button key={a} className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => setAmount(String(a))}>{a}</button>
+                  ))}
+                  {tradeType === 'SELL' && existing && <button className="btn btn-secondary btn-sm" style={{ fontSize: 11, color: 'var(--error)' }} onClick={() => setAmount(String(existing.shares))}>All</button>}
+                </div>
+              </div>
+
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span className="label-system">Total</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700 }}>{formatCurrency(total)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="label-system">Cash Available</span>
+                  <span className="text-muted" style={{ fontFamily: 'var(--font-headline)', fontSize: 13 }}>{formatCurrency(portfolio?.cash || 0)}</span>
+                </div>
+              </div>
+
+              <button className="btn btn-primary" style={{ width: '100%', padding: 14, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff', boxShadow: '0 0 20px rgba(255,113,108,0.3)' } : {}) }} onClick={() => { if (qty > 0 && selected) setShowConfirm(true); }}>
+                <Icon name={tradeType === 'BUY' ? 'rocket_launch' : 'sell'} size={18} />
+                {tradeType === 'BUY' ? `Buy ${amount || '0'} ${selected.symbol}` : `Sell ${amount || '0'} ${selected.symbol}`}
+              </button>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="empty-state" style={{ padding: 32 }}>
+                <Icon name="currency_bitcoin" />
+                <h3>Select a Crypto</h3>
+                <p>Click any cryptocurrency from the table to start trading</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Confirm Modal */}
+      {showConfirm && selected && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }} onClick={() => setShowConfirm(false)} />
+          <div className="glass-panel" style={{ position: 'relative', padding: 32, maxWidth: 420, width: '100%', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>{tradeType === 'BUY' ? '🚀' : '💰'}</div>
+            <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Confirm {tradeType === 'BUY' ? 'Purchase' : 'Sale'}</h2>
+            <p className="text-muted" style={{ marginBottom: 24 }}>{tradeType === 'BUY' ? 'Buy' : 'Sell'} <strong>{amount} {selected.symbol}</strong> at <strong>{formatCurrency(selected.price)}</strong></p>
+            <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 24 }}>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900 }}>{formatCurrency(total)}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowConfirm(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff' } : {}) }} onClick={executeCryptoTrade}>Confirm {tradeType}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== CHAT ====================
+function ChatPage({ user }) {
+  const [activeRoom, setActiveRoom] = useState('general');
+  const [messages, setMessages] = useState(MOCK_MESSAGES);
+  const [newMsg, setNewMsg] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(null); // message id for reaction picker
+  const [showQuickEmoji, setShowQuickEmoji] = useState(false); // input emoji picker
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifSearch, setGifSearch] = useState('');
+  const [gifResults, setGifResults] = useState([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
+  const [typingUsers, setTypingUsers] = useState([]);
+  const [showMobileRooms, setShowMobileRooms] = useState(false);
+  const endRef = useRef(null);
+  const inputRef = useRef(null);
+  const currentUser = user || 'Ella';
+  const mySquad = getSquadMember(currentUser);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Typing indicator -- will be driven by Supabase Realtime presence
+  // typingUsers state is kept but only populated by real events (no fake simulation)
+
+  // Curated GIF library -- admin-managed, kid-safe
+  // These are stored locally or in Supabase Storage. Admin can add/remove via Admin panel.
+  // For now, categories with placeholder data URLs. Replace with real GIF paths from your library.
+  const [gifLibrary] = useState({
+    'Custom Emojis': [
+      { id: 'e1', tag: 'emoji', label: '100', url: 'content/gifs/Custom Emojis/100.gif' },
+      { id: 'e2', tag: 'emoji', label: 'Yes', url: 'content/gifs/Custom Emojis/yes.gif' },
+      { id: 'e3', tag: 'emoji', label: 'Oh Yes', url: 'content/gifs/Custom Emojis/Oh Yes.gif' },
+      { id: 'e4', tag: 'emoji', label: 'Cash', url: 'content/gifs/Custom Emojis/Cash.gif' },
+      { id: 'e5', tag: 'emoji', label: 'Fire', url: 'content/gifs/Custom Emojis/Fire.gif' },
+      { id: 'e6', tag: 'emoji', label: 'Boss Mode', url: 'content/gifs/Custom Emojis/Boss Mode.gif' },
+      { id: 'e7', tag: 'emoji', label: 'Party', url: 'content/gifs/Custom Emojis/Party.gif' },
+    ],
+    'GIFs': [
+      { id: 'g1', tag: 'gif', label: 'Stonks', url: 'content/gifs/Gifs/Stonks.gif' },
+      { id: 'g2', tag: 'gif', label: 'Bitcoin', url: 'content/gifs/Gifs/Bitcoin.gif' },
+      { id: 'g3', tag: 'gif', label: 'Money Bed', url: 'content/gifs/Gifs/Money Bed.gif' },
+      { id: 'g4', tag: 'gif', label: 'Money Printer', url: 'content/gifs/Gifs/Money Printer.gif' },
+      { id: 'g5', tag: 'gif', label: 'Boom', url: 'content/gifs/Gifs/Boom.gif' },
+      { id: 'g6', tag: 'gif', label: 'Day Trader', url: 'content/gifs/Gifs/Day Trader.gif' },
+      { id: 'g7', tag: 'gif', label: 'To The Moon', url: 'content/gifs/Gifs/To The Moon.gif' },
+      { id: 'g8', tag: 'gif', label: 'Unstoppable', url: 'content/gifs/Gifs/Unstoppable.gif' },
+      { id: 'g9', tag: 'gif', label: 'Big Win', url: 'content/gifs/Gifs/Big Win.gif' },
+    ],
+  });
+
+  const filteredGifs = gifSearch
+    ? Object.values(gifLibrary).flat().filter(g => g.label.toLowerCase().includes(gifSearch.toLowerCase()) || g.tag.includes(gifSearch.toLowerCase()))
+    : [];
+
+  const fileInputRef = useRef(null);
+
+  // Handle file picker selection
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setMessages(p => [...p, {
+        id: Date.now(), user: currentUser, content: ev.target.result,
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        own: true, reactions: [], read: false, isGif: true, fileName: file.name
+      }]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ''; // reset so same file can be selected again
+  };
+
+  // Send a GIF from the curated library (placeholder -- sends label for now, will send URL when library is populated)
+  const sendGif = (gif) => {
+    const content = gif.url || gif.label || 'GIF';
+    const isImage = content.includes('.gif') || content.includes('.png') || content.includes('.jpg') || content.includes('.webp') || content.startsWith('http') || content.startsWith('data:');
+    setMessages(p => [...p, {
+      id: Date.now(), user: currentUser,
+      content: content,
+      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      own: true, reactions: [], read: false, isGif: isImage, room: activeRoom
+    }]);
+    setShowGifPicker(false);
+    setGifSearch('');
+  };
+
+  // Drag and drop handlers for images/GIFs
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); if (e.currentTarget === e.target) setIsDragOver(false); };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    // Check for dropped files (images/GIFs)
+    const files = Array.from(e.dataTransfer?.files || []);
+    const imageFile = files.find(f => f.type.startsWith('image/'));
+    if (imageFile) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setMessages(p => [...p, {
+          id: Date.now(), user: currentUser, content: ev.target.result,
+          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          own: true, reactions: [], read: false, isGif: true, fileName: imageFile.name
+        }]);
+      };
+      reader.readAsDataURL(imageFile);
+      return;
+    }
+
+    // Check for dropped URLs (e.g. dragging a GIF from a browser)
+    const url = e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain') || '';
+    if (url && (url.endsWith('.gif') || url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.webp'))) {
+      setMessages(p => [...p, {
+        id: Date.now(), user: currentUser, content: url,
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        own: true, reactions: [], read: false, isGif: true
+      }]);
+    }
+  };
+
+  // Parse @mentions in message content
+  const renderContent = (content) => {
+    const parts = content.split(/(@[\w\s]+(?:the\s\w+)?)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('@')) {
+        const name = part.slice(1).trim();
+        const member = getSquadMember(name);
+        return <span key={i} style={{ color: member.color, fontWeight: 700, cursor: 'pointer' }}>{part}</span>;
+      }
+      return part;
+    });
+  };
+
+  // Handle @mention autocomplete
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setNewMsg(val);
+    const lastAt = val.lastIndexOf('@');
+    if (lastAt >= 0 && lastAt === val.length - 1 || (lastAt >= 0 && !val.slice(lastAt).includes(' '))) {
+      setMentionFilter(val.slice(lastAt + 1).toLowerCase());
+      setShowMentions(true);
+    } else {
+      setShowMentions(false);
+    }
+  };
+
+  const insertMention = (name) => {
+    const lastAt = newMsg.lastIndexOf('@');
+    setNewMsg(newMsg.slice(0, lastAt) + '@' + name + ' ');
+    setShowMentions(false);
+    inputRef.current?.focus();
+  };
+
+  const insertEmoji = (emoji) => {
+    setNewMsg(prev => prev + emoji);
+    setShowQuickEmoji(false);
+    inputRef.current?.focus();
+  };
+
+  const addReaction = (msgId, emoji) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id !== msgId) return m;
+      const existing = m.reactions?.find(r => r.emoji === emoji);
+      if (existing) {
+        if (existing.users.includes(currentUser)) {
+          // Remove reaction
+          const updated = { ...existing, users: existing.users.filter(u => u !== currentUser) };
+          return { ...m, reactions: updated.users.length > 0 ? m.reactions.map(r => r.emoji === emoji ? updated : r) : m.reactions.filter(r => r.emoji !== emoji) };
+        }
+        return { ...m, reactions: m.reactions.map(r => r.emoji === emoji ? { ...r, users: [...r.users, currentUser] } : r) };
+      }
+      return { ...m, reactions: [...(m.reactions || []), { emoji, users: [currentUser] }] };
+    }));
+    setShowEmojiPicker(null);
+  };
+
+  const send = () => {
+    if (!newMsg.trim()) return;
+    const hasMention = newMsg.includes('@');
+    const msg = {
+      id: Date.now(), user: currentUser, content: newMsg.trim(),
+      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      own: true, reactions: [], read: false, room: activeRoom,
+      mention: hasMention ? newMsg.match(/@([\w\s]+)/)?.[1]?.trim() : null
+    };
+    setMessages(p => [...p, msg]);
+    // Auto-reply from Milburn in DM
+    if (activeRoom === 'milburn') {
+      const replies = [
+        'Great question! Check out the Academy lessons for a deep dive on this topic.',
+        'That is a smart thing to think about. The key is understanding risk vs reward.',
+        'I would recommend starting with index funds and learning as you go. The Academy has a lesson on this!',
+        'Remember -- the best investors are patient. Time in the market beats timing the market.',
+        'Good thinking! Diversification is your best friend as a beginner. Do not put all your eggs in one basket.',
+      ];
+      setTimeout(() => {
+        setMessages(p => [...p, {
+          id: Date.now() + 1, user: 'Milburn Pennybags',
+          content: replies[Math.floor(Math.random() * replies.length)],
+          time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          own: false, reactions: [], read: true, room: 'milburn'
+        }]);
+      }, 1500);
+    }
+    setNewMsg('');
+    setShowMentions(false);
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === 'Escape') { setShowMentions(false); setShowEmojiPicker(null); setShowQuickEmoji(false); }
+  };
+
+  const room = MOCK_CHAT_ROOMS.find(r => r.id === activeRoom);
+  const mentionCandidates = Object.keys(SQUAD_MEMBERS).filter(n => n !== currentUser && n.toLowerCase().includes(mentionFilter));
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em' }}>Chat</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="pulse-dot"></span>
+          <span className="label-system">{Object.keys(SQUAD_MEMBERS).length} Members Online</span>
+        </div>
+      </div>
+
+      <div className="chat-layout">
+        {/* Rooms Panel */}
+        <div className={`chat-rooms-panel ${showMobileRooms ? 'mobile-open' : ''}`}>
+          <div className="chat-rooms-header">
+            <h3 className="label-system" style={{ fontSize: 12 }}>Channels</h3>
+          </div>
+          <div className="chat-rooms-list">
+            {MOCK_CHAT_ROOMS.map(r => (
+              <button key={r.id} className={`chat-room-item ${activeRoom === r.id ? 'active' : ''}`} onClick={() => { setActiveRoom(r.id); setShowMobileRooms(false); }}>
+                <div className="chat-room-icon" style={r.type === 'dm' ? { background: 'rgba(243,156,18,0.15)' } : {}}>
+                  {r.type === 'dm' ? <span style={{ fontSize: 18 }}>🎩</span> : <Icon name={r.icon} size={18} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="chat-room-name">{r.name}</div>
+                  <div className="chat-room-preview">{r.lastMessage}</div>
+                </div>
+                {r.unread > 0 && <div className="chat-room-badge">{r.unread}</div>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Main Chat */}
+        <div className="chat-main-panel">
+          {/* Header with avatars for group chat */}
+          <div className="chat-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: '12px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: activeRoom === 'milburn' ? 'rgba(243,156,18,0.15)' : 'rgba(0,255,163,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {activeRoom === 'milburn' ? <span style={{ fontSize: 20 }}>🎩</span> : <Icon name={room?.icon || 'forum'} size={20} className="text-primary" />}
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15 }}>{room?.name || 'Group Chat'}</div>
+                  <div className="text-muted" style={{ fontSize: 11 }}>
+                    {activeRoom === 'general' && `${room?.members || 7} members online`}
+                    {activeRoom === 'trades' && 'Live trading activity feed'}
+                    {activeRoom === 'milburn' && 'Direct message with Milburn Pennybags (Admin)'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+              <button className="header-icon-btn"><Icon name="search" /></button>
+              <button className="header-icon-btn"><Icon name="push_pin" /></button>
+              <button className="header-icon-btn"><Icon name="more_vert" /></button>
+            </div>
+          </div>
+
+          {/* Squad avatars strip -- only in Group Chat */}
+          {activeRoom === 'general' && (
+            <div style={{ padding: '8px 24px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(73,72,71,0.05)' }}>
+              {Object.entries(SQUAD_MEMBERS).map(([name, m]) => (
+                <div key={name} title={name} style={{ position: 'relative', flexShrink: 0 }}>
+                  <CharacterAvatar name={name} size={46} style={{ border: name === currentUser ? `2px solid ${m.color}` : '2px solid transparent' }} />
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#00ffa3', border: '2px solid var(--bg)' }}></div>
+                </div>
+              ))}
+              <span className="text-muted" style={{ fontSize: 10, marginLeft: 4 }}>{Object.keys(SQUAD_MEMBERS).length} online</span>
+            </div>
+          )}
+          </div>
+
+          {/* Trade Alerts Feed */}
+          {activeRoom === 'trades' && (
+            <div className="chat-messages" style={{ padding: 24 }}>
+              {[
+                { user: 'Ella', action: 'bought', shares: 10, symbol: 'NVDA', price: 924.15, time: '2:30 PM', type: 'BUY' },
+                { user: 'Lawson', action: 'sold', shares: 50, symbol: 'TSLA', price: 248.92, time: '2:15 PM', type: 'SELL' },
+                { user: 'PCM', action: 'bought', shares: 100, symbol: 'SOL', price: 198.72, time: '1:45 PM', type: 'BUY' },
+                { user: 'Milburn Pennybags', action: 'bought', shares: 15, symbol: 'AAPL', price: 227.48, time: '1:20 PM', type: 'BUY' },
+                { user: 'Ella', action: 'bought', shares: 25, symbol: 'GOOGL', price: 178.35, time: '11:30 AM', type: 'BUY' },
+                { user: 'Lawson', action: 'bought', shares: 0.5, symbol: 'BTC', price: 97245.00, time: '10:15 AM', type: 'BUY' },
+                { user: 'PCM', action: 'sold', shares: 20, symbol: 'META', price: 582.30, time: '9:45 AM', type: 'SELL' },
+              ].map((t, i) => {
+                const m = getSquadMember(t.user);
+                const total = t.shares * t.price;
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '18px 0', borderBottom: i < 6 ? '1px solid rgba(73,72,71,0.05)' : 'none' }}>
+                    <CharacterAvatar name={t.user} size={56} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontFamily: 'var(--font-headline)', fontSize: 15, fontWeight: 700, color: m.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{t.user}</span>
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--on-surface)' }}>{t.action} <strong>{t.shares} {t.symbol}</strong></span>
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--on-surface-variant)', marginTop: 2 }}>@ {formatCurrency(t.price)} per share</div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 700, color: t.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)', marginBottom: 4 }}>
+                        {t.type === 'BUY' ? '-' : '+'}{formatCurrency(total)}
+                      </div>
+                      <span className={`badge ${t.type === 'BUY' ? 'badge-error' : 'badge-primary'}`} style={{ fontSize: 10 }}>{t.type}</span>
+                      <div style={{ fontSize: 11, color: 'var(--outline)', marginTop: 4 }}>{t.time}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Ask Milburn DM */}
+          {activeRoom === 'milburn' && (
+            <div className="chat-messages" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} style={isDragOver ? { outline: '2px dashed var(--primary-fixed)', outlineOffset: -4, background: 'rgba(0,255,163,0.03)' } : {}}>
+              {/* Milburn intro */}
+              <div style={{ textAlign: 'center', padding: '24px 0 16px' }}>
+                <CharacterAvatar name="Milburn Pennybags" size={80} style={{ display: 'inline-flex', marginBottom: 12, borderRadius: 'var(--radius-xl)' }} />
+                <h3 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>Milburn Pennybags</h3>
+                <p className="text-muted" style={{ fontSize: 12 }}>Admin {'\u00B7'} Value Preservation Specialist</p>
+                <p className="text-muted" style={{ fontSize: 11, marginTop: 8, maxWidth: 360, margin: '8px auto 0' }}>Ask me anything about the market, your trades, or how things work.</p>
+              </div>
+              {/* Quick question starters */}
+              {messages.filter(m => m.room === 'milburn').length === 0 && (
+                <div style={{ textAlign: 'center', padding: 24 }}>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {['How do I start investing?', 'What is a P/E ratio?', 'Should I buy or sell?', 'Explain options trading'].map((q, i) => (
+                      <button key={i} className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => {
+                        setMessages(p => [...p, { id: Date.now(), user: currentUser, content: q, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), own: true, reactions: [], read: false, room: 'milburn' }]);
+                        setTimeout(() => {
+                          setMessages(p => [...p, { id: Date.now() + 1, user: 'Milburn Pennybags', content: 'Great question! This is something every investor should understand. When we connect Supabase, I will be able to give you real-time answers powered by AI. For now, check out the Academy lessons -- they cover this topic in depth!', time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), own: false, reactions: [], read: true, room: 'milburn' }]);
+                        }, 1000);
+                      }}>{q}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Milburn DM messages */}
+              {messages.filter(m => m.room === 'milburn').map(m => {
+                const member = getSquadMember(m.user);
+                return (
+                  <div key={m.id} className={`chat-message ${m.own ? 'own' : ''}`}>
+                    <CharacterAvatar name={m.user} size={44} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: member.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{m.user}</span>
+                      </div>
+                      {m.isGif ? (
+                        <div style={{ borderRadius: 'var(--radius-xl)', overflow: 'hidden', maxWidth: 300 }}>
+                          <img src={m.content} alt="GIF" style={{ width: '100%', maxHeight: 240, objectFit: 'cover', borderRadius: 'var(--radius-lg)', display: 'block' }} />
+                        </div>
+                      ) : (
+                        <div className="chat-msg-bubble">{renderContent(m.content)}</div>
+                      )}
+                      <div className="chat-msg-time">{m.time}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={endRef} />
+            </div>
+          )}
+
+          {/* Group Chat Messages */}
+          {activeRoom === 'general' && (
+          <div className="chat-messages" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} style={isDragOver ? { outline: '2px dashed var(--primary-fixed)', outlineOffset: -4, background: 'rgba(0,255,163,0.03)' } : {}}>
+            {isDragOver && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(14,14,14,0.8)', borderRadius: 'var(--radius-xl)' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <Icon name="gif_box" size={48} className="text-primary" />
+                  <p style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700, marginTop: 12 }}>Drop GIF or Image here</p>
+                  <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>Supports .gif, .png, .jpg, .webp</p>
+                </div>
+              </div>
+            )}
+            {messages.filter(m => !m.room || m.room === 'general').map(m => {
+              const member = getSquadMember(m.user);
+              return (
+                <div key={m.id} className={`chat-message ${m.own ? 'own' : ''}`} style={{ position: 'relative' }}
+                  onMouseEnter={() => {}} >
+
+                  {/* Avatar */}
+                  <CharacterAvatar name={m.user} size={52} />
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Name + time row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      {!m.own && <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: member.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{m.user}</span>}
+                      {m.own && <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: member.color, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{m.user}</span>}
+                    </div>
+
+                    {/* Bubble -- text or GIF */}
+                    {m.isGif ? (
+                      <div style={{ borderRadius: 'var(--radius-xl)', overflow: 'hidden', maxWidth: 300 }}>
+                        <img src={m.content} alt={m.fileName || 'GIF'} style={{ width: '100%', maxHeight: 240, objectFit: 'cover', borderRadius: 'var(--radius-lg)', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
+                        {m.fileName && <div style={{ fontSize: 10, color: 'var(--outline)', marginTop: 4 }}>{m.fileName}</div>}
+                      </div>
+                    ) : (
+                      <div className="chat-msg-bubble" style={m.own ? {} : {}}>
+                        {renderContent(m.content)}
+                      </div>
+                    )}
+
+                    {/* Reactions */}
+                    {m.reactions && m.reactions.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                        {m.reactions.map((r, ri) => (
+                          <button key={ri} onClick={() => addReaction(m.id, r.emoji)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 'var(--radius-full)', background: r.users.includes(currentUser) ? 'rgba(0,255,163,0.15)' : 'var(--surface-container-highest)', border: r.users.includes(currentUser) ? '1px solid rgba(0,255,163,0.3)' : '1px solid transparent', cursor: 'pointer', transition: 'all 0.15s' }}>
+                            <ReactionEmoji emoji={r.emoji} size={18} /> <span style={{ fontSize: 10, fontFamily: 'var(--font-headline)', fontWeight: 700, color: 'var(--on-surface-variant)' }}>{r.users.length}</span>
+                          </button>
+                        ))}
+                        <button onClick={() => setShowEmojiPicker(showEmojiPicker === m.id ? null : m.id)}
+                          style={{ width: 24, height: 24, borderRadius: 'var(--radius-full)', background: 'var(--surface-container-highest)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--on-surface-variant)', transition: 'all 0.15s' }}>+</button>
+                      </div>
+                    )}
+
+                    {/* Time + read receipts */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <span className="chat-msg-time">{m.time}</span>
+                      {m.own && <span style={{ color: m.read ? 'var(--primary-fixed)' : 'var(--outline)', fontSize: 12 }}>{'\u2713\u2713'}</span>}
+                      {!m.own && m.reactions?.length === 0 && (
+                        <button onClick={() => setShowEmojiPicker(showEmojiPicker === m.id ? null : m.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--outline)', padding: 0, opacity: 0.5 }}>
+                          <Icon name="add_reaction" size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Emoji picker for reactions */}
+                    {showEmojiPicker === m.id && (
+                      <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', marginTop: 6, padding: 8, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(73,72,71,0.1)', maxWidth: 300 }}>
+                        {CUSTOM_REACTION_EMOJIS.map(ce => (
+                          <button key={ce.id} onClick={() => addReaction(m.id, ce.id)} title={ce.label}
+                            style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', padding: 2, transition: 'background 0.1s' }}
+                            onMouseEnter={e2 => e2.currentTarget.style.background = 'var(--surface-container-highest)'} onMouseLeave={e2 => e2.currentTarget.style.background = 'none'}>
+                            <img src={ce.url} alt={ce.label} style={{ width: 24, height: 24, objectFit: 'contain' }} />
+                          </button>
+                        ))}
+                        <div style={{ width: '100%', height: 1, background: 'rgba(73,72,71,0.1)', margin: '4px 0' }}></div>
+                        {QUICK_EMOJIS.map(e => (
+                          <button key={e} onClick={() => addReaction(m.id, e)}
+                            style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 18, transition: 'background 0.1s' }}
+                            onMouseEnter={e2 => e2.currentTarget.style.background = 'var(--surface-container-highest)'} onMouseLeave={e2 => e2.currentTarget.style.background = 'none'}>
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={endRef} />
+          </div>
+          )}
+
+          {/* Typing indicator */}
+          {typingUsers.length > 0 && (
+            <div style={{ padding: '4px 24px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 3 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary-fixed)', animation: 'pulse 1s ease-in-out infinite' }}></span>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary-fixed)', animation: 'pulse 1s ease-in-out 0.2s infinite' }}></span>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary-fixed)', animation: 'pulse 1s ease-in-out 0.4s infinite' }}></span>
+              </div>
+              <span className="label-system" style={{ fontSize: 10 }}>{typingUsers.join(', ')} is typing...</span>
+            </div>
+          )}
+
+          {/* @mention autocomplete */}
+          {showMentions && mentionCandidates.length > 0 && (
+            <div style={{ padding: '0 24px', marginBottom: -8 }}>
+              <div style={{ background: 'var(--surface-container-high)', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(73,72,71,0.1)', overflow: 'hidden' }}>
+                {mentionCandidates.map(name => {
+                  const m = getSquadMember(name);
+                  return (
+                    <button key={name} onClick={() => insertMention(name)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid rgba(73,72,71,0.05)', cursor: 'pointer', color: 'var(--on-surface)', textAlign: 'left', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.target.style.background = 'rgba(0,255,163,0.05)'} onMouseLeave={e => e.target.style.background = 'none'}>
+                      <span style={{ fontSize: 20 }}>{m.emoji}</span>
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 600 }}>{name}</div>
+                        <div style={{ fontSize: 10, color: 'var(--on-surface-variant)' }}>{m.strategy}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* GIF Library Panel -- curated, kid-safe */}
+          {showGifPicker && (
+            <div style={{ borderTop: '1px solid rgba(73,72,71,0.05)', padding: 16, background: 'var(--surface-container-low)', maxHeight: '50vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <div className="input-with-icon" style={{ flex: 1 }}>
+                  <Icon name="search" />
+                  <input className="input-field" placeholder="Search GIF library..." value={gifSearch} onChange={e => setGifSearch(e.target.value)} style={{ padding: '8px 12px 8px 36px', fontSize: 12 }} autoFocus />
+                </div>
+                <button className="header-icon-btn" onClick={() => { setShowGifPicker(false); setGifSearch(''); }}><Icon name="close" size={18} /></button>
+              </div>
+              <div>
+                {/* Search results */}
+                {gifSearch && filteredGifs.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {filteredGifs.map(g => (
+                      <button key={g.id} onClick={() => sendGif(g)}
+                        style={{ padding: 4, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(73,72,71,0.1)', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', overflow: 'hidden', width: g.tag === 'emoji' ? 44 : 120 }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(0,255,163,0.3)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(73,72,71,0.1)'; e.currentTarget.style.transform = 'scale(1)'; }}>
+                        <img src={g.url} alt={g.label} style={{ width: '100%', height: g.tag === 'emoji' ? 36 : 68, objectFit: g.tag === 'emoji' ? 'contain' : 'cover', display: 'block', borderRadius: 4 }} />
+                        <div style={{ fontSize: 8, fontFamily: 'var(--font-headline)', fontWeight: 600, color: 'var(--on-surface-variant)', marginTop: 2 }}>{g.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {gifSearch && filteredGifs.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: 20 }}><span className="text-muted" style={{ fontSize: 12 }}>No matching GIFs. Try a different search or upload your own!</span></div>
+                )}
+
+                {/* Browse by category (no search) */}
+                {!gifSearch && Object.entries(gifLibrary).map(([category, gifs]) => (
+                  <div key={category} style={{ marginBottom: 16 }}>
+                    <p className="label-system" style={{ fontSize: 10, marginBottom: 8 }}>{category}</p>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {gifs.map(g => (
+                        <button key={g.id} onClick={() => sendGif(g)}
+                          style={{ padding: 4, background: 'var(--surface-container-highest)', borderRadius: category === 'Custom Emojis' ? 'var(--radius-md)' : 'var(--radius-lg)', border: '1px solid rgba(73,72,71,0.1)', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', overflow: 'hidden', width: category === 'Custom Emojis' ? 44 : 120 }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(0,255,163,0.3)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(73,72,71,0.1)'; e.currentTarget.style.transform = 'scale(1)'; }}>
+                          <img src={g.url} alt={g.label} style={{ width: '100%', height: category === 'Custom Emojis' ? 36 : 68, objectFit: category === 'Custom Emojis' ? 'contain' : 'cover', display: 'block', borderRadius: 4 }} />
+                          {category !== 'Custom Emojis' && <div style={{ fontSize: 8, fontFamily: 'var(--font-headline)', fontWeight: 600, color: 'var(--on-surface-variant)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.label}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Upload your own */}
+                <div style={{ textAlign: 'center', padding: 16, borderTop: '1px solid rgba(73,72,71,0.05)', marginTop: 8 }}>
+                  <button className="btn btn-ghost" onClick={() => { fileInputRef.current?.click(); setShowGifPicker(false); }}>
+                    <Icon name="upload" size={16} /> Upload Your Own GIF
+                  </button>
+                  <p className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>Admin can add GIFs to the library from the Command Center</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Input bar -- hidden for Trade Alerts feed */}
+          {activeRoom !== 'trades' && <div className="chat-input-bar" style={{ position: 'relative' }}>
+            <input ref={fileInputRef} type="file" accept="image/*,.gif" style={{ display: 'none' }} onChange={handleFileSelect} />
+            <button className="header-icon-btn" style={{ width: 32, height: 32, flexShrink: 0 }} title="Upload" onClick={() => fileInputRef.current?.click()}><Icon name="attach_file" size={18} /></button>
+            <button className="header-icon-btn" style={{ width: 32, height: 32, flexShrink: 0, color: showGifPicker ? 'var(--primary-fixed)' : undefined }} title="GIF" onClick={() => { setShowGifPicker(!showGifPicker); setShowQuickEmoji(false); }}><Icon name="gif_box" size={18} /></button>
+            <input ref={inputRef} className="chat-input" placeholder="Type a message..." value={newMsg} onChange={handleInputChange} onKeyDown={handleKey} style={{ flex: 1 }} />
+            <button className="header-icon-btn" style={{ width: 32, height: 32, flexShrink: 0, color: showQuickEmoji ? 'var(--primary-fixed)' : undefined }} title="Emoji" onClick={() => { setShowQuickEmoji(!showQuickEmoji); setShowGifPicker(false); }}><Icon name="mood" size={18} /></button>
+            <button className="chat-send-btn" onClick={send}><Icon name="send" size={18} /></button>
+
+            {/* Quick emoji picker for input */}
+            {showQuickEmoji && (
+              <div style={{ position: 'absolute', bottom: '100%', right: 60, marginBottom: 8, padding: 12, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-xl)', border: '1px solid rgba(73,72,71,0.1)', display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 280, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+                {QUICK_EMOJIS.map(e => (
+                  <button key={e} onClick={() => insertEmoji(e)}
+                    style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 20, transition: 'background 0.1s' }}
+                    onMouseEnter={e2 => e2.target.style.background = 'var(--surface-container-highest)'} onMouseLeave={e2 => e2.target.style.background = 'none'}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== INSIGHTS ====================
+function InsightsPage() {
+  return (
+    <div>
+      <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 8 }}>Daily Insights</h1>
+      <p className="text-muted" style={{ fontSize: 14, marginBottom: 32 }}>{TRADER_INSIGHTS.length} curated insights. A new one appears on your dashboard each day.</p>
+      <div className="two-col">
+        {TRADER_INSIGHTS.map((ins, i) => (
+          <div key={i} className="insight-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <Icon name="format_quote" className="text-primary" />
+              <span className="label-system" style={{ fontSize: 9 }}>#{i + 1}</span>
+            </div>
+            <p className="insight-quote">"{ins}"</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ==================== ACADEMY ====================
+// Helper: render markdown-style bold
+function renderBold(text) {
+  if (!text) return null;
+  return text.split(/\*\*(.*?)\*\*/g).map((part, i) =>
+    i % 2 === 1 ? <strong key={i} style={{ color: 'var(--on-surface)', fontWeight: 700 }}>{part}</strong> : part
+  );
+}
+
+// Lesson viewer -- full page for a single lesson
+function LessonPage({ lesson, onBack, onNext }) {
+  useEffect(() => { window.scrollTo(0, 0); document.querySelector('.main-content')?.scrollTo(0, 0); }, []);
+  const lc = { Beginner: 'badge-primary', Intermediate: 'badge-secondary', Advanced: 'badge-error' };
+
+  return (
+    <div>
+      {/* Hero */}
+      <div className="kinetic-bg" style={{ padding: 'clamp(40px, 8vw, 80px) 0' }}>
+        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginBottom: 32 }}>
+          <Icon name="arrow_back" size={16} /> Back to Lessons
+        </button>
+        <p className="label-system" style={{ marginBottom: 12 }}>Module {String(lesson.number).padStart(2, '0')} {'\u00B7'} {lesson.module}</p>
+        <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(32px, 6vw, 72px)', fontWeight: 700, lineHeight: 1.1, marginBottom: 16 }}>
+          Lesson {lesson.number}:<br />{lesson.title}
+        </h1>
+        <p className="text-muted" style={{ fontSize: 'clamp(16px, 2vw, 22px)', lineHeight: 1.6 }}>{lesson.subtitle}</p>
+        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+          <span className={`badge ${lc[lesson.level]}`}>{lesson.level}</span>
+          <span className="badge badge-neutral"><Icon name="schedule" size={12} /> {lesson.duration}</span>
+        </div>
+      </div>
+
+      {/* Sections */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 48, padding: '48px 0' }}>
+        {lesson.sections.map((s, i) => {
+          if (s.type === 'concept') return (
+            <div key={i} className="card" style={{ padding: 'clamp(24px, 4vw, 48px)' }}>
+              <div className="two-col" style={{ alignItems: 'center' }}>
+                <div>
+                  <div className="stat-icon primary" style={{ width: 48, height: 48, marginBottom: 20 }}><Icon name={s.icon} size={24} /></div>
+                  <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 700, marginBottom: 20 }}>{s.title}</h2>
+                  {s.body.split('\n\n').map((p, pi) => <p key={pi} style={{ fontSize: 20, lineHeight: 1.8, color: 'var(--on-surface-variant)', marginBottom: 16 }}>{renderBold(p)}</p>)}
+                </div>
+                {s.quote && (
+                  <div style={{ padding: 'clamp(20px, 3vw, 40px)', background: 'var(--surface-container-low)', borderRadius: 'var(--radius-xl)', border: '1px solid rgba(73,72,71,0.1)' }}>
+                    <p className="label-system" style={{ marginBottom: 12, color: 'var(--primary-fixed)' }}>{s.quote.label}</p>
+                    <p style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(18px, 2.5vw, 28px)', fontStyle: 'italic', lineHeight: 1.4 }}>{s.quote.text}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+
+          if (s.type === 'two-column') return (
+            <div key={i} className="two-col">
+              {s.cards.map((c, ci) => (
+                <div key={ci} className="card" style={{ padding: 'clamp(24px, 3vw, 40px)' }}>
+                  <div className="stat-icon primary" style={{ width: 48, height: 48, marginBottom: 20 }}><Icon name={c.icon} size={24} /></div>
+                  <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, marginBottom: 20 }}>{c.title}</h3>
+                  {c.body && <p style={{ fontSize: 20, lineHeight: 1.8, color: 'var(--on-surface-variant)', marginBottom: 20 }}>{renderBold(c.body)}</p>}
+                  {c.bullets && c.bullets.map((b, bi) => (
+                    <div key={bi} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0' }}>
+                      <Icon name="check_circle" size={22} className="text-primary" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span style={{ fontSize: 18, lineHeight: 1.6 }}>{renderBold(b)}</span>
+                    </div>
+                  ))}
+                  {c.numbered && c.numbered.map((n, ni) => (
+                    <div key={ni} style={{ padding: '14px 0', borderTop: ni > 0 ? '1px solid rgba(73,72,71,0.08)' : 'none', marginTop: ni > 0 ? 12 : 0 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary-fixed)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 8 }}>{ni + 1}. {n.label}</p>
+                      <p style={{ fontSize: 18, lineHeight: 1.7, color: 'var(--on-surface-variant)' }}>{n.text}</p>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+
+          if (s.type === 'summary') return (
+            <div key={i} style={{ padding: '48px 0', borderTop: '1px solid rgba(73,72,71,0.08)', borderBottom: '1px solid rgba(73,72,71,0.08)', textAlign: 'center' }}>
+              <p className="label-system" style={{ marginBottom: 16, color: 'var(--primary-fixed)' }}>Quick Summary</p>
+              <p style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(20px, 3vw, 36px)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                "{renderBold(s.text)}"
+              </p>
+            </div>
+          );
+          return null;
+        })}
+
+        {/* Next Lesson */}
+        <div style={{ padding: '32px 0' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {lesson.nextLesson && <button className="btn btn-primary" onClick={() => onNext(lesson.nextLesson)}>Continue to Lesson {lesson.number + 1} <Icon name="arrow_forward" size={16} /></button>}
+            <button className="btn btn-secondary" onClick={onBack}><Icon name="grid_view" size={16} /> All Lessons</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Academy page -- lesson list + lesson viewer
+function LearnPage() {
+  const [activeLesson, setActiveLesson] = useState(null);
+  const lc = { Beginner: 'badge-primary', Intermediate: 'badge-secondary', Advanced: 'badge-error' };
+
+  if (activeLesson) {
+    const lesson = ACADEMY_LESSONS.find(l => l.id === activeLesson);
+    if (lesson) return <LessonPage key={lesson.id} lesson={lesson} onBack={() => setActiveLesson(null)} onNext={(id) => { setActiveLesson(id); }} />;
+  }
+
+  return (
+    <div>
+      <div style={{ textAlign: 'center', marginBottom: 48, padding: '40px 0' }}>
+        <p className="label-system" style={{ marginBottom: 16 }}>Learning_Module</p>
+        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 5vw, 48px)', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.1, marginBottom: 16 }}>Master The<br /><span className="text-primary">Rocket Engine</span></h1>
+        <p className="text-muted" style={{ fontSize: 16, maxWidth: 500, margin: '0 auto 24px' }}>From stocks to crypto to advanced strategies. Learn at your own pace.</p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <span className="badge badge-neutral"><Icon name="school" size={14} /> {ACADEMY_LESSONS.length} Lessons</span>
+          <span className="badge badge-neutral"><Icon name="schedule" size={14} /> Self-Paced</span>
+          <span className="badge badge-neutral"><Icon name="verified" size={14} /> Beginner Friendly</span>
+        </div>
+      </div>
+      <h3 className="section-title" style={{ marginBottom: 20 }}>Core_Curriculum</h3>
+      <div className="lessons-grid">
+        {ACADEMY_LESSONS.map(l => (
+          <div key={l.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setActiveLesson(l.id)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div className="stat-icon primary" style={{ width: 44, height: 44 }}><Icon name={l.icon} /></div>
+              <span className={`badge ${lc[l.level]}`}>{l.level}</span>
+            </div>
+            <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Lesson {l.number}: {l.title}</h4>
+            <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>{l.subtitle.slice(0, 80)}...</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="schedule" size={14} className="text-muted" />
+              <span className="text-muted" style={{ fontSize: 11 }}>{l.duration}</span>
+              <span className="text-muted" style={{ fontSize: 11 }}>{'\u00B7'} {l.sections.length} sections</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ==================== WEEKLY REPORT PAGE ====================
+function WeeklyReportPage({ setStockDetail }) {
+  const [selectedReport, setSelectedReport] = useState(WEEKLY_REPORTS[0]?.id);
+  const report = WEEKLY_REPORTS.find(r => r.id === selectedReport) || WEEKLY_REPORTS[0];
+  if (!report) return <div className="empty-state"><Icon name="summarize" /><h3>No reports yet</h3><p>Check back next week for the first intelligence briefing.</p></div>;
+  const tagColors = { primary: 'var(--primary-fixed)', tertiary: 'var(--tertiary)', neutral: 'var(--on-surface-variant)' };
+
+  return (
+    <div>
+      {/* Archive Selector */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32, flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {WEEKLY_REPORTS.map(r => (
+            <button key={r.id} className={`btn btn-sm ${r.id === selectedReport ? 'btn-ghost' : 'btn-secondary'}`}
+              style={r.id === selectedReport ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}}
+              onClick={() => setSelectedReport(r.id)}>
+              {r.isCurrent && <Icon name="circle" size={8} style={{ color: 'var(--primary-fixed)' }} />} Vol. {r.volume} {'\u00B7'} {r.weekStart}
+            </button>
+          ))}
+        </div>
+        <span className="badge badge-primary"><Icon name="school" size={12} /> Beginner Friendly</span>
+      </div>
+
+      {/* Hero */}
+      <div className="kinetic-bg" style={{ padding: 'clamp(32px, 6vw, 64px) 0 clamp(48px, 8vw, 80px)' }}>
+        <div style={{ marginBottom: 16 }}>
+          <span className="label-system" style={{ color: 'var(--primary-fixed)', fontSize: 14, letterSpacing: '0.2em' }}>
+            Week of {report.weekStart} {'\u2013'} {report.weekEnd}
+          </span>
+        </div>
+        <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(36px, 7vw, 80px)', lineHeight: 0.95, marginBottom: 16 }}>
+          Weekly Intelligence<br /><span style={{ fontStyle: 'italic', color: 'var(--primary-fixed)' }}>Briefing</span>
+        </h1>
+        <p className="text-muted" style={{ fontSize: 'clamp(16px, 2vw, 24px)', lineHeight: 1.5 }}>
+          Demystifying the markets. A professional synthesis of global money flows, translated for the modern investor.
+        </p>
+      </div>
+
+      {/* Market Pulse -- 3 glass cards */}
+      <div className="stats-grid" style={{ marginTop: -20, position: 'relative', zIndex: 10 }}>
+        <div className="glass-panel glow-emerald" style={{ padding: 32, borderColor: 'rgba(0,255,163,0.2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <span className="label-system">Market Heartbeat</span>
+            <Icon name={report.pulse.heartbeat.direction === 'up' ? 'trending_up' : 'trending_down'} className={report.pulse.heartbeat.direction === 'up' ? 'text-primary' : 'text-error'} />
+          </div>
+          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 700, marginBottom: 4 }}>{report.pulse.heartbeat.value}</div>
+          <div style={{ color: 'var(--primary-fixed)', fontStyle: 'italic', marginBottom: 16 }}>{report.pulse.heartbeat.label}</div>
+          <div style={{ borderLeft: '2px solid var(--primary-fixed)', background: 'linear-gradient(90deg, rgba(0,255,163,0.05), transparent)', padding: '12px 16px', borderRadius: '0 var(--radius-lg) var(--radius-lg) 0' }}>
+            <p className="label-system" style={{ marginBottom: 4, fontSize: 9 }}>What this means:</p>
+            <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.6 }}>{report.pulse.heartbeat.breakdown}</p>
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <span className="label-system">Market Breadth</span>
+            <Icon name="bar_chart" className="text-muted" />
+          </div>
+          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 700, marginBottom: 4 }}>
+            {report.pulse.breadth.winners} <span style={{ fontSize: '0.5em', color: 'var(--on-surface-variant)' }}>/</span> {report.pulse.breadth.losers}
+          </div>
+          <div style={{ color: 'var(--on-surface-variant)', fontStyle: 'italic', marginBottom: 16 }}>{report.pulse.breadth.label}</div>
+          <div style={{ borderLeft: '2px solid rgba(255,255,255,0.1)', background: 'linear-gradient(90deg, rgba(255,255,255,0.02), transparent)', padding: '12px 16px', borderRadius: '0 var(--radius-lg) var(--radius-lg) 0' }}>
+            <p className="label-system" style={{ marginBottom: 4, fontSize: 9 }}>What this means:</p>
+            <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.6 }}>{report.pulse.breadth.breakdown}</p>
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <span className="label-system">Mood Meter</span>
+            <Icon name="psychology" className="text-tertiary" />
+          </div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(20px, 3vw, 28px)', fontWeight: 700, fontStyle: 'italic', marginBottom: 12 }}>{report.pulse.mood.sentiment}</div>
+          <div className="ticker-progress" style={{ marginBottom: 16, height: 6 }}>
+            <div className="ticker-progress-fill" style={{ width: `${report.pulse.mood.meterPercent}%` }}></div>
+          </div>
+          <div style={{ borderLeft: '2px solid var(--tertiary)', background: 'linear-gradient(90deg, rgba(114,220,255,0.03), transparent)', padding: '12px 16px', borderRadius: '0 var(--radius-lg) var(--radius-lg) 0' }}>
+            <p className="label-system" style={{ marginBottom: 4, fontSize: 9 }}>What this means:</p>
+            <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.6 }}>{report.pulse.mood.breakdown}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Crypto Corner */}
+      <div style={{ marginTop: 64 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 40 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(28px, 5vw, 48px)' }}>Crypto <span style={{ fontStyle: 'italic', color: 'var(--primary-fixed)' }}>Corner</span></h2>
+          <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(73,72,71,0.3), transparent)' }}></div>
+          <span className="label-system">Digital Asset Review</span>
+        </div>
+
+        <div className="bento-grid">
+          {/* Chart */}
+          <div className="glass-panel bento-col-8" style={{ padding: 32 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+              <div>
+                <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontStyle: 'italic', marginBottom: 4 }}>Growth Trajectory</h3>
+                <p className="text-muted" style={{ fontSize: 14 }}>Price movement over the last 7 days</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 200, padding: '0 8px', borderBottom: '1px solid rgba(73,72,71,0.2)', borderLeft: '1px solid rgba(73,72,71,0.2)', marginBottom: 16 }}>
+              {report.crypto.dailyBars.map((h, i) => (
+                <div key={i} style={{ flex: 1, height: `${h}%`, background: `linear-gradient(to top, rgba(0,255,163,0.05), rgba(0,255,163,0.25))`, borderTop: '2px solid var(--primary-fixed)', borderRadius: '4px 4px 0 0', position: 'relative', transition: 'all 0.3s' }}>
+                  {i === report.crypto.peakDay && <div style={{ position: 'absolute', top: -28, left: '50%', transform: 'translateX(-50)', fontFamily: 'var(--font-headline)', fontSize: 9, fontWeight: 700, color: 'var(--on-primary)', background: 'var(--primary-fixed)', padding: '2px 8px', borderRadius: 'var(--radius-full)', whiteSpace: 'nowrap' }}>PEAK</div>}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 8px', marginBottom: 16 }}>
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <span key={d} className="label-system" style={{ fontSize: 9 }}>{d}</span>)}
+            </div>
+            <div style={{ padding: 16, background: 'var(--surface-container)', borderRadius: 'var(--radius-lg)' }}>
+              <span style={{ color: 'var(--primary-fixed)', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', marginRight: 8 }}>Simple Breakdown:</span>
+              <span className="text-muted" style={{ fontSize: 13 }}>{report.crypto.chartBreakdown}</span>
+            </div>
+          </div>
+
+          {/* Smart Money + Gossip */}
+          <div className="bento-col-4" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <div className="card-elevated" style={{ borderColor: 'rgba(0,255,163,0.2)' }}>
+              <p className="label-system" style={{ color: 'var(--primary-fixed)', marginBottom: 12 }}>Smart Money Insight</p>
+              <p style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontStyle: 'italic', lineHeight: 1.4, marginBottom: 16 }}>{report.crypto.smartMoney.insight}</p>
+              <div style={{ borderLeft: '2px solid rgba(0,255,163,0.3)', padding: '8px 12px', borderRadius: '0 var(--radius-md) var(--radius-md) 0' }}>
+                <p className="text-muted" style={{ fontSize: 13, fontStyle: 'italic', lineHeight: 1.5 }}>{report.crypto.smartMoney.breakdown}</p>
+              </div>
+            </div>
+            <div className="glass-panel" style={{ padding: 24, flex: 1 }}>
+              <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontStyle: 'italic', marginBottom: 20 }}>Market Gossip</h3>
+              {report.crypto.gossip.map((g, i) => (
+                <div key={i} style={{ marginBottom: i < report.crypto.gossip.length - 1 ? 20 : 0 }}>
+                  <p className="label-system" style={{ color: i === 0 ? 'var(--primary-fixed)' : 'var(--tertiary)', marginBottom: 6 }}>{g.label}</p>
+                  <p className="text-muted" style={{ fontSize: 14, lineHeight: 1.6 }}>{g.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Crypto Table */}
+          <div className="bento-col-12 glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="data-table">
+              <thead><tr><th>Asset Name</th><th>Weekly Change</th><th>Total Value</th><th style={{ textAlign: 'right' }}>Expert Signal</th></tr></thead>
+              <tbody>
+                {report.crypto.table.map(c => (
+                  <tr key={c.name}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div style={{ width: 48, height: 48, background: 'var(--surface-container)', borderRadius: 'var(--radius-xl)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${c.color === 'primary' ? 'rgba(0,255,163,0.2)' : 'rgba(114,220,255,0.2)'}` }}>
+                          <Icon name={c.icon} size={24} className={c.color === 'primary' ? 'text-primary' : 'text-tertiary'} />
+                        </div>
+                        <div>
+                          <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700 }}>{c.name}</div>
+                          <div className="label-system">{c.subtitle}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 24, color: c.change.startsWith('+') ? 'var(--primary-fixed)' : 'var(--error)' }}>{c.change}</td>
+                    <td className="text-muted">{c.marketCap}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span className={`badge ${c.signal.includes('Buy') || c.signal.includes('Must') ? 'badge-primary' : 'badge-neutral'}`} style={{ padding: '8px 20px' }}>{c.signal}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Strategic Focus */}
+      <div style={{ marginTop: 64 }}>
+        <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(28px, 5vw, 48px)', fontStyle: 'italic', marginBottom: 32 }}>Strategic <span style={{ fontStyle: 'normal', color: 'var(--primary-fixed)' }}>Focus</span></h2>
+        <div className="three-col">
+          {report.focus.map(f => (
+            <div key={f.number} className="card" style={{ padding: 32 }}>
+              <span className="badge" style={{ background: `${tagColors[f.tagColor]}20`, color: tagColors[f.tagColor], marginBottom: 16 }}>{f.number}. {f.tag}</span>
+              <h4 style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, fontStyle: 'italic', marginBottom: 12 }}>{f.title}</h4>
+              <p className="text-muted" style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 16 }}>{f.body}</p>
+              <div style={{ borderLeft: `2px solid ${tagColors[f.tagColor]}40`, background: 'linear-gradient(90deg, rgba(0,255,163,0.03), transparent)', padding: '12px 16px', borderRadius: '0 var(--radius-md) var(--radius-md) 0', marginBottom: 16 }}>
+                <p className="label-system" style={{ marginBottom: 4, fontSize: 9 }}>Simple Terms:</p>
+                <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.5 }}>{f.simpleTerms}</p>
+              </div>
+              <a className="section-link" style={{ fontSize: 11 }}>{f.cta} <Icon name="arrow_forward" size={14} /></a>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Capital Migration */}
+      <div style={{ marginTop: 64, padding: '48px 0', borderTop: '1px solid rgba(73,72,71,0.08)' }}>
+        <div className="two-col" style={{ alignItems: 'center' }}>
+          <div>
+            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(32px, 5vw, 56px)', fontStyle: 'italic', lineHeight: 1.1, marginBottom: 20 }}>Capital<br /><span style={{ fontStyle: 'normal', color: 'var(--primary-fixed)' }}>Migration</span></h2>
+            <p className="text-muted" style={{ fontSize: 18, lineHeight: 1.7, marginBottom: 24 }}>{report.migration.body}</p>
+            <div style={{ borderLeft: '2px solid rgba(0,255,163,0.3)', background: 'linear-gradient(90deg, rgba(0,255,163,0.03), transparent)', padding: '20px 24px', borderRadius: '0 var(--radius-xl) var(--radius-xl) 0', marginBottom: 32 }}>
+              <h5 style={{ color: 'var(--primary-fixed)', fontFamily: 'var(--font-headline)', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 8 }}>{report.migration.analogy.title}</h5>
+              <p style={{ fontSize: 16, color: 'var(--on-surface-variant)', lineHeight: 1.7, fontStyle: 'italic' }}>{report.migration.analogy.text}</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {report.migration.flows.map(f => (
+              <div key={f.sector} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ width: 64, height: 6, borderRadius: 'var(--radius-full)', background: f.status === 'buying' ? 'var(--primary-fixed)' : f.status === 'selling' ? 'var(--error)' : 'var(--surface-variant)', boxShadow: f.status === 'buying' ? '0 0 15px rgba(0,255,163,0.4)' : f.status === 'selling' ? '0 0 15px rgba(255,113,108,0.2)' : 'none' }}></div>
+                <span className="label-system" style={{ color: f.status === 'selling' ? 'var(--on-surface-variant)' : 'var(--on-surface)' }}>{f.label} ({f.sector})</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Pocket Glossary */}
+      <div style={{ marginTop: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <Icon name="menu_book" className="text-primary" />
+          <h3 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>Pocket Glossary</h3>
+        </div>
+        <div className="hardware-card" style={{ padding: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+            {report.glossary.map((g, i) => (
+              <div key={i} style={{ padding: 12, background: 'rgba(0,255,163,0.03)', borderRadius: 'var(--radius-lg)' }}>
+                <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: 'var(--primary-fixed)', marginBottom: 4 }}>{g.term}</div>
+                <div style={{ fontSize: 12, color: 'var(--on-surface-variant)', lineHeight: 1.5 }}>{g.def}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ==================== ADMIN PAGE ====================
+function AdminPage({ portfolio, stocks, crypto, setNotification }) {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [announceText, setAnnounceText] = useState('');
+  const [challengeName, setChallengeName] = useState('');
+  const [challengeCash, setChallengeCash] = useState('100000');
+  const [challengeDays, setChallengeDays] = useState('7');
+
+  // Mock user list (will be from Supabase later)
+  const [mockUsers] = useState([
+    { id: 1, name: 'Ella', status: 'active', joined: '3/1/2026', totalValue: 101652, trades: 12, role: 'user' },
+    { id: 2, name: 'Lawson', status: 'active', joined: '3/3/2026', totalValue: 98450, trades: 28, role: 'user' },
+    { id: 3, name: 'PCM', status: 'active', joined: '3/5/2026', totalValue: 115200, trades: 45, role: 'user' },
+    { id: 4, name: 'Milburn Pennybags', status: 'active', joined: '3/1/2026', totalValue: 108300, trades: 15, role: 'admin' },
+  ]);
+
+  // Mock announcements
+  const [announcements, setAnnouncements] = useState([
+    { id: 1, text: 'Welcome to Stock Rocket! Start paper trading to learn the markets.', date: '3/1/2026', active: true },
+    { id: 2, text: 'New Academy lesson: Options Trading 101 is now live!', date: '3/10/2026', active: true },
+  ]);
+
+  // Mock challenges
+  const [challenges, setChallenges] = useState([
+    { id: 1, name: 'March Madness Trading', startCash: 100000, days: 30, participants: 4, status: 'active', startDate: '3/1/2026' },
+  ]);
+
+  // Stock toggles
+  const [disabledStocks, setDisabledStocks] = useState([]);
+  const toggleStock = (symbol) => {
+    setDisabledStocks(prev => prev.includes(symbol) ? prev.filter(s => s !== symbol) : [...prev, symbol]);
+  };
+
+  // Trading limits
+  const [maxTradeAmount, setMaxTradeAmount] = useState('50000');
+  const [maxDailyTrades, setMaxDailyTrades] = useState('50');
+
+  const postAnnouncement = () => {
+    if (!announceText.trim()) return;
+    setAnnouncements(prev => [{ id: Date.now(), text: announceText.trim(), date: new Date().toLocaleDateString(), active: true }, ...prev]);
+    setAnnounceText('');
+    setNotification({ type: 'success', message: 'Announcement posted' });
+  };
+
+  const createChallenge = () => {
+    if (!challengeName.trim()) return;
+    setChallenges(prev => [...prev, { id: Date.now(), name: challengeName, startCash: parseFloat(challengeCash), days: parseInt(challengeDays), participants: 0, status: 'active', startDate: new Date().toLocaleDateString() }]);
+    setChallengeName('');
+    setNotification({ type: 'success', message: 'Challenge created' });
+  };
+
+  const tabs = [
+    { id: 'overview', icon: 'dashboard', label: 'Overview' },
+    { id: 'users', icon: 'group', label: 'Users' },
+    { id: 'content', icon: 'edit_note', label: 'Content' },
+    { id: 'trading', icon: 'tune', label: 'Trading' },
+    { id: 'challenges', icon: 'emoji_events', label: 'Challenges' },
+    { id: 'moderation', icon: 'shield', label: 'Moderation' },
+    { id: 'roadmap', icon: 'rocket_launch', label: 'Roadmap' },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em' }}>
+          Admin <span style={{ color: 'var(--error)' }}>Command_Center</span>
+        </h1>
+        <span className="badge badge-error" style={{ fontSize: 11 }}>👑 Admin</span>
+      </div>
+      <p className="text-muted" style={{ fontSize: 14, marginBottom: 24 }}>Full platform control. Manage users, content, trading, and analytics.</p>
+
+      {/* Admin Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 32, flexWrap: 'wrap' }}>
+        {tabs.map(t => (
+          <button key={t.id} className={`btn btn-sm ${activeTab === t.id ? 'btn-ghost' : 'btn-secondary'}`}
+            style={activeTab === t.id ? { background: 'var(--error)', color: '#fff', borderColor: 'var(--error)' } : {}}
+            onClick={() => setActiveTab(t.id)}>
+            <Icon name={t.icon} size={16} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* OVERVIEW TAB */}
+      {activeTab === 'overview' && (
+        <div>
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 32 }}>
+            <div className="stat-card"><p className="stat-label">Total_Users</p><p className="stat-value">{mockUsers.length}</p><p className="stat-change positive">{mockUsers.filter(u => u.status === 'active').length} active</p></div>
+            <div className="stat-card"><p className="stat-label">Total_Trades</p><p className="stat-value">{mockUsers.reduce((s, u) => s + u.trades, 0)}</p><p className="stat-change neutral">All time</p></div>
+            <div className="stat-card"><p className="stat-label">Active_Challenges</p><p className="stat-value">{challenges.filter(c => c.status === 'active').length}</p><p className="stat-change positive">{challenges.reduce((s, c) => s + c.participants, 0)} participants</p></div>
+            <div className="stat-card"><p className="stat-label">Disabled_Stocks</p><p className="stat-value">{disabledStocks.length}</p><p className="stat-change neutral">of {stocks.length + crypto.length}</p></div>
+          </div>
+
+          <div className="two-col">
+            <div className="card">
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="trending_up" size={20} /> Platform_Activity</h3>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+                <span className="label-system">Most Active User</span>
+                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>PCM (45 trades)</span>
+              </div>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+                <span className="label-system">Top Performer</span>
+                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, color: 'var(--primary-fixed)' }}>PCM (+$15,200)</span>
+              </div>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', display: 'flex', justifyContent: 'space-between' }}>
+                <span className="label-system">Most Traded</span>
+                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>AAPL, NVDA, BTC</span>
+              </div>
+            </div>
+            <div className="card">
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="campaign" size={20} /> Recent_Announcements</h3>
+              {announcements.slice(0, 3).map(a => (
+                <div key={a.id} style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 8 }}>
+                  <p style={{ fontSize: 13, marginBottom: 4 }}>{a.text}</p>
+                  <span className="label-system">{a.date}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* USERS TAB */}
+      {activeTab === 'users' && (
+        <div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 className="label-system" style={{ fontSize: 14 }}>All_Users ({mockUsers.length})</h3>
+              <div className="input-with-icon">
+                <Icon name="search" />
+                <input className="input-field" placeholder="Search users..." style={{ width: 200, padding: '8px 12px 8px 40px', fontSize: 12 }} />
+              </div>
+            </div>
+            <table className="data-table">
+              <thead><tr><th>User</th><th>Status</th><th>Joined</th><th>Portfolio Value</th><th>Trades</th><th>Actions</th></tr></thead>
+              <tbody>
+                {mockUsers.map(u => (
+                  <tr key={u.id}>
+                    <td><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div className="stock-icon-badge" style={{ background: 'rgba(0,255,163,0.15)', color: 'var(--primary-fixed)' }}>{u.name[0]}</div>
+                      <div><div className="stock-symbol-text">{u.name}</div><div className="stock-name-text">{u.role}</div></div>
+                    </div></td>
+                    <td><span className={`badge ${u.status === 'active' ? 'badge-primary' : 'badge-neutral'}`}><span className="badge-dot glow"></span> {u.status}</span></td>
+                    <td className="text-muted">{u.joined}</td>
+                    <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(u.totalValue)}</td>
+                    <td style={{ fontFamily: 'var(--font-headline)' }}>{u.trades}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-secondary btn-sm" title="View portfolio"><Icon name="visibility" size={14} /></button>
+                        <button className="btn btn-secondary btn-sm" title="Reset portfolio"><Icon name="restart_alt" size={14} /></button>
+                        <button className="btn btn-secondary btn-sm" title="Suspend" style={{ color: 'var(--error)' }}><Icon name="block" size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* CONTENT TAB */}
+      {activeTab === 'content' && (
+        <div>
+          <div className="two-col">
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="campaign" size={20} /> Post_Announcement</h3>
+              <div className="card">
+                <textarea className="input-field" placeholder="Write an announcement for all users..." value={announceText} onChange={e => setAnnounceText(e.target.value)} style={{ minHeight: 100, resize: 'vertical', fontFamily: 'var(--font-body)' }} />
+                <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={postAnnouncement}><Icon name="send" size={16} /> Post Announcement</button>
+              </div>
+
+              <h3 className="section-title" style={{ marginBottom: 16, marginTop: 32 }}><Icon name="history" size={20} /> Active_Announcements</h3>
+              <div className="card">
+                {announcements.map(a => (
+                  <div key={a.id} className="stock-row">
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 13 }}>{a.text}</p>
+                      <span className="label-system">{a.date}</span>
+                    </div>
+                    <button className="btn btn-secondary btn-sm" style={{ color: 'var(--error)' }} onClick={() => setAnnouncements(prev => prev.filter(x => x.id !== a.id))}>
+                      <Icon name="delete" size={14} /> Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="school" size={20} /> Academy_Lessons</h3>
+              <div className="card">
+                {['What is a Stock?', 'Technical Patterns 101', 'Options Trading 101', 'Blockchain Infrastructure', 'Portfolio Management', 'Algorithmic Strategies'].map((l, i) => (
+                  <div key={i} className="stock-row">
+                    <Icon name="menu_book" size={18} className="text-primary" />
+                    <div className="stock-info"><div style={{ fontSize: 13, fontWeight: 600 }}>{l}</div></div>
+                    <button className="btn btn-secondary btn-sm"><Icon name="edit" size={14} /> Edit</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost" style={{ marginTop: 12, width: '100%' }}><Icon name="add" size={16} /> Add New Lesson</button>
+              </div>
+
+              <h3 className="section-title" style={{ marginBottom: 16, marginTop: 32 }}><Icon name="upload_file" size={20} /> Upload_Content</h3>
+              <div className="card" style={{ textAlign: 'center', padding: 32, border: '2px dashed rgba(73,72,71,0.2)', cursor: 'pointer' }}>
+                <Icon name="cloud_upload" size={40} className="text-muted" />
+                <p className="text-muted" style={{ marginTop: 12, fontSize: 13 }}>Drag & drop files here or click to browse</p>
+                <p className="text-muted" style={{ fontSize: 11 }}>Images, PDFs, videos for Academy lessons</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TRADING TAB */}
+      {activeTab === 'trading' && (
+        <div>
+          <div className="two-col" style={{ marginBottom: 32 }}>
+            <div className="card">
+              <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="tune" size={20} /> Trading_Limits</h3>
+              <div style={{ marginBottom: 16 }}>
+                <label className="input-label">Max_Trade_Amount ($)</label>
+                <input className="input-field" type="number" value={maxTradeAmount} onChange={e => setMaxTradeAmount(e.target.value)} />
+                <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Maximum dollar amount per single trade</p>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label className="input-label">Max_Daily_Trades</label>
+                <input className="input-field" type="number" value={maxDailyTrades} onChange={e => setMaxDailyTrades(e.target.value)} />
+                <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Maximum trades a user can make per day</p>
+              </div>
+              <button className="btn btn-primary" onClick={() => setNotification({ type: 'success', message: 'Trading limits saved' })}><Icon name="save" size={16} /> Save Limits</button>
+            </div>
+
+            <div className="card">
+              <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="account_balance_wallet" size={20} /> Default_Settings</h3>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div><span className="label-system">Starting Cash</span><p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4 }}>$100,000.00</p></div>
+                <button className="btn btn-secondary btn-sm"><Icon name="edit" size={14} /></button>
+              </div>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div><span className="label-system">Paper Mode Default</span><p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4, color: 'var(--primary-fixed)' }}>Enabled</p></div>
+                <button className="btn btn-secondary btn-sm"><Icon name="toggle_on" size={14} /></button>
+              </div>
+              <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div><span className="label-system">Allow Crypto</span><p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4, color: 'var(--primary-fixed)' }}>Enabled</p></div>
+                <button className="btn btn-secondary btn-sm"><Icon name="toggle_on" size={14} /></button>
+              </div>
+            </div>
+          </div>
+
+          {/* API Keys */}
+          <div className="card" style={{ marginBottom: 32 }}>
+            <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="key" size={20} /> API Keys</h3>
+            <p className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>Connect live data feeds. Keys are stored locally and never sent to our servers.</p>
+            <div style={{ marginBottom: 16 }}>
+              <label className="input-label">Finnhub API Key (Stocks)</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="input-field" type="password" placeholder="Paste your Finnhub API key" defaultValue={typeof FINNHUB_KEY !== 'undefined' ? FINNHUB_KEY : ''} id="finnhub-key-input" />
+                <button className="btn btn-primary btn-sm" onClick={() => { const v = document.getElementById('finnhub-key-input')?.value; if (v) { try { localStorage.setItem('stockrocket_finnhub_key', v); setNotification({ type: 'success', message: 'Finnhub key saved. Reload to activate.' }); } catch {} } }}>Save</button>
+              </div>
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Free at <a href="https://finnhub.io/register" style={{ color: 'var(--primary-fixed)' }}>finnhub.io/register</a> -- enables real-time US stock prices</p>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label className="input-label">Supabase URL</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="input-field" type="text" placeholder="https://yourproject.supabase.co" id="supabase-url-input" />
+                <button className="btn btn-primary btn-sm" onClick={() => { const v = document.getElementById('supabase-url-input')?.value; if (v) { try { localStorage.setItem('stockrocket_supabase_url', v); setNotification({ type: 'success', message: 'Supabase URL saved.' }); } catch {} } }}>Save</button>
+              </div>
+            </div>
+            <div>
+              <label className="input-label">Supabase Anon Key</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="input-field" type="password" placeholder="Paste your anon key" id="supabase-key-input" />
+                <button className="btn btn-primary btn-sm" onClick={() => { const v = document.getElementById('supabase-key-input')?.value; if (v) { try { localStorage.setItem('stockrocket_supabase_key', v); setNotification({ type: 'success', message: 'Supabase key saved.' }); } catch {} } }}>Save</button>
+              </div>
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Create a project at <a href="https://supabase.com" style={{ color: 'var(--primary-fixed)' }}>supabase.com</a> -- enables auth, real-time chat, and data persistence</p>
+            </div>
+          </div>
+
+          <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="toggle_off" size={20} /> Enable/Disable Instruments</h3>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="data-table">
+              <thead><tr><th>Symbol</th><th>Name</th><th>Type</th><th>Status</th><th>Toggle</th></tr></thead>
+              <tbody>
+                {[...stocks, ...crypto].map(s => {
+                  const disabled = disabledStocks.includes(s.symbol);
+                  return (
+                    <tr key={s.symbol} style={disabled ? { opacity: 0.5 } : {}}>
+                      <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{s.symbol}</td>
+                      <td>{s.name}</td>
+                      <td><span className="badge badge-neutral">{s.sector || 'Crypto'}</span></td>
+                      <td><span className={`badge ${disabled ? 'badge-error' : 'badge-primary'}`}><span className="badge-dot glow"></span> {disabled ? 'Disabled' : 'Active'}</span></td>
+                      <td><button className={`btn btn-sm ${disabled ? 'btn-ghost' : 'btn-secondary'}`} style={disabled ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : { color: 'var(--error)' }} onClick={() => toggleStock(s.symbol)}>
+                        <Icon name={disabled ? 'toggle_on' : 'toggle_off'} size={16} /> {disabled ? 'Enable' : 'Disable'}
+                      </button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* CHALLENGES TAB */}
+      {activeTab === 'challenges' && (
+        <div>
+          <div className="two-col">
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="add_circle" size={20} /> Create_Challenge</h3>
+              <div className="card">
+                <div style={{ marginBottom: 16 }}><label className="input-label">Challenge_Name</label><input className="input-field" placeholder="e.g. Spring Trading Sprint" value={challengeName} onChange={e => setChallengeName(e.target.value)} /></div>
+                <div style={{ marginBottom: 16 }}><label className="input-label">Starting_Cash ($)</label><input className="input-field" type="number" value={challengeCash} onChange={e => setChallengeCash(e.target.value)} /></div>
+                <div style={{ marginBottom: 16 }}><label className="input-label">Duration (Days)</label><input className="input-field" type="number" value={challengeDays} onChange={e => setChallengeDays(e.target.value)} /></div>
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={createChallenge}><Icon name="emoji_events" size={16} /> Launch Challenge</button>
+              </div>
+            </div>
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="emoji_events" size={20} /> Active_Challenges</h3>
+              {challenges.map(c => (
+                <div key={c.id} className="card" style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div>
+                      <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>{c.name}</h4>
+                      <span className="label-system">Started {c.startDate}</span>
+                    </div>
+                    <span className={`badge ${c.status === 'active' ? 'badge-primary' : 'badge-neutral'}`}>{c.status}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', flex: 1, textAlign: 'center' }}>
+                      <span className="label-system">Starting Cash</span>
+                      <p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4 }}>{formatCurrency(c.startCash)}</p>
+                    </div>
+                    <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', flex: 1, textAlign: 'center' }}>
+                      <span className="label-system">Participants</span>
+                      <p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4 }}>{c.participants}</p>
+                    </div>
+                    <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', flex: 1, textAlign: 'center' }}>
+                      <span className="label-system">Duration</span>
+                      <p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4 }}>{c.days} days</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODERATION TAB */}
+      {activeTab === 'moderation' && (
+        <div>
+          <div className="two-col">
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="chat" size={20} /> Chat_Moderation</h3>
+              <div className="card">
+                <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div><span className="label-system">Chat Filter</span><p style={{ fontSize: 13, marginTop: 4 }}>Block profanity and inappropriate content</p></div>
+                  <span className="badge badge-primary">Active</span>
+                </div>
+                <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div><span className="label-system">Link Sharing</span><p style={{ fontSize: 13, marginTop: 4 }}>Allow users to share links in chat</p></div>
+                  <span className="badge badge-error">Disabled</span>
+                </div>
+                <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div><span className="label-system">Image Sharing</span><p style={{ fontSize: 13, marginTop: 4 }}>Allow users to share images in chat</p></div>
+                  <span className="badge badge-error">Disabled</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="flag" size={20} /> Flagged_Content</h3>
+              <div className="card">
+                <div className="empty-state" style={{ padding: 32 }}>
+                  <Icon name="check_circle" />
+                  <h3 style={{ color: 'var(--primary-fixed)' }}>All Clear</h3>
+                  <p>No flagged messages or content to review</p>
+                </div>
+              </div>
+
+              <h3 className="section-title" style={{ marginBottom: 16, marginTop: 32 }}><Icon name="manage_accounts" size={20} /> Chat_Rooms</h3>
+              <div className="card">
+                {['General', 'Trade Alerts', 'Research', 'Memes & Fun'].map((r, i) => (
+                  <div key={i} className="stock-row">
+                    <Icon name="forum" size={18} className="text-primary" />
+                    <div className="stock-info"><div style={{ fontSize: 13, fontWeight: 600 }}>{r}</div></div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-secondary btn-sm"><Icon name="edit" size={14} /></button>
+                      <button className="btn btn-secondary btn-sm" style={{ color: 'var(--error)' }}><Icon name="delete" size={14} /></button>
+                    </div>
+                  </div>
+                ))}
+                <button className="btn btn-ghost" style={{ marginTop: 12, width: '100%' }}><Icon name="add" size={16} /> Create Room</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ROADMAP TAB */}
+      {activeTab === 'roadmap' && (
+        <div>
+          <div className="two-col">
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="priority_high" size={20} className="text-error" /> Launch Blockers</h3>
+              {[
+                { title: 'Set Up Supabase', desc: 'Create a Supabase project for auth, database, and real-time chat. Required for multi-user -- right now all data is local to each browser.', action: 'Go to supabase.com, create project, paste URL + anon key in Trading > API Keys.' },
+                { title: 'Get Finnhub API Key', desc: 'Free API key for live US stock prices. Without this, all stock prices are mock data.', action: 'Register at finnhub.io/register (free), paste key in Admin > Trading > API Keys.' },
+                { title: 'Deploy to Vercel', desc: 'Host the app so all 4 players can access it. Currently only runs from your desktop.', action: 'Push to GitHub, connect to Vercel (free), get a live URL.' },
+              ].map((item, i) => (
+                <div key={i} className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--error)' }}>
+                  <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{item.title}</h4>
+                  <p className="text-muted" style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 12 }}>{item.desc}</p>
+                  <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+                    <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>How To</p>
+                    <p style={{ fontSize: 13, color: 'var(--on-surface-variant)' }}>{item.action}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="bolt" size={20} className="text-primary" /> Up Next</h3>
+              {[
+                { title: 'Wire Real Leaderboard', desc: 'Connect all 4 players to Supabase so leaderboard shows real portfolios.', status: 'Needs Supabase' },
+                { title: 'Build 11 Crypto Lessons', desc: 'Bitcoin, Ethereum, Stablecoins, Wallets, Scams, and more. Skill is built and ready.', status: 'Ready' },
+                { title: 'Vite Build System', desc: 'Replace in-browser Babel with proper production build for speed.', status: 'Ready' },
+                { title: 'Onboarding Flow', desc: '3-step welcome for new users: pick a stock, make a trade, check portfolio.', status: 'Planned' },
+                { title: 'Search Bar', desc: 'Global search in header for stocks, lessons, and pages.', status: 'Planned' },
+              ].map((item, i) => (
+                <div key={i} className="card" style={{ marginBottom: 16, borderLeft: `3px solid ${item.status === 'Ready' ? 'var(--primary-fixed)' : 'var(--outline)'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>{item.title}</h4>
+                    <span className={`badge ${item.status === 'Ready' ? 'badge-primary' : 'badge-neutral'}`} style={{ fontSize: 9 }}>{item.status}</span>
+                  </div>
+                  <p className="text-muted" style={{ fontSize: 14, lineHeight: 1.6 }}>{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <h3 className="section-title" style={{ marginTop: 32, marginBottom: 20 }}><Icon name="check_circle" size={20} className="text-primary" /> What's Done</h3>
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
+              {[
+                'V2 design system (Hardware Nebula)',
+                '12 Academy lessons (11 stock + 1 crypto)',
+                '2 weekly reports with archive system',
+                'Chat: GIFs, emoji reactions, @mentions',
+                'Trade execution: confirmation + celebration',
+                '25 stocks + 5 crypto tradeable',
+                'Market open/close countdown timer',
+                '12 achievements with unlock toasts',
+                'Leaderboard: graph, insights, player cards',
+                'Stock detail pages (click any ticker)',
+                'Admin panel: 7 tabs + API key management',
+                'Portfolio persists to localStorage',
+                'Stock analyzer skill (security audited)',
+                '120 curated daily insights',
+                '4 character avatars (jade green 3D)',
+                'GIF library: 7 emojis + 9 GIFs',
+                '5 Claude skills for content generation',
+                'Organized folder structure with READMEs',
+              ].map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <Icon name="check_circle" size={14} className="text-primary" />
+                  <span style={{ fontSize: 13 }}>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <h3 className="section-title" style={{ marginTop: 32, marginBottom: 20 }}><Icon name="analytics" size={20} /> App Stats</h3>
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            <div className="stat-card"><p className="stat-label">Code</p><p className="stat-value" style={{ fontSize: 24 }}>3,800+</p><p className="text-muted" style={{ fontSize: 11 }}>Lines of JSX + CSS</p></div>
+            <div className="stat-card"><p className="stat-label">Pages</p><p className="stat-value" style={{ fontSize: 24 }}>12</p><p className="text-muted" style={{ fontSize: 11 }}>Including admin + detail</p></div>
+            <div className="stat-card"><p className="stat-label">Lessons</p><p className="stat-value" style={{ fontSize: 24 }}>12</p><p className="text-muted" style={{ fontSize: 11 }}>11 stock + 1 crypto</p></div>
+            <div className="stat-card"><p className="stat-label">Skills</p><p className="stat-value" style={{ fontSize: 24 }}>5</p><p className="text-muted" style={{ fontSize: 11 }}>Lessons, Reports, Leaderboard, Analyzer, App</p></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== LEADERBOARD PAGE ====================
+function LeaderboardPage({ players, user, achievementsUnlocked }) {
+  // Generate simulated performance history for the graph
+  const perfHistory = players.map(p => {
+    const member = getSquadMember(p.name);
+    const points = [];
+    let val = 100000;
+    for (let d = 30; d >= 0; d--) {
+      const dailyReturn = (p.gainPct / 30) + (Math.sin(d * 0.5 + p.name.length) * 0.3);
+      val += val * (dailyReturn / 100);
+      points.push({ day: 30 - d, value: val });
+    }
+    return { name: p.name, color: member.color, points, final: val };
+  });
+
+  // Learning insights based on player performance
+  const insights = [];
+  const winner = players[0];
+  const winnerMember = getSquadMember(winner.name);
+  
+  if (winner.winRate > 60) insights.push({ icon: 'psychology', title: 'High Win Rate Wins', text: winner.name + " leads with a " + winner.winRate + "% win rate. This means most of their trades are profitable. The lesson: it is not about making huge gains on every trade -- it is about being right more often than wrong." });
+  if (winner.holdings > 2) insights.push({ icon: 'balance', title: 'Diversification Pays Off', text: winner.name + " holds " + winner.holdings + " different assets. Spreading money across multiple investments reduces risk. When one goes down, others can go up." });
+  
+  const bestTrader = [...players].sort((a, b) => b.bestTrade.returnPct - a.bestTrade.returnPct)[0];
+  insights.push({ icon: 'trending_up', title: 'Best Single Trade', text: bestTrader.name + " made the best single trade: " + bestTrader.bestTrade.symbol + " at +" + bestTrader.bestTrade.returnPct.toFixed(0) + "%. Finding strong companies in growing sectors is how you find big winners." });
+
+  const mostActive = [...players].sort((a, b) => b.trades - a.trades)[0];
+  const leastActive = [...players].sort((a, b) => a.trades - b.trades)[0];
+  if (mostActive.gainPct < leastActive.gainPct && leastActive.gainPct > 0) {
+    insights.push({ icon: 'hourglass_top', title: 'Patience Over Activity', text: leastActive.name + " made fewer trades (" + leastActive.trades + ") but has better returns than " + mostActive.name + " (" + mostActive.trades + " trades). More trading does not always mean more profit. Sometimes doing less is more." });
+  } else {
+    insights.push({ icon: 'bolt', title: 'Active Trading', text: mostActive.name + " leads with " + mostActive.trades + " trades. Being active can work if you have a strategy, but watch out for overtrading -- every trade has risk." });
+  }
+
+  const worstMove = [...players].sort((a, b) => a.worstTrade.returnPct - b.worstTrade.returnPct)[0];
+  insights.push({ icon: 'shield', title: 'Learn From Losses', text: worstMove.name + "'s worst trade was " + worstMove.worstTrade.symbol + " at " + worstMove.worstTrade.returnPct.toFixed(0) + "%. Losses are part of investing. The key is keeping them small and learning from them. Never risk more than you can afford to lose." });
+
+  return (
+    <div>
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 8 }}>Leaderboard</h1>
+        <p className="text-muted" style={{ fontSize: 16 }}>See how you stack up against the squad. Trade smart, climb the ranks.</p>
+      </div>
+
+      <LeaderboardSection players={players} user={user} />
+
+      {/* Performance Graph */}
+      <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="show_chart" size={20} /> Performance Over Time</h3>
+      <div className="card" style={{ padding: 32 }}>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+          {perfHistory.map(p => (
+            <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 12, height: 3, borderRadius: 2, background: p.color }}></div>
+              <span style={{ fontFamily: 'var(--font-headline)', fontSize: 11, fontWeight: 600 }}>{p.name}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ position: 'relative', height: 280 }}>
+          <svg viewBox="0 0 600 280" style={{ width: '100%', height: '100%' }} preserveAspectRatio="none">
+            {/* Grid lines */}
+            {[0, 1, 2, 3, 4].map(i => (
+              <line key={i} x1="0" y1={i * 70} x2="600" y2={i * 70} stroke="rgba(73,72,71,0.1)" strokeWidth="1" />
+            ))}
+            {/* Player lines */}
+            {perfHistory.map(p => {
+              const minVal = 90000;
+              const maxVal = 130000;
+              const range = maxVal - minVal;
+              const pts = p.points.map((pt, i) => {
+                const x = (i / 30) * 600;
+                const y = 280 - ((pt.value - minVal) / range) * 280;
+                return x + ',' + y;
+              }).join(' ');
+              return <polyline key={p.name} fill="none" stroke={p.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={pts} opacity="0.8" />;
+            })}
+            {/* End dots */}
+            {perfHistory.map(p => {
+              const minVal = 90000;
+              const maxVal = 130000;
+              const range = maxVal - minVal;
+              const last = p.points[p.points.length - 1];
+              const x = 600;
+              const y = 280 - ((last.value - minVal) / range) * 280;
+              return <circle key={p.name} cx={x} cy={y} r="4" fill={p.color} />;
+            })}
+          </svg>
+          {/* Y-axis labels */}
+          <div style={{ position: 'absolute', top: 0, right: 8, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', pointerEvents: 'none' }}>
+            {['$130K', '$120K', '$110K', '$100K', '$90K'].map(l => (
+              <span key={l} className="label-system" style={{ fontSize: 9 }}>{l}</span>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+          <span className="label-system" style={{ fontSize: 9 }}>30 Days Ago</span>
+          <span className="label-system" style={{ fontSize: 9 }}>Today</span>
+        </div>
+      </div>
+
+      {/* Player Cards */}
+      <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="group" size={20} /> Player Breakdown</h3>
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+        {players.map(p => {
+          const member = getSquadMember(p.name);
+          return (
+            <div key={p.name} className="card" style={{ border: p.isYou ? '1px solid rgba(0,255,163,0.2)' : undefined }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                <CharacterAvatar name={p.name} size={56} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 700, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}{p.isYou ? ' (You)' : ''}</div>
+                  <div className="stock-name-text">{member.strategy}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 900, color: p.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{p.gain >= 0 ? '+' : ''}{p.gainPct.toFixed(1)}%</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>{formatCurrency(p.totalValue)}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4 }}>Trades</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700 }}>{p.trades}</div>
+                </div>
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4 }}>Win Rate</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700 }}>{p.winRate}%</div>
+                </div>
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4 }}>Holdings</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700 }}>{p.holdings}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1, padding: 12, background: 'rgba(0,255,163,0.05)', borderRadius: 'var(--radius-lg)', borderLeft: '3px solid var(--primary-fixed)' }}>
+                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>Best Move</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{p.bestTrade.symbol} <span className="text-primary">+{p.bestTrade.returnPct.toFixed(0)}%</span></div>
+                </div>
+                <div style={{ flex: 1, padding: 12, background: 'rgba(255,113,108,0.05)', borderRadius: 'var(--radius-lg)', borderLeft: '3px solid var(--error)' }}>
+                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--error)' }}>Worst Move</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{p.worstTrade.symbol} <span className="text-error">{p.worstTrade.returnPct.toFixed(0)}%</span></div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Achievement Progress */}
+      <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="emoji_events" size={20} /> Achievement Progress</h3>
+      <div className="card">
+        {players.map(p => {
+          const earned = p.isYou ? (achievementsUnlocked?.length || 0) : p.achievements;
+          return (
+            <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0', borderBottom: '1px solid rgba(73,72,71,0.05)' }}>
+              <CharacterAvatar name={p.name} size={36} />
+              <div style={{ flex: 1, fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 700, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 200 }}>
+                <div className="ticker-progress" style={{ flex: 1, height: 6 }}><div className="ticker-progress-fill" style={{ width: (earned / ACHIEVEMENTS.length) * 100 + '%' }}></div></div>
+                <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, width: 40, textAlign: 'right' }}>{earned}/{ACHIEVEMENTS.length}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* What We Can Learn */}
+      <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="school" size={20} /> What We Can Learn</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {insights.map((ins, i) => (
+          <div key={i} className="card" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+            <div className="stat-icon primary" style={{ width: 48, height: 48, flexShrink: 0 }}><Icon name={ins.icon} size={24} /></div>
+            <div>
+              <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{ins.title}</h4>
+              <p style={{ fontSize: 16, lineHeight: 1.7, color: 'var(--on-surface-variant)' }}>{ins.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+
+    </div>
+  );
+}
+
+// ==================== NOTIFICATION ====================
+function Notification({ notification, onClose }) {
+  useEffect(() => { if (notification) { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); } }, [notification]);
+  if (!notification) return null;
+  return <div className={`notification notification-${notification.type}`}><Icon name={notification.type === 'success' ? 'check_circle' : 'error'} size={18} /> {notification.message}</div>;
+}
+
+// ==================== MAIN APP ====================
+function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState('');
+  const [activePage, setActivePage] = useState('dashboard');
+  const [notification, setNotification] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Live data hook -- fetches from CoinGecko + Finnhub, falls back to mock
+  const { stocks, crypto, isLive, lastUpdated, refresh } = useLiveData();
+
+  // Load portfolio from localStorage or use defaults
+  const defaultPortfolio = {
+    cash: 100000,
+    holdings: [],
+    trades: [],
+  };
+  const [portfolio, setPortfolio] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stockrocket_portfolio');
+      return saved ? JSON.parse(saved) : defaultPortfolio;
+    } catch { return defaultPortfolio; }
+  });
+
+  // Save portfolio to localStorage whenever it changes
+  useEffect(() => {
+    try { localStorage.setItem('stockrocket_portfolio', JSON.stringify(portfolio)); } catch {}
+  }, [portfolio]);
+
+  // Save user session
+  useEffect(() => {
+    if (user) try { localStorage.setItem('stockrocket_user', user); } catch {}
+  }, [user]);
+
+  // Update portfolio holdings with live prices when they change
+  useEffect(() => {
+    if (!isLive) return;
+    setPortfolio(prev => {
+      const updated = prev.holdings.map(h => {
+        const liveStock = stocks.find(s => s.symbol === h.symbol);
+        if (!liveStock) return h;
+        const newValue = h.shares * liveStock.price;
+        const newGain = (liveStock.price - h.avgCost) * h.shares;
+        return { ...h, currentPrice: liveStock.price, value: newValue, gain: newGain, returnPercent: ((liveStock.price - h.avgCost) / h.avgCost) * 100 };
+      });
+      return { ...prev, holdings: updated };
+    });
+  }, [stocks, isLive]);
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [stockDetail, setStockDetail] = useState(null); // symbol for stock detail page
+
+  // Achievements + Leaderboard
+  const { unlocked: achievementsUnlocked, newAchievement, total: achievementsTotal } = useAchievements(portfolio);
+  const leaderboard = useLeaderboard(user, portfolio, stocks, crypto);
+
+  const handleLogin = (u, admin) => { setUser(u); setIsLoggedIn(true); setIsAdmin(!!admin); };
+  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />;
+
+  // Stock detail page (overlay -- any page can navigate here)
+  if (stockDetail) {
+    return (
+      <div className="app-layout">
+        <Header activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
+        {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
+        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} />
+        <main className="main-content"><div className="main-inner">
+          <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} />
+        </div></main>
+        <Notification notification={notification} onClose={() => setNotification(null)} />
+        <AchievementToast achievement={newAchievement} />
+      </div>
+    );
+  }
+
+  const renderPage = () => {
+    switch (activePage) {
+      case 'dashboard': return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} setStockDetail={setStockDetail} achievementsUnlocked={achievementsUnlocked} achievementsTotal={achievementsTotal} leaderboard={leaderboard} />;
+      case 'portfolio': return <PortfolioPage portfolio={portfolio} user={user} stocks={stocks} setStockDetail={setStockDetail} />;
+      case 'trade': return <TradePage stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} />;
+      case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
+      case 'crypto': return <CryptoPage crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} />;
+      case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} />;
+      case 'chat': return <ChatPage user={user} />;
+      case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
+      case 'insights': return <InsightsPage />;
+      case 'learn': return <LearnPage />;
+      case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
+      default: return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
+    }
+  };
+
+  return (
+    <div className="app-layout">
+      <Header activePage={activePage} setActivePage={setActivePage} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
+      {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
+      <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} />
+      <main className="main-content">
+        <div className="main-inner">
+          {isLive && <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="pulse-dot"></span> LIVE_DATA {lastUpdated ? '-- Updated ' + lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}
+            </span>
+          </div>}
+          {renderPage()}
+        </div>
+      </main>
+      <Notification notification={notification} onClose={() => setNotification(null)} />
+      <AchievementToast achievement={newAchievement} />
+    </div>
+  );
+}
+
+try {
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  console.log('StockRocket rendered successfully');
+} catch (e) {
+  console.error('RENDER ERROR:', e);
+  document.getElementById('root').innerHTML = '<div style="color:#ff716c;padding:40px;font-family:monospace;background:#0e0e0e;min-height:100vh"><h2>StockRocket Error</h2><pre>' + e.message + '\n\n' + e.stack + '</pre></div>';
+}

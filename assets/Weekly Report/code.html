@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>StockRocket | Weekly Intelligence Briefing</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,600;1,6..72,700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary": "#72dcff",
+                        "on-tertiary-container": "#004252",
+                        "surface-container-lowest": "#000000",
+                        "on-primary": "#00663e",
+                        "surface": "#0e0e0e",
+                        "on-secondary": "#005d46",
+                        "secondary": "#64fcc9",
+                        "outline-variant": "#494847",
+                        "primary": "#b1ffce",
+                        "surface-container-low": "#131313",
+                        "on-tertiary-fixed": "#002c38",
+                        "primary-fixed": "#00ffa3",
+                        "on-background": "#ffffff",
+                        "surface-container-high": "#201f1f",
+                        "on-error": "#490006",
+                        "inverse-primary": "#006d43",
+                        "on-primary-container": "#005c38",
+                        "inverse-surface": "#fcf8f8",
+                        "error-dim": "#d7383b",
+                        "surface-variant": "#262626",
+                        "secondary-fixed-dim": "#53edbc",
+                        "primary-dim": "#00ef99",
+                        "tertiary-container": "#00d2ff",
+                        "inverse-on-surface": "#565554",
+                        "surface-tint": "#b1ffce",
+                        "surface-container": "#1a1919",
+                        "surface-dim": "#0e0e0e",
+                        "on-error-container": "#ffa8a3",
+                        "background": "#0e0e0e",
+                        "tertiary-fixed-dim": "#00c3ed",
+                        "on-primary-fixed-variant": "#00673f",
+                        "on-primary-fixed": "#00472a",
+                        "on-secondary-container": "#dfffef",
+                        "primary-container": "#00ffa3",
+                        "error-container": "#9f0519",
+                        "secondary-container": "#006c51",
+                        "secondary-fixed": "#64fcc9",
+                        "on-secondary-fixed-variant": "#00684e",
+                        "error": "#ff716c",
+                        "on-surface-variant": "#adaaaa",
+                        "surface-container-highest": "#262626",
+                        "tertiary-fixed": "#00d2ff",
+                        "on-secondary-fixed": "#004936",
+                        "primary-fixed-dim": "#00ef99",
+                        "on-surface": "#ffffff",
+                        "on-tertiary-fixed-variant": "#004c5e",
+                        "tertiary-dim": "#00c3ed",
+                        "outline": "#777575",
+                        "on-tertiary": "#004c5e",
+                        "surface-bright": "#2c2c2c",
+                        "secondary-dim": "#53edbc"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Space Grotesk", "sans-serif"],
+                        "serif": ["Newsreader", "serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(26, 25, 25, 0.4);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 255, 163, 0.1);
+        }
+        .emerald-glow {
+            box-shadow: 0 0 30px rgba(0, 255, 163, 0.08);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .beginner-breakdown {
+            border-left: 2px solid #00FFA3;
+            background: linear-gradient(90deg, rgba(0, 255, 163, 0.05) 0%, transparent 100%);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary-container">
+<nav class="fixed top-0 w-full z-50 bg-[#0e0e0e]/90 backdrop-blur-xl border-b border-[#00FFA3]/10 flex justify-between items-center px-10 h-20">
+<div class="text-2xl font-bold tracking-tighter text-[#00FFA3] uppercase font-headline">StockRocket</div>
+<div class="hidden md:flex gap-10 items-center">
+<a class="text-[#00FFA3] border-b-2 border-[#00FFA3] pb-1 font-headline font-bold tracking-tight uppercase text-xs" href="#">Intelligence</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors font-headline font-bold tracking-tight uppercase text-xs" href="#">Markets</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors font-headline font-bold tracking-tight uppercase text-xs" href="#">Portfolio</a>
+<a class="text-on-surface-variant hover:text-primary-fixed transition-colors font-headline font-bold tracking-tight uppercase text-xs" href="#">Crypto</a>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-on-surface-variant hover:text-primary-fixed transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<div class="w-10 h-10 rounded-full border border-primary-fixed/20 overflow-hidden">
+<img alt="User Profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8UR2QZHu223wwcdBWEBcHb0ueOm1nKuAqWOfPa9YsRDWwejlgbRKk7TiYOubV45xoYyHbQKWVzOyvMUJ9EHTPoDsWcYFn0U3atxboeiG6yMc7Lu13Kc3s1Lt3B92uPjOyUhZHEJxTeaPBGKFEAd9ENLK8UAM6dYp6kNpk4M-IE3WXon8OgdHQxwBkJXXs6ZyssYKX-XLnp01Arm2yE6djzh8Tu2nlnId24Y3pWJ6vPnpf3qe4UYfaCLGXc-xcNUX_hmFjrtA9DvWo"/>
+</div>
+</div>
+</nav>
+<aside class="h-screen w-20 fixed left-0 top-0 z-[60] border-r border-[#00FFA3]/10 bg-[#0e0e0e] flex flex-col items-center py-24 gap-10">
+<span class="material-symbols-outlined text-[#00FFA3]" data-icon="terminal">terminal</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary-fixed cursor-pointer transition-colors" data-icon="insights">insights</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary-fixed cursor-pointer transition-colors" data-icon="menu_book">menu_book</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary-fixed cursor-pointer transition-colors" data-icon="sensors">sensors</span>
+<div class="mt-auto flex flex-col gap-10 mb-10">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary-fixed cursor-pointer transition-colors" data-icon="history">history</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary-fixed cursor-pointer transition-colors" data-icon="settings">settings</span>
+</div>
+</aside>
+<main class="ml-20 pt-20">
+<!-- Hero Briefing -->
+<section class="relative min-h-[70vh] flex flex-col justify-center px-16 pb-32 pt-20 overflow-hidden">
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-gradient-to-r from-background via-background/60 to-transparent"></div>
+<img alt="Abstract digital data grid" class="w-full h-full object-cover opacity-20 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCX5f0NuuqZ8sDR04pEyeMO-SDCbINADG_6hmAv4hHTHtelZH_Pdd_bgQTfagvYqoRfPEcNo2rzrNk0Dg9pcZ2jKILAv0vQSYEj_xYTLykICv0FqGeaLYOxnUXa84MA5wrjMdzwIkcr3HcPymdJ2x0mzT7KKsUnIyMmbtoPa56i7ZvuFi__9tKZe_q-UGlBgwM1WSI7_leSb1LoOhqynjocZoU6DWR-97FKqS_SmQ6kwMHNQfSU8MY6WEOKmZUz2h4OIJ2KNeA3a31L"/>
+</div>
+<div class="relative z-10 max-w-6xl">
+<div class="flex items-center gap-4 mb-6">
+<span class="px-4 py-1.5 bg-primary-container/20 text-primary-fixed font-headline text-[10px] font-bold tracking-widest uppercase rounded-full border border-primary-fixed/30">Educational Series</span>
+<span class="text-on-surface-variant font-headline text-[10px] tracking-widest uppercase">Vol. 42 • Oct 23 — Oct 29, 2023</span>
+</div>
+<div class="mb-10">
+<div class="text-primary-fixed font-headline font-bold text-lg tracking-[0.3em] uppercase mb-2">Week of Mar 16 – Mar 20, 2026</div>
+</div>
+<h1 class="font-serif text-6xl md:text-9xl tracking-tight leading-[0.9] mb-8">
+                    Weekly Intelligence <br/>
+<span class="italic font-serif text-primary-fixed">Briefing</span>
+</h1>
+<p class="text-on-surface-variant text-3xl max-w-3xl font-light leading-relaxed mb-12">
+                    Demystifying the markets. A professional synthesis of global money flows, translated for the modern investor.
+                </p>
+<div class="flex gap-4">
+<div class="flex items-center gap-2 px-6 py-3 bg-surface-container rounded-lg border border-outline-variant/30">
+<span class="material-symbols-outlined text-primary-fixed text-base">school</span>
+<span class="text-sm font-headline uppercase tracking-widest text-on-surface font-bold">Beginner Friendly</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Market Pulse -->
+<section class="px-16 -mt-20 relative z-20 grid grid-cols-1 md:grid-cols-3 gap-8">
+<div class="glass-panel p-10 rounded-2xl emerald-glow border-primary-fixed/20">
+<div class="flex justify-between items-start mb-6">
+<span class="font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">Market Heartbeat</span>
+<span class="material-symbols-outlined text-primary-fixed" data-icon="trending_up">trending_up</span>
+</div>
+<div class="font-headline text-5xl font-bold text-on-surface mb-2">+2.48%</div>
+<div class="text-primary-fixed text-base font-medium mb-6 italic">The market is moving up.</div>
+<div class="beginner-breakdown p-5 rounded-r-lg">
+<p class="text-sm text-on-surface-variant leading-relaxed">
+<strong class="text-on-surface block mb-2 uppercase tracking-tighter text-xs">What this means:</strong>
+                        Most stocks in the S&amp;P 500 (the 500 largest US companies) rose this week, showing strong buyer interest.
+                    </p>
+</div>
+</div>
+<div class="glass-panel p-10 rounded-2xl">
+<div class="flex justify-between items-start mb-6">
+<span class="font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">Market Breadth</span>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="bar_chart">bar_chart</span>
+</div>
+<div class="font-headline text-5xl font-bold text-on-surface mb-2">7 <span class="text-2xl text-on-surface-variant font-light">/</span> 3</div>
+<div class="text-on-surface-variant text-base font-medium mb-6 italic">More winners than losers.</div>
+<div class="beginner-breakdown p-5 rounded-r-lg border-white/10">
+<p class="text-sm text-on-surface-variant leading-relaxed">
+<strong class="text-on-surface block mb-2 uppercase tracking-tighter text-xs">What this means:</strong>
+                        For every 10 stocks, 7 went up and 3 went down. This is like a sports team where most players are performing well.
+                    </p>
+</div>
+</div>
+<div class="glass-panel p-10 rounded-2xl">
+<div class="flex justify-between items-start mb-6">
+<span class="font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">Mood Meter</span>
+<span class="material-symbols-outlined text-tertiary" data-icon="psychology">psychology</span>
+</div>
+<div class="font-serif text-3xl font-bold text-on-surface italic mb-4">Cautiously Optimistic</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden mb-6">
+<div class="h-full bg-primary-container" style="width: 68%"></div>
+</div>
+<div class="beginner-breakdown p-5 rounded-r-lg border-tertiary/20">
+<p class="text-sm text-on-surface-variant leading-relaxed">
+<strong class="text-on-surface block mb-2 uppercase tracking-tighter text-xs">What this means:</strong>
+                        Investors are hopeful but careful. It's like driving in clear weather but keeping your hands firmly on the wheel.
+                    </p>
+</div>
+</div>
+</section>
+<!-- Crypto Deep-Dive -->
+<section class="mt-32 px-16 pb-32 border-t border-outline-variant/10 pt-24">
+<div class="flex flex-col md:flex-row gap-12 items-baseline mb-20">
+<h2 class="font-serif text-6xl">Crypto <span class="italic text-primary-fixed">Corner</span></h2>
+<div class="h-[1px] flex-grow bg-gradient-to-r from-outline-variant/30 to-transparent"></div>
+<div class="font-headline text-[10px] uppercase tracking-[0.3em] text-on-surface-variant">Digital Asset Review</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+<!-- Performance Metrics -->
+<div class="lg:col-span-8 glass-panel rounded-2xl p-10 h-[600px] flex flex-col">
+<div class="flex justify-between items-start mb-10">
+<div>
+<h3 class="font-serif text-3xl mb-2 italic">Growth Trajectory</h3>
+<p class="text-on-surface-variant text-base">Visualizing price movement over the last 7 days</p>
+</div>
+<div class="flex gap-6">
+<span class="flex items-center gap-2 text-xs font-headline uppercase tracking-widest text-primary-fixed"><div class="w-2 h-2 rounded-full bg-primary-fixed"></div> Bitcoin</span>
+<span class="flex items-center gap-2 text-xs font-headline uppercase tracking-widest text-tertiary"><div class="w-2 h-2 rounded-full bg-tertiary"></div> Ethereum</span>
+</div>
+</div>
+<!-- Simplified Chart -->
+<div class="flex-grow flex items-end gap-2 px-6 border-b border-l border-outline-variant/20 pb-6 ml-6 relative">
+<div class="w-full bg-gradient-to-t from-primary-fixed/5 to-primary-fixed/20 h-[50%] rounded-t-lg border-t-2 border-primary-fixed hover:brightness-125 transition-all"></div>
+<div class="w-full bg-gradient-to-t from-primary-fixed/5 to-primary-fixed/20 h-[40%] rounded-t-lg border-t-2 border-primary-fixed hover:brightness-125 transition-all"></div>
+<div class="w-full bg-gradient-to-t from-primary-fixed/5 to-primary-fixed/20 h-[65%] rounded-t-lg border-t-2 border-primary-fixed hover:brightness-125 transition-all"></div>
+<div class="w-full bg-gradient-to-t from-primary-fixed/5 to-primary-fixed/20 h-[85%] rounded-t-lg border-t-2 border-primary-fixed hover:brightness-125 transition-all"></div>
+<div class="w-full bg-gradient-to-t from-primary-fixed/5 to-primary-fixed/20 h-[60%] rounded-t-lg border-t-2 border-primary-fixed hover:brightness-125 transition-all"></div>
+<div class="w-full bg-gradient-to-t from-primary-fixed/5 to-primary-fixed/20 h-[75%] rounded-t-lg border-t-2 border-primary-fixed hover:brightness-125 transition-all"></div>
+<div class="w-full bg-gradient-to-t from-primary-fixed/5 to-primary-fixed/20 h-[95%] rounded-t-lg border-t-2 border-primary-fixed relative group">
+<div class="absolute -top-12 left-1/2 -translate-x-1/2 bg-primary-fixed text-on-primary font-headline font-bold text-[10px] px-3 py-1.5 rounded-full shadow-lg">PEAK</div>
+</div>
+<div class="absolute bottom-[-30px] left-0 w-full flex justify-between px-6 text-[10px] font-headline text-on-surface-variant uppercase tracking-tighter">
+<span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+</div>
+</div>
+<div class="mt-14 p-6 bg-surface-container rounded-xl border border-outline-variant/20">
+<p class="text-base text-on-surface-variant leading-relaxed">
+<span class="text-primary-fixed font-bold uppercase tracking-tighter text-xs mr-3">Simple Breakdown:</span>
+                            This bar chart shows Bitcoin's price each day. Higher bars mean the price was higher. We are currently at a "Peak," which means the highest price in this period.
+                        </p>
+</div>
+</div>
+<!-- Whale Movement -->
+<div class="lg:col-span-4 flex flex-col gap-10">
+<div class="bg-surface-container-high rounded-2xl p-10 border border-primary-fixed/20">
+<h3 class="font-headline text-[10px] uppercase tracking-[0.2em] text-primary-fixed mb-6">"Smart Money" Insight</h3>
+<p class="text-2xl font-serif italic leading-tight text-on-surface mb-8">Whale accumulation in BTC has increased by 14%.</p>
+<div class="beginner-breakdown p-6 rounded-r-lg border-primary-fixed/30 mb-8">
+<p class="text-sm text-on-surface-variant leading-relaxed italic">
+                                "Whales" are investors with huge amounts of money. When they buy ("accumulate"), it usually suggests confidence that prices will go up.
+                            </p>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full border-2 border-surface bg-surface-variant"></div>
+<div class="w-10 h-10 rounded-full border-2 border-surface bg-primary-container/20"></div>
+</div>
+<span class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">Analyst Verified</span>
+</div>
+</div>
+<div class="glass-panel rounded-2xl p-10 flex-grow">
+<h3 class="font-serif text-2xl italic mb-8">Market Gossip</h3>
+<div class="space-y-10">
+<div class="group">
+<div class="text-[10px] font-headline text-primary-fixed uppercase tracking-widest mb-3">ETF Approval</div>
+<p class="text-base text-on-surface-variant leading-relaxed">News about a Bitcoin Fund might come sooner than expected. This could bring in many new buyers.</p>
+</div>
+<div class="group">
+<div class="text-[10px] font-headline text-tertiary uppercase tracking-widest mb-3">Dormant Wallets</div>
+<p class="text-base text-on-surface-variant leading-relaxed">Old accounts from 10 years ago are moving money. It's like finding a lost treasure chest being opened.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Price Table -->
+<div class="lg:col-span-12 mt-10">
+<div class="overflow-x-auto no-scrollbar glass-panel rounded-2xl">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-outline-variant/20">
+<th class="p-8 font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">Asset Name</th>
+<th class="p-8 font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">Weekly Change</th>
+<th class="p-8 font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">Total Value</th>
+<th class="p-8 font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface-variant text-right">Expert Signal</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr class="hover:bg-primary-container/5 transition-all">
+<td class="p-8">
+<div class="flex items-center gap-5">
+<div class="w-14 h-14 bg-surface-container rounded-xl flex items-center justify-center border border-primary-fixed/20 text-primary-fixed">
+<span class="material-symbols-outlined text-3xl">currency_bitcoin</span>
+</div>
+<div>
+<div class="font-serif text-2xl font-bold">Bitcoin</div>
+<div class="text-[10px] text-on-surface-variant uppercase tracking-widest font-headline">The King</div>
+</div>
+</div>
+</td>
+<td class="p-8 font-headline font-bold text-primary-fixed text-3xl">+12.4%</td>
+<td class="p-8 font-body text-on-surface-variant text-base">$842.2 Billion</td>
+<td class="p-8 text-right">
+<span class="inline-flex items-center px-8 py-3 rounded-full bg-primary-fixed/10 text-primary-fixed border border-primary-fixed/20 text-xs font-bold font-headline uppercase tracking-widest">Must Buy</span>
+</td>
+</tr>
+<tr class="hover:bg-primary-container/5 transition-all">
+<td class="p-8">
+<div class="flex items-center gap-5">
+<div class="w-14 h-14 bg-surface-container rounded-xl flex items-center justify-center border border-tertiary/20 text-tertiary">
+<span class="material-symbols-outlined text-3xl">token</span>
+</div>
+<div>
+<div class="font-serif text-2xl font-bold">Ethereum</div>
+<div class="text-[10px] text-on-surface-variant uppercase tracking-widest font-headline">The Utility</div>
+</div>
+</div>
+</td>
+<td class="p-8 font-headline font-bold text-primary-fixed text-3xl">+8.2%</td>
+<td class="p-8 font-body text-on-surface-variant text-base">$210.5 Billion</td>
+<td class="p-8 text-right">
+<span class="inline-flex items-center px-8 py-3 rounded-full bg-primary-fixed/10 text-primary-fixed border border-primary-fixed/20 text-xs font-bold font-headline uppercase tracking-widest">Buy</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</section>
+<!-- Strategic Priorities -->
+<section class="mt-20 px-16 pb-32">
+<h2 class="font-serif text-6xl mb-16 italic">Strategic <span class="not-italic text-primary-fixed">Focus</span></h2>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+<div class="group relative overflow-hidden rounded-3xl glass-panel p-1 border-white/5">
+<div class="aspect-[4/5] overflow-hidden rounded-[22px] relative">
+<img alt="Finance" class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-40 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDZvNg-U7jGnX0qURbvFtMtIGGskTzRwLD7P5l4gX5hyJ-2gdZQEaouDXQs9v0xNmwcU3c6jBiu6iWk8-GLIf7G3WUuIa5z67l5jADhpWbRwAT-w0ywRqrJBTkDn6qk9ZnolYUwLsNeos0hJ6x2W8kh6HYvYNkUh-MpURGUPg30mma3l6Mz4aWpC87JEuHAie8AqHy4DY1JjaRGPcIFcgxVFuqCV_rBBbgtewp96Npxy6lLYnH5ZpJa_JBuf1a3hh9EggKQTrziJWwm"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent p-10 flex flex-col justify-end">
+<span class="w-fit px-3 py-1 bg-primary text-on-primary font-headline text-[9px] uppercase font-bold mb-6 tracking-widest rounded-sm">01. Reports</span>
+<h4 class="font-serif text-3xl font-bold mb-4 italic">Earnings Season</h4>
+<p class="text-on-surface-variant text-base leading-relaxed mb-6">Big tech companies are telling us how much money they made. This usually causes big price jumps.</p>
+<div class="beginner-breakdown p-4 mb-6 rounded-r-md">
+<p class="text-xs text-on-surface uppercase font-bold tracking-tighter mb-2">Simple Terms:</p>
+<p class="text-sm text-on-surface-variant">Think of this as a school report card for billion-dollar companies.</p>
+</div>
+<button class="flex items-center gap-2 text-primary-fixed font-headline text-xs uppercase tracking-[0.2em] font-bold">
+                                View Calendar <span class="material-symbols-outlined text-base">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-3xl glass-panel p-1 border-white/5">
+<div class="aspect-[4/5] overflow-hidden rounded-[22px] relative">
+<img alt="Federal Reserve" class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-40 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfkCSMx7zrO_2QArSS6AFFacu0BdDqbtTcsZtWsRpSysvwnbYtuh4Gg6FchNlxZSm33vpm8Qyh6llg3-zcGcbc6y32Tnwc4OEfDxjjJ7vabVcfsALX4T71UbRqgFYvERZac06FFUsbDgJHX6STA3HC5L5z_v_5FU1JW_hj8Q6fvtDMbNBdFjL9E6c36BXOXMPcJXsyZs3lW9FcxQxlXviXLcV9X-F4kM4jONPq89U7TAjSFY08hy3jnpxj5EZDI62vj4mLR9luXFTu"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent p-10 flex flex-col justify-end">
+<span class="w-fit px-3 py-1 bg-tertiary text-on-tertiary font-headline text-[9px] uppercase font-bold mb-6 tracking-widest rounded-sm">02. Rates</span>
+<h4 class="font-serif text-3xl font-bold mb-4 italic">Fed Divergence</h4>
+<p class="text-on-surface-variant text-base leading-relaxed mb-6">The US Central Bank is deciding how much it costs to borrow money. This affects everyone from home buyers to Apple.</p>
+<div class="beginner-breakdown p-4 mb-6 rounded-r-md border-tertiary/30">
+<p class="text-xs text-on-surface uppercase font-bold tracking-tighter mb-2">Simple Terms:</p>
+<p class="text-sm text-on-surface-variant">The "Fed" is like the market's thermostat. They turn interest rates up to cool things down or down to heat them up.</p>
+</div>
+<button class="flex items-center gap-2 text-tertiary font-headline text-xs uppercase tracking-[0.2em] font-bold">
+                                Yield Analysis <span class="material-symbols-outlined text-base">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-3xl glass-panel p-1 border-white/5">
+<div class="aspect-[4/5] overflow-hidden rounded-[22px] relative">
+<img alt="Technical Charts" class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-40 grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCaHE8QWzn5LMz3OUAeKfMmuzWQioW722jU9WLRO1RBMOsCH6hO11wSybYln3BeiRUTt4yFVLL5ezzXPnG8KAHwJWqrxsZ4vUNVp0LheAyDiXTG52KBD-GjyuKP1TbOIKE6-8HRWchoe4Ws_5EoZ-GoJHfIaHLAt-Mgtmm5vmckKpwE9xJeoBtoL1lAIkGSSUeAamN9l4cdSH88L1yYs2lUSUuWChm9h_uAs1AO2P-zqxtbghFLoFslfy_tYO0r8w4XNa-c_gC93Rcd"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent p-10 flex flex-col justify-end">
+<span class="w-fit px-3 py-1 bg-surface-container-highest text-on-surface font-headline text-[9px] uppercase font-bold mb-6 tracking-widest rounded-sm">03. Patterns</span>
+<h4 class="font-serif text-3xl font-bold mb-4 italic">Critical Levels</h4>
+<p class="text-on-surface-variant text-base leading-relaxed mb-6">Traders are watching specific price numbers (like 4,200). If the price drops below, things could get fast.</p>
+<div class="beginner-breakdown p-4 mb-6 rounded-r-md border-white/20">
+<p class="text-xs text-on-surface uppercase font-bold tracking-tighter mb-2">Simple Terms:</p>
+<p class="text-sm text-on-surface-variant">Think of these levels like "floor" prices. If the market falls through the floor, it might tumble further.</p>
+</div>
+<button class="flex items-center gap-2 text-on-surface font-headline text-xs uppercase tracking-[0.2em] font-bold">
+                                Technical View <span class="material-symbols-outlined text-base">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Capital Migration -->
+<section class="bg-surface-container-lowest py-32 px-16 border-t border-outline-variant/10">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center max-w-7xl mx-auto">
+<div>
+<h2 class="font-serif text-7xl italic leading-tight mb-10">Capital <br/><span class="not-italic text-primary-fixed">Migration</span></h2>
+<p class="text-on-surface-variant text-2xl leading-relaxed mb-12 max-w-lg">
+                        Money is moving. We track where the biggest investors are moving their cash to predict where the next profits might hide.
+                    </p>
+<div class="beginner-breakdown p-10 rounded-r-xl border-primary-fixed/20 mb-12">
+<h5 class="text-primary-fixed font-headline text-sm uppercase tracking-widest font-bold mb-5">Analogy: The Rotating Sprinkler</h5>
+<p class="text-lg text-on-surface-variant leading-relaxed italic">
+                            The market is like a garden. Instead of watering everything at once, investors move the "water" (capital) from one area of the garden (like Retail) to another (like Tech) every few months. This is called Sector Rotation.
+                        </p>
+</div>
+<div class="flex flex-col gap-8">
+<div class="flex items-center gap-6">
+<div class="w-20 h-1.5 bg-primary-fixed rounded-full shadow-[0_0_15px_rgba(0,255,163,0.4)]"></div>
+<span class="font-headline text-xs uppercase tracking-widest text-on-surface font-bold">Buying Heavily (Tech)</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="w-20 h-1.5 bg-surface-variant rounded-full"></div>
+<span class="font-headline text-xs uppercase tracking-widest text-on-surface-variant font-bold">Holding Steady (Finance)</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="w-20 h-1.5 bg-error rounded-full shadow-[0_0_15px_rgba(255,113,108,0.2)]"></div>
+<span class="font-headline text-xs uppercase tracking-widest text-on-surface-variant font-bold">Selling Off (Retail)</span>
+</div>
+</div>
+</div>
+<div class="relative aspect-square w-full flex items-center justify-center">
+<!-- Visual Decoration -->
+<div class="absolute inset-0 border border-dashed border-primary-fixed/10 rounded-full animate-[spin_60s_linear_infinite]"></div>
+<div class="absolute inset-[15%] border border-dashed border-primary-fixed/10 rounded-full animate-[spin_40s_linear_infinite_reverse]"></div>
+<!-- Sector Nodes -->
+<div class="absolute top-0 left-1/2 -translate-x-1/2 p-6 glass-panel rounded-2xl emerald-glow text-center border-primary-fixed/40">
+<div class="font-headline font-bold text-primary-fixed text-lg">TECH</div>
+<div class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">+18.5%</div>
+</div>
+<div class="absolute bottom-[10%] right-[10%] p-6 glass-panel rounded-2xl text-center">
+<div class="font-headline font-bold text-on-surface text-lg">ENERGY</div>
+<div class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">-2.1%</div>
+</div>
+<div class="absolute bottom-[20%] left-[5%] p-6 glass-panel rounded-2xl text-center border-error/30">
+<div class="font-headline font-bold text-error text-lg">RETAIL</div>
+<div class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">-8.4%</div>
+</div>
+<div class="absolute top-[35%] right-[5%] p-5 glass-panel rounded-2xl text-center border-tertiary/30">
+<div class="font-headline font-bold text-tertiary text-lg">FINANCE</div>
+<div class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">+4.2%</div>
+</div>
+<!-- Center -->
+<div class="w-24 h-24 bg-background rounded-full border-2 border-primary-fixed flex items-center justify-center emerald-glow relative z-10">
+<span class="material-symbols-outlined text-primary-fixed text-5xl">rocket_launch</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Quick Glossary -->
+<section class="px-16 py-24 border-t border-outline-variant/10">
+<h3 class="font-serif text-3xl italic mb-12">Pocket <span class="not-italic text-primary-fixed">Glossary</span></h3>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+<div class="p-8 rounded-2xl glass-panel border-white/5">
+<div class="text-xs font-headline font-bold text-primary-fixed uppercase tracking-widest mb-4">Bull Market</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">When market prices are rising or are expected to rise. Named after how a bull strikes up with its horns.</p>
+</div>
+<div class="p-8 rounded-2xl glass-panel border-white/5">
+<div class="text-xs font-headline font-bold text-primary-fixed uppercase tracking-widest mb-4">Volatility</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">How much a price swings up and down. High volatility means prices are jumping around like a wild rollercoaster.</p>
+</div>
+<div class="p-8 rounded-2xl glass-panel border-white/5">
+<div class="text-xs font-headline font-bold text-primary-fixed uppercase tracking-widest mb-4">RSI</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">A speed gauge for stocks. It tells us if people have been buying or selling "too much" lately.</p>
+</div>
+<div class="p-8 rounded-2xl glass-panel border-white/5">
+<div class="text-xs font-headline font-bold text-primary-fixed uppercase tracking-widest mb-4">Liquidity</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">How easy it is to buy or sell something quickly without changing its price. Cash is the most liquid asset.</p>
+</div>
+</div>
+</section>
+<footer class="p-16 border-t border-outline-variant/10 flex flex-col md:flex-row justify-between items-center gap-10">
+<div class="flex flex-col gap-2">
+<div class="text-2xl font-headline font-bold text-primary-fixed tracking-tighter uppercase">StockRocket Intelligence</div>
+<div class="text-[10px] font-headline text-on-surface-variant tracking-[0.2em] uppercase italic opacity-50">Node Institutional Alpha-8</div>
+</div>
+<div class="flex gap-16 font-headline text-[10px] uppercase tracking-[0.3em] text-on-surface-variant font-bold">
+<a class="hover:text-primary-fixed transition-colors" href="#">Methodology</a>
+<a class="hover:text-primary-fixed transition-colors" href="#">Risk Disclosure</a>
+<a class="hover:text-primary-fixed transition-colors" href="#">Terms</a>
+</div>
+<div class="text-[10px] font-headline text-on-surface-variant tracking-widest uppercase text-right">
+                © 2024 STOCKROCKET. ALL RIGHTS RESERVED.
+            </div>
+</footer>
+</main>
+<!-- Floating Action -->
+<div class="fixed bottom-12 right-12 z-[70]">
+<button class="w-16 h-16 bg-primary-fixed text-on-primary-fixed rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-transform emerald-glow">
+<span class="material-symbols-outlined text-3xl">ios_share</span>
+</button>
+</div>
+</body></html>
