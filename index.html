@@ -399,6 +399,14 @@ const SQUAD_MEMBERS = {
 
 const getSquadMember = (name) => SQUAD_MEMBERS[name] || { avatar: null, color: '#64748b', strategy: 'Learning' };
 
+// A player's displayed strategy tag. 0-trade users always read as "Learning"
+// regardless of whether their name matches a hardcoded SQUAD_MEMBERS entry --
+// the label fits anyone who hasn't put money to work yet.
+const strategyFor = (player) => {
+  if (!player || (player.trades || 0) === 0) return 'Learning';
+  return getSquadMember(player.name).strategy;
+};
+
 // Reusable avatar component
 function CharacterAvatar({ name, size = 44, style = {} }) {
   const member = getSquadMember(name);
@@ -1194,68 +1202,94 @@ function AchievementToast({ achievement }) {
 }
 
 // ==================== LEADERBOARD ====================
-// Simulated player data for the 4 users. In production, this comes from Supabase.
-function useLeaderboard(currentUser, currentPortfolio, stocks, crypto) {
+// Real data from /api/leaderboard. Fetches every active access code with
+// their portfolio + trade count, then hydrates holdings with live prices
+// for currently-held positions. No simulated players.
+//
+// Sort: traders with at least 1 trade rank first by totalValue desc.
+// Users with 0 trades are pushed to the bottom (alphabetical) and show
+// the "Learning" strategy tag via the SQUAD_MEMBERS fallback.
+function useLeaderboard(myCode, stocks, crypto) {
+  const [rawPlayers, setRawPlayers] = useState([]);
+
+  useEffect(() => {
+    if (!myCode) { setRawPlayers([]); return; }
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/leaderboard`, {
+          headers: { 'X-User-Code': myCode },
+        });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        setRawPlayers(data.players || []);
+      } catch {}
+    };
+    poll();
+    const iv = setInterval(poll, 30000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, [myCode]);
+
+  // Live price index -- rebuilt on every stocks/crypto change
   const allAssets = [...(stocks || []), ...(crypto || [])];
+  const priceBy = new Map(allAssets.map(a => [a.symbol, a.price]));
 
-  // Simulate the other 3 players (stored in localStorage, updated periodically)
-  const [otherPlayers] = useState(() => {
-    const names = Object.keys(SQUAD_MEMBERS).filter(n => n !== currentUser);
-    return names.map(name => {
-      // Generate consistent simulated portfolios per player
-      const seed = name.length * 7 + name.charCodeAt(0);
-      const cash = 40000 + (seed * 137) % 30000;
-      const invested = 100000 - cash;
-      const gainPct = ((seed * 31) % 40) - 15; // -15% to +25%
-      const totalValue = 100000 + (100000 * gainPct / 100);
-      const trades = 5 + (seed * 3) % 30;
-      const topHolding = ['AAPL', 'NVDA', 'BTC', 'TSLA', 'GOOGL', 'META'][(seed * 2) % 6];
-      const worstTrade = ['TSLA', 'NKE', 'PFE', 'BA', 'DOT'][(seed * 4) % 5];
-      const bestTrade = ['NVDA', 'BTC', 'AMD', 'NFLX', 'SOL'][(seed * 5) % 5];
-      const bestReturn = 5 + (seed * 7) % 35;
-      const worstReturn = -3 - (seed * 2) % 20;
-
-      return {
-        name, cash, invested, totalValue,
-        gain: totalValue - 100000,
-        gainPct,
-        trades,
-        holdings: 2 + (seed % 4),
-        topHolding,
-        bestTrade: { symbol: bestTrade, returnPct: bestReturn },
-        worstTrade: { symbol: worstTrade, returnPct: worstReturn },
-        achievements: 2 + (seed % 6),
-        winRate: 40 + (seed * 3) % 40,
-      };
+  // Hydrate each player's holdings and compute derived fields
+  const hydrated = rawPlayers.map(p => {
+    const holdingsObj = (p.holdings && typeof p.holdings === 'object') ? p.holdings : {};
+    const holdingsList = Object.keys(holdingsObj).map(sym => {
+      const h = holdingsObj[sym] || {};
+      const shares = Number(h.shares) || 0;
+      const avgCost = Number(h.avgCost) || 0;
+      const livePrice = priceBy.has(sym) ? priceBy.get(sym) : avgCost;
+      const value = shares * livePrice;
+      const gain = value - shares * avgCost;
+      const returnPercent = avgCost > 0 ? ((livePrice - avgCost) / avgCost) * 100 : 0;
+      return { symbol: sym, name: h.name || sym, assetType: h.assetType || 'stock', shares, avgCost, livePrice, value, gain, returnPercent };
     });
+
+    const cash = Number(p.cash) || 0;
+    const startingCash = Number(p.starting_cash) || 100000;
+    const holdingsValue = holdingsList.reduce((s, h) => s + h.value, 0);
+    const totalValue = cash + holdingsValue;
+    const totalGain = totalValue - startingCash;
+    const gainPct = startingCash > 0 ? (totalGain / startingCash) * 100 : 0;
+
+    const wins = holdingsList.filter(h => h.returnPercent > 0).length;
+    const winRate = holdingsList.length > 0 ? Math.round((wins / holdingsList.length) * 100) : 0;
+
+    const sortedByReturn = [...holdingsList].sort((a, b) => b.returnPercent - a.returnPercent);
+    const bestH = sortedByReturn[0] || null;
+    const worstH = sortedByReturn[sortedByReturn.length - 1] || null;
+
+    return {
+      code: p.code,
+      name: p.label || p.code,
+      isYou: p.code === myCode,
+      isAdmin: !!p.is_admin,
+      cash,
+      invested: Math.max(0, startingCash - cash),
+      startingCash,
+      totalValue,
+      gain: totalGain,
+      gainPct,
+      trades: Number(p.trade_count) || 0,
+      holdings: holdingsList.length,
+      holdingsList,
+      topHolding: bestH ? bestH.symbol : '--',
+      bestTrade: bestH ? { symbol: bestH.symbol, returnPct: bestH.returnPercent } : { symbol: '--', returnPct: 0 },
+      worstTrade: worstH ? { symbol: worstH.symbol, returnPct: worstH.returnPercent } : { symbol: '--', returnPct: 0 },
+      winRate,
+    };
   });
 
-  // Build current user's entry from real portfolio
-  const totalValue = currentPortfolio.cash + currentPortfolio.holdings.reduce((s, h) => {
-    const live = allAssets.find(a => a.symbol === h.symbol);
-    return s + (h.shares * (live ? live.price : h.currentPrice));
-  }, 0);
-  const totalGain = totalValue - 100000;
-  const bestH = currentPortfolio.holdings.length > 0 ? [...currentPortfolio.holdings].sort((a, b) => b.returnPercent - a.returnPercent)[0] : null;
-  const worstH = currentPortfolio.holdings.length > 0 ? [...currentPortfolio.holdings].sort((a, b) => a.returnPercent - b.returnPercent)[0] : null;
-  const wins = currentPortfolio.holdings.filter(h => h.gain > 0).length;
-  const total = currentPortfolio.holdings.length;
-
-  const currentEntry = {
-    name: currentUser, cash: currentPortfolio.cash, invested: 100000 - currentPortfolio.cash,
-    totalValue, gain: totalGain, gainPct: (totalGain / 100000) * 100,
-    trades: currentPortfolio.trades.length, holdings: currentPortfolio.holdings.length,
-    topHolding: bestH?.symbol || '--',
-    bestTrade: bestH ? { symbol: bestH.symbol, returnPct: bestH.returnPercent } : { symbol: '--', returnPct: 0 },
-    worstTrade: worstH ? { symbol: worstH.symbol, returnPct: worstH.returnPercent } : { symbol: '--', returnPct: 0 },
-    achievements: 0, // filled by parent
-    winRate: total > 0 ? Math.round((wins / total) * 100) : 0,
-    isYou: true,
-  };
-
-  const all = [currentEntry, ...otherPlayers].sort((a, b) => b.totalValue - a.totalValue);
-  all.forEach((p, i) => p.rank = i + 1);
-
+  // Active traders rank by portfolio value. 0-trade users land at the bottom
+  // in alphabetical order so a brand-new squad member doesn't "outrank"
+  // someone who actually put money to work.
+  const active = hydrated.filter(p => p.trades > 0).sort((a, b) => b.totalValue - a.totalValue);
+  const learners = hydrated.filter(p => p.trades === 0).sort((a, b) => a.name.localeCompare(b.name));
+  const all = [...active, ...learners];
+  all.forEach((p, i) => { p.rank = i + 1; });
   return all;
 }
 
@@ -1293,14 +1327,14 @@ function LeaderboardSection({ players, user }) {
             {players.map(p => {
               const member = getSquadMember(p.name);
               return (
-                <tr key={p.name} style={p.isYou ? { background: 'rgba(0,255,163,0.03)' } : {}}>
+                <tr key={p.code || p.name} style={p.isYou ? { background: 'rgba(0,255,163,0.03)' } : {}}>
                   <td style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 900, color: p.rank === 1 ? 'var(--primary-fixed)' : 'var(--on-surface-variant)' }}>{p.rank}</td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <CharacterAvatar name={p.name} size={40} />
                       <div>
                         <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}{p.isYou ? ' (You)' : ''}</div>
-                        <div className="stock-name-text">{member.strategy}</div>
+                        <div className="stock-name-text">{strategyFor(p)}</div>
                       </div>
                     </div>
                   </td>
@@ -1316,10 +1350,18 @@ function LeaderboardSection({ players, user }) {
                     </div>
                   </td>
                   <td>
-                    <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: 'var(--primary-fixed)' }}>{p.bestTrade.symbol} +{p.bestTrade.returnPct.toFixed(0)}%</span>
+                    {p.holdings > 0 ? (
+                      <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: p.bestTrade.returnPct >= 0 ? 'var(--primary-fixed)' : 'var(--on-surface-variant)' }}>{p.bestTrade.symbol} {p.bestTrade.returnPct >= 0 ? '+' : ''}{p.bestTrade.returnPct.toFixed(0)}%</span>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 12 }}>--</span>
+                    )}
                   </td>
                   <td>
-                    <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: 'var(--error)' }}>{p.worstTrade.symbol} {p.worstTrade.returnPct.toFixed(0)}%</span>
+                    {p.holdings > 0 ? (
+                      <span style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, color: p.worstTrade.returnPct < 0 ? 'var(--error)' : 'var(--on-surface-variant)' }}>{p.worstTrade.symbol} {p.worstTrade.returnPct >= 0 ? '+' : ''}{p.worstTrade.returnPct.toFixed(0)}%</span>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 12 }}>--</span>
+                    )}
                   </td>
                 </tr>
               );
@@ -4814,40 +4856,78 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
 
 // ==================== LEADERBOARD PAGE ====================
 function LeaderboardPage({ players, user, achievementsUnlocked }) {
-  // Generate simulated performance history for the graph
+  // Empty-state guard -- the leaderboard fetch is async and may not have
+  // returned yet (or there are no active users for some reason).
+  if (!players || players.length === 0) {
+    return (
+      <div>
+        <div style={{ marginBottom: 32 }}>
+          <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 8 }}>Leaderboard</h1>
+          <p className="text-muted" style={{ fontSize: 16 }}>See how you stack up against the squad. Trade smart, climb the ranks.</p>
+        </div>
+        <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+          <div className="stat-icon primary" style={{ width: 56, height: 56, margin: '0 auto 16px' }}><Icon name="group" size={28} /></div>
+          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Loading squad...</div>
+          <p className="text-muted" style={{ fontSize: 14 }}>Pulling live portfolios from the server.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Performance history graph -- cosmetic projection of each player's gainPct
+  // over a synthetic 30-day window. Real per-day history will replace this
+  // once we snapshot portfolios daily.
   const perfHistory = players.map(p => {
     const member = getSquadMember(p.name);
     const points = [];
     let val = 100000;
     for (let d = 30; d >= 0; d--) {
-      const dailyReturn = (p.gainPct / 30) + (Math.sin(d * 0.5 + p.name.length) * 0.3);
+      const dailyReturn = (p.gainPct / 30) + (Math.sin(d * 0.5 + (p.name || '').length) * 0.3);
       val += val * (dailyReturn / 100);
       points.push({ day: 30 - d, value: val });
     }
     return { name: p.name, color: member.color, points, final: val };
   });
 
-  // Learning insights based on player performance
+  // Learning insights -- each one is guarded so an empty / zero-trade squad
+  // doesn't produce nonsense like "Best trade: -- +0%".
   const insights = [];
-  const winner = players[0];
-  const winnerMember = getSquadMember(winner.name);
-  
-  if (winner.winRate > 60) insights.push({ icon: 'psychology', title: 'High Win Rate Wins', text: winner.name + " leads with a " + winner.winRate + "% win rate. This means most of their trades are profitable. The lesson: it is not about making huge gains on every trade -- it is about being right more often than wrong." });
-  if (winner.holdings > 2) insights.push({ icon: 'balance', title: 'Diversification Pays Off', text: winner.name + " holds " + winner.holdings + " different assets. Spreading money across multiple investments reduces risk. When one goes down, others can go up." });
-  
-  const bestTrader = [...players].sort((a, b) => b.bestTrade.returnPct - a.bestTrade.returnPct)[0];
-  insights.push({ icon: 'trending_up', title: 'Best Single Trade', text: bestTrader.name + " made the best single trade: " + bestTrader.bestTrade.symbol + " at +" + bestTrader.bestTrade.returnPct.toFixed(0) + "%. Finding strong companies in growing sectors is how you find big winners." });
+  const activeTraders = players.filter(p => p.trades > 0);
+  const withPositions = players.filter(p => p.holdings > 0);
 
-  const mostActive = [...players].sort((a, b) => b.trades - a.trades)[0];
-  const leastActive = [...players].sort((a, b) => a.trades - b.trades)[0];
-  if (mostActive.gainPct < leastActive.gainPct && leastActive.gainPct > 0) {
-    insights.push({ icon: 'hourglass_top', title: 'Patience Over Activity', text: leastActive.name + " made fewer trades (" + leastActive.trades + ") but has better returns than " + mostActive.name + " (" + mostActive.trades + " trades). More trading does not always mean more profit. Sometimes doing less is more." });
+  if (activeTraders.length === 0) {
+    insights.push({ icon: 'school', title: 'Fresh Start', text: "The squad is just getting started. Every pro investor began with zero trades. Pick a stock you believe in, make a small first move, and track what happens -- the best learning comes from doing." });
   } else {
-    insights.push({ icon: 'bolt', title: 'Active Trading', text: mostActive.name + " leads with " + mostActive.trades + " trades. Being active can work if you have a strategy, but watch out for overtrading -- every trade has risk." });
+    const winner = activeTraders[0];
+    if (winner.winRate > 60 && winner.holdings > 0) {
+      insights.push({ icon: 'psychology', title: 'High Win Rate Wins', text: winner.name + " leads with a " + winner.winRate + "% win rate. Most of their positions are in the green. The lesson: it is not about making huge gains on every trade -- it is about being right more often than wrong." });
+    }
+    if (winner.holdings > 2) {
+      insights.push({ icon: 'balance', title: 'Diversification Pays Off', text: winner.name + " holds " + winner.holdings + " different assets. Spreading money across multiple investments reduces risk. When one goes down, others can go up." });
+    }
+    if (withPositions.length > 0) {
+      const bestTrader = [...withPositions].sort((a, b) => b.bestTrade.returnPct - a.bestTrade.returnPct)[0];
+      if (bestTrader && bestTrader.bestTrade.returnPct > 0) {
+        insights.push({ icon: 'trending_up', title: 'Best Current Position', text: bestTrader.name + "'s top holding is " + bestTrader.bestTrade.symbol + " at +" + bestTrader.bestTrade.returnPct.toFixed(0) + "%. Finding strong companies in growing sectors is how you find big winners." });
+      }
+      const worstMove = [...withPositions].sort((a, b) => a.worstTrade.returnPct - b.worstTrade.returnPct)[0];
+      if (worstMove && worstMove.worstTrade.returnPct < 0) {
+        insights.push({ icon: 'shield', title: 'Learn From Losses', text: worstMove.name + "'s weakest position is " + worstMove.worstTrade.symbol + " at " + worstMove.worstTrade.returnPct.toFixed(0) + "%. Losses are part of investing. The key is keeping them small and learning from them. Never risk more than you can afford to lose." });
+      }
+    }
+    if (activeTraders.length >= 2) {
+      const mostActive = [...activeTraders].sort((a, b) => b.trades - a.trades)[0];
+      const leastActive = [...activeTraders].sort((a, b) => a.trades - b.trades)[0];
+      if (mostActive.code !== leastActive.code && mostActive.gainPct < leastActive.gainPct && leastActive.gainPct > 0) {
+        insights.push({ icon: 'hourglass_top', title: 'Patience Over Activity', text: leastActive.name + " made fewer trades (" + leastActive.trades + ") but has better returns than " + mostActive.name + " (" + mostActive.trades + " trades). More trading does not always mean more profit. Sometimes doing less is more." });
+      } else {
+        insights.push({ icon: 'bolt', title: 'Active Trading', text: mostActive.name + " leads with " + mostActive.trades + " trades. Being active can work if you have a strategy, but watch out for overtrading -- every trade has risk." });
+      }
+    }
+    if (insights.length === 0) {
+      insights.push({ icon: 'school', title: 'Early Days', text: "The squad is warming up. As more trades happen, this section will fill with patterns about who is winning, what is working, and where losses are teaching lessons." });
+    }
   }
-
-  const worstMove = [...players].sort((a, b) => a.worstTrade.returnPct - b.worstTrade.returnPct)[0];
-  insights.push({ icon: 'shield', title: 'Learn From Losses', text: worstMove.name + "'s worst trade was " + worstMove.worstTrade.symbol + " at " + worstMove.worstTrade.returnPct.toFixed(0) + "%. Losses are part of investing. The key is keeping them small and learning from them. Never risk more than you can afford to lose." });
 
   return (
     <div>
@@ -4915,14 +4995,13 @@ function LeaderboardPage({ players, user, achievementsUnlocked }) {
       <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="group" size={20} /> Player Breakdown</h3>
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
         {players.map(p => {
-          const member = getSquadMember(p.name);
           return (
-            <div key={p.name} className="card" style={{ border: p.isYou ? '1px solid rgba(0,255,163,0.2)' : undefined }}>
+            <div key={p.code || p.name} className="card" style={{ border: p.isYou ? '1px solid rgba(0,255,163,0.2)' : undefined }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
                 <CharacterAvatar name={p.name} size={56} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 700, color: p.isYou ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>{p.name}{p.isYou ? ' (You)' : ''}</div>
-                  <div className="stock-name-text">{member.strategy}</div>
+                  <div className="stock-name-text">{strategyFor(p)}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 900, color: p.gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{p.gain >= 0 ? '+' : ''}{p.gainPct.toFixed(1)}%</div>
@@ -4943,26 +5022,34 @@ function LeaderboardPage({ players, user, achievementsUnlocked }) {
                   <div style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700 }}>{p.holdings}</div>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ flex: 1, padding: 12, background: 'rgba(0,255,163,0.05)', borderRadius: 'var(--radius-lg)', borderLeft: '3px solid var(--primary-fixed)' }}>
-                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>Best Move</div>
-                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{p.bestTrade.symbol} <span className="text-primary">+{p.bestTrade.returnPct.toFixed(0)}%</span></div>
+              {p.holdings > 0 ? (
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1, padding: 12, background: 'rgba(0,255,163,0.05)', borderRadius: 'var(--radius-lg)', borderLeft: '3px solid var(--primary-fixed)' }}>
+                    <div className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>Best Move</div>
+                    <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{p.bestTrade.symbol} <span style={{ color: p.bestTrade.returnPct >= 0 ? 'var(--primary-fixed)' : 'var(--on-surface-variant)' }}>{p.bestTrade.returnPct >= 0 ? '+' : ''}{p.bestTrade.returnPct.toFixed(0)}%</span></div>
+                  </div>
+                  <div style={{ flex: 1, padding: 12, background: 'rgba(255,113,108,0.05)', borderRadius: 'var(--radius-lg)', borderLeft: '3px solid var(--error)' }}>
+                    <div className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--error)' }}>Worst Move</div>
+                    <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{p.worstTrade.symbol} <span style={{ color: p.worstTrade.returnPct < 0 ? 'var(--error)' : 'var(--on-surface-variant)' }}>{p.worstTrade.returnPct >= 0 ? '+' : ''}{p.worstTrade.returnPct.toFixed(0)}%</span></div>
+                  </div>
                 </div>
-                <div style={{ flex: 1, padding: 12, background: 'rgba(255,113,108,0.05)', borderRadius: 'var(--radius-lg)', borderLeft: '3px solid var(--error)' }}>
-                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--error)' }}>Worst Move</div>
-                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{p.worstTrade.symbol} <span className="text-error">{p.worstTrade.returnPct.toFixed(0)}%</span></div>
+              ) : (
+                <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+                  <div className="label-system" style={{ fontSize: 9, marginBottom: 4 }}>Status</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, color: 'var(--on-surface-variant)' }}>No positions yet -- ready to learn</div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Achievement Progress */}
+      {/* Achievement Progress -- only your own is tracked. Others display --
+          as a "not tracked yet" state so the bar stays honest. */}
       <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="emoji_events" size={20} /> Achievement Progress</h3>
       <div className="card">
         {players.map(p => {
-          const earned = p.isYou ? (achievementsUnlocked?.length || 0) : p.achievements;
+          const earned = p.isYou ? (achievementsUnlocked?.length || 0) : 0;
           return (
             <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0', borderBottom: '1px solid rgba(73,72,71,0.05)' }}>
               <CharacterAvatar name={p.name} size={36} />
@@ -5101,7 +5188,7 @@ function App() {
 
   // Achievements + Leaderboard
   const { unlocked: achievementsUnlocked, newAchievement, total: achievementsTotal } = useAchievements(portfolio);
-  const leaderboard = useLeaderboard(user, portfolio, stocks, crypto);
+  const leaderboard = useLeaderboard(accessCode, stocks, crypto);
 
   // Milburn inbox unread counter -- only meaningful for admin.
   // Polls /api/messages every 15s. Counts messages newer than `stockrocket_milburn_seen_at`
