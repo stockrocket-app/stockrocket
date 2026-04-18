@@ -61,6 +61,119 @@ async function postTradeAlert({ code, type, symbol, shares, price }) {
   } catch (_) { /* silent -- trade already saved locally */ }
 }
 
+// ==================== PORTFOLIO / TRADES API ====================
+// Server (Supabase via /api/trades) is the source of truth. localStorage is
+// a fast-paint cache only -- on login we refresh from the server.
+
+// Convert one server trade row into the client-side trade shape used by the UI.
+function shapeServerTrade(t) {
+  const d = t && t.executed_at ? new Date(t.executed_at) : new Date();
+  return {
+    id: t?.id,
+    date: d.toLocaleDateString(),
+    time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+    type: t?.trade_type,
+    symbol: t?.symbol,
+    name: t?.name || t?.symbol,
+    shares: Number(t?.shares) || 0,
+    price: Number(t?.price) || 0,
+    total: Number(t?.total) || 0,
+  };
+}
+
+// Shape server portfolio + trades into { cash, holdings, trades } for React state.
+// Server holdings are keyed by symbol ({ NKE: {...} }); the UI expects an array
+// with derived fields (currentPrice/value/gain/returnPercent) from live prices.
+function hydrateServerPortfolio(serverPortfolio, serverTrades, stocks, crypto) {
+  const priceLookup = new Map();
+  for (const s of (stocks || [])) priceLookup.set(s.symbol, { price: s.price, name: s.name, type: 'stock' });
+  for (const c of (crypto || [])) priceLookup.set(c.symbol, { price: c.price, name: c.name, type: 'crypto' });
+
+  const holdingsMap = (serverPortfolio && serverPortfolio.holdings && typeof serverPortfolio.holdings === 'object')
+    ? serverPortfolio.holdings
+    : {};
+  const holdings = Object.values(holdingsMap).map(h => {
+    const info = priceLookup.get(h.symbol);
+    const currentPrice = info?.price ?? Number(h.avgCost) ?? 0;
+    const shares = Number(h.shares) || 0;
+    const avgCost = Number(h.avgCost) || 0;
+    const value = shares * currentPrice;
+    const gain = (currentPrice - avgCost) * shares;
+    const returnPercent = avgCost > 0 ? ((currentPrice - avgCost) / avgCost) * 100 : 0;
+    return {
+      symbol: h.symbol,
+      name: h.name || info?.name || h.symbol,
+      assetType: h.assetType || info?.type || 'stock',
+      shares,
+      avgCost,
+      currentPrice,
+      value,
+      gain,
+      returnPercent,
+    };
+  });
+
+  // Server returns trades newest-first (order=executed_at.desc). UI consumers
+  // call slice(-N).reverse() so they expect oldest-first -- flip here.
+  const trades = (serverTrades || []).map(shapeServerTrade).reverse();
+
+  return {
+    cash: Number(serverPortfolio?.cash) || 0,
+    holdings,
+    trades,
+  };
+}
+
+// GET /api/trades -> authoritative server portfolio + last 50 trades.
+async function fetchServerPortfolio(code) {
+  if (!code) return null;
+  try {
+    const res = await fetch(`${API_BASE}/api/trades`, { headers: { 'X-User-Code': code } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.ok) return null;
+    return { portfolio: data.portfolio, trades: data.trades || [] };
+  } catch { return null; }
+}
+
+// POST /api/trades -> execute trade on the server. Server validates cash/shares
+// and persists to stockrocket_trades + stockrocket_portfolios atomically.
+// Returns { ok: true, portfolio, trade } on success, { ok: false, error, detail } on failure.
+async function executeServerTrade({ code, type, symbol, name, assetType, shares, price }) {
+  if (!code) return { ok: false, error: 'not_authenticated' };
+  try {
+    const res = await fetch(`${API_BASE}/api/trades`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
+      body: JSON.stringify({ type, symbol, name, asset_type: assetType, shares, price }),
+    });
+    let data = {};
+    try { data = await res.json(); } catch { data = {}; }
+    if (!res.ok || !data.ok) {
+      return { ok: false, error: data.error || 'trade_failed', detail: data.detail };
+    }
+    return { ok: true, portfolio: data.portfolio, trade: data.trade };
+  } catch {
+    return { ok: false, error: 'network_error' };
+  }
+}
+
+// Human-readable message for server error codes.
+function errorMessageForTrade(err, detail) {
+  switch (err) {
+    case 'insufficient_cash':     return detail || 'Not enough cash for this trade';
+    case 'no_shares_to_sell':     return detail || "You don't own any of this asset";
+    case 'insufficient_shares':   return detail || 'Not enough shares to sell';
+    case 'invalid_shares':        return 'Invalid share amount';
+    case 'invalid_price':         return 'Invalid price';
+    case 'symbol_required':       return 'Symbol required';
+    case 'auth_required':
+    case 'auth_denied':           return 'Please sign in again';
+    case 'network_error':         return 'Network error -- trade not saved. Please retry.';
+    default:                      return 'Trade failed. Please try again.';
+  }
+}
+
 // ==================== ACCESS CODES ====================
 // v1: client-side validation, private-invite only. Moves to Supabase in v1.1.
 // Tier gates UI features. Admin flag elevates to admin tools.
@@ -1182,26 +1295,30 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
   const { data: chartData, loading: chartLoading } = useChartData(asset?.symbol, 90);
   const total = asset ? parseFloat(shares || 0) * asset.price : 0;
 
-  const executeTrade = () => {
+  const executeTrade = async () => {
     if (!asset || !shares || parseFloat(shares) <= 0) return;
-    const qty = parseFloat(shares), cost = qty * asset.price;
-    if (tradeType === 'BUY' && cost > portfolio.cash) { setNotification({ type: 'error', message: 'Not enough cash' }); return; }
-    const newTrade = { date: new Date().toLocaleDateString(), type: tradeType, symbol: asset.symbol, name: asset.name, shares: qty, price: asset.price, total: cost, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) };
-    let newHoldings = [...portfolio.holdings], newCash = portfolio.cash;
-    const idx = newHoldings.findIndex(h => h.symbol === asset.symbol);
-    if (tradeType === 'BUY') {
-      newCash -= cost;
-      if (idx >= 0) { const h = newHoldings[idx], ns = h.shares + qty, na = (h.avgCost * h.shares + cost) / ns; newHoldings[idx] = { ...h, shares: ns, avgCost: na, currentPrice: asset.price, value: ns * asset.price, gain: (asset.price - na) * ns, returnPercent: ((asset.price - na) / na) * 100 }; }
-      else newHoldings.push({ symbol: asset.symbol, name: asset.name, shares: qty, avgCost: asset.price, currentPrice: asset.price, value: cost, gain: 0, returnPercent: 0 });
-    } else {
-      if (idx < 0) { setNotification({ type: 'error', message: 'No position to sell' }); return; }
-      if (qty > newHoldings[idx].shares) { setNotification({ type: 'error', message: 'Not enough shares' }); return; }
-      newCash += cost;
-      const rem = newHoldings[idx].shares - qty;
-      if (rem === 0) newHoldings.splice(idx, 1);
-      else { const h = newHoldings[idx]; newHoldings[idx] = { ...h, shares: rem, value: rem * asset.price, gain: (asset.price - h.avgCost) * rem, returnPercent: ((asset.price - h.avgCost) / h.avgCost) * 100 }; }
+    const qty = parseFloat(shares);
+    // Client-side pre-check (server re-validates authoritatively)
+    if (tradeType === 'BUY' && qty * asset.price > portfolio.cash + 0.005) {
+      setNotification({ type: 'error', message: 'Not enough cash' }); return;
     }
-    setPortfolio({ ...portfolio, cash: newCash, holdings: newHoldings, trades: [...portfolio.trades, newTrade] });
+    const assetType = asset.type || (crypto?.some(c => c.symbol === asset.symbol) ? 'crypto' : 'stock');
+    const result = await executeServerTrade({
+      code, type: tradeType, symbol: asset.symbol, name: asset.name,
+      assetType, shares: qty, price: asset.price,
+    });
+    if (!result.ok) {
+      setNotification({ type: 'error', message: errorMessageForTrade(result.error, result.detail) });
+      return;
+    }
+    // Server is source of truth. Hydrate with live prices, append new trade to history.
+    const hydrated = hydrateServerPortfolio(result.portfolio, [], stocks, crypto);
+    const newTrade = shapeServerTrade(result.trade);
+    setPortfolio(prev => ({
+      cash: hydrated.cash,
+      holdings: hydrated.holdings,
+      trades: [...(prev.trades || []), newTrade],
+    }));
     setNotification({ type: 'success', message: `${tradeType} ${qty} ${asset.symbol} @ ${formatCurrency(asset.price)}` });
     setShares('');
     // Broadcast to Trade Alerts channel (fire-and-forget)
@@ -1961,30 +2078,26 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
 
   const handleTradeClick = () => { if (validateTrade()) setShowConfirm(true); };
 
-  const executeTrade = () => {
+  const executeTrade = async () => {
     setShowConfirm(false);
-    const qty = parseFloat(shares), cost = qty * execPrice;
-    const newTrade = { date: new Date().toLocaleDateString(), type: tradeType, symbol: selectedAsset.symbol, name: selectedAsset.name, shares: qty, price: execPrice, total: cost, orderType, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) };
-    const existingIdx = portfolio.holdings.findIndex(h => h.symbol === selectedAsset.symbol);
-    let newHoldings = [...portfolio.holdings], newCash = portfolio.cash;
-
-    if (tradeType === 'BUY') {
-      newCash -= cost;
-      if (existingIdx >= 0) {
-        const h = newHoldings[existingIdx], ns = h.shares + qty, na = (h.avgCost * h.shares + cost) / ns;
-        newHoldings[existingIdx] = { ...h, shares: ns, avgCost: na, currentPrice: execPrice, value: ns * execPrice, gain: (execPrice - na) * ns, returnPercent: ((execPrice - na) / na) * 100 };
-      } else {
-        newHoldings.push({ symbol: selectedAsset.symbol, name: selectedAsset.name, shares: qty, avgCost: execPrice, currentPrice: execPrice, value: cost, gain: 0, returnPercent: 0 });
-      }
-    } else {
-      const h = newHoldings[existingIdx];
-      newCash += cost;
-      const rem = h.shares - qty;
-      if (rem === 0) newHoldings.splice(existingIdx, 1);
-      else newHoldings[existingIdx] = { ...h, shares: rem, value: rem * execPrice, gain: (execPrice - h.avgCost) * rem, returnPercent: ((execPrice - h.avgCost) / h.avgCost) * 100 };
+    const qty = parseFloat(shares);
+    const assetType = selectedAsset.type || (crypto?.some(c => c.symbol === selectedAsset.symbol) ? 'crypto' : 'stock');
+    const result = await executeServerTrade({
+      code, type: tradeType, symbol: selectedAsset.symbol, name: selectedAsset.name,
+      assetType, shares: qty, price: execPrice,
+    });
+    if (!result.ok) {
+      setNotification({ type: 'error', message: errorMessageForTrade(result.error, result.detail) });
+      return;
     }
-
-    setPortfolio({ ...portfolio, cash: newCash, holdings: newHoldings, trades: [...portfolio.trades, newTrade] });
+    // Server confirmed + persisted. Hydrate with live prices, append trade to history.
+    const hydrated = hydrateServerPortfolio(result.portfolio, [], stocks, crypto);
+    const newTrade = { ...shapeServerTrade(result.trade), orderType };
+    setPortfolio(prev => ({
+      cash: hydrated.cash,
+      holdings: hydrated.holdings,
+      trades: [...(prev.trades || []), newTrade],
+    }));
     setShowSuccess(newTrade);
     setShares('');
     setLimitPrice('');
@@ -2286,7 +2399,7 @@ function MarketsPage({ stocks, setStockDetail }) {
 }
 
 // ==================== CRYPTO ====================
-function CryptoPage({ crypto, portfolio, setPortfolio, setNotification, user, code }) {
+function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, user, code }) {
   const [selectedCrypto, setSelectedCrypto] = useState(null);
   const [tradeType, setTradeType] = useState('BUY');
   const [amount, setAmount] = useState('');
@@ -2298,31 +2411,29 @@ function CryptoPage({ crypto, portfolio, setPortfolio, setNotification, user, co
   const total = selected ? qty * selected.price : 0;
   const existing = selected ? portfolio?.holdings?.find(h => h.symbol === selected.symbol) : null;
 
-  const executeCryptoTrade = () => {
+  const executeCryptoTrade = async () => {
     if (!selected || qty <= 0) return;
     setShowConfirm(false);
-    const cost = qty * selected.price;
-    const newTrade = { date: new Date().toLocaleDateString(), type: tradeType, symbol: selected.symbol, name: selected.name, shares: qty, price: selected.price, total: cost, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) };
-    let newHoldings = [...portfolio.holdings], newCash = portfolio.cash;
-    const existingIdx = newHoldings.findIndex(h => h.symbol === selected.symbol);
-
-    if (tradeType === 'BUY') {
-      if (cost > portfolio.cash) { setNotification({ type: 'error', message: 'Not enough cash' }); return; }
-      newCash -= cost;
-      if (existingIdx >= 0) {
-        const h = newHoldings[existingIdx], ns = h.shares + qty, na = (h.avgCost * h.shares + cost) / ns;
-        newHoldings[existingIdx] = { ...h, shares: ns, avgCost: na, currentPrice: selected.price, value: ns * selected.price, gain: (selected.price - na) * ns, returnPercent: ((selected.price - na) / na) * 100 };
-      } else {
-        newHoldings.push({ symbol: selected.symbol, name: selected.name, shares: qty, avgCost: selected.price, currentPrice: selected.price, value: cost, gain: 0, returnPercent: 0 });
-      }
-    } else {
-      if (existingIdx < 0 || qty > newHoldings[existingIdx].shares) { setNotification({ type: 'error', message: 'Not enough to sell' }); return; }
-      newCash += cost;
-      const rem = newHoldings[existingIdx].shares - qty;
-      if (rem === 0) newHoldings.splice(existingIdx, 1);
-      else { const h = newHoldings[existingIdx]; newHoldings[existingIdx] = { ...h, shares: rem, value: rem * selected.price, gain: (selected.price - h.avgCost) * rem, returnPercent: ((selected.price - h.avgCost) / h.avgCost) * 100 }; }
+    // Client-side pre-check (server re-validates authoritatively)
+    if (tradeType === 'BUY' && qty * selected.price > portfolio.cash + 0.005) {
+      setNotification({ type: 'error', message: 'Not enough cash' }); return;
     }
-    setPortfolio({ ...portfolio, cash: newCash, holdings: newHoldings, trades: [...portfolio.trades, newTrade] });
+    const result = await executeServerTrade({
+      code, type: tradeType, symbol: selected.symbol, name: selected.name,
+      assetType: 'crypto', shares: qty, price: selected.price,
+    });
+    if (!result.ok) {
+      setNotification({ type: 'error', message: errorMessageForTrade(result.error, result.detail) });
+      return;
+    }
+    // Server returns the full portfolio (stocks + crypto). Hydrate with live prices.
+    const hydrated = hydrateServerPortfolio(result.portfolio, [], stocks, crypto);
+    const newTrade = shapeServerTrade(result.trade);
+    setPortfolio(prev => ({
+      cash: hydrated.cash,
+      holdings: hydrated.holdings,
+      trades: [...(prev.trades || []), newTrade],
+    }));
     setShowSuccess(newTrade);
     setAmount('');
     setTimeout(() => setShowSuccess(null), 4000);
@@ -2485,6 +2596,11 @@ function ChatPage({ user, code, isAdmin }) {
   const [mentionFilter, setMentionFilter] = useState('');
   const [typingUsers, setTypingUsers] = useState([]);
   const [showMobileRooms, setShowMobileRooms] = useState(false);
+  // Admin-only: list of family members + codes that already have a thread + admin-initiated new DM codes
+  const [familyUsers, setFamilyUsers] = useState([]);
+  const [dmThreadCodes, setDmThreadCodes] = useState([]);
+  const [newDmCodes, setNewDmCodes] = useState([]);
+  const [showNewDmPicker, setShowNewDmPicker] = useState(false);
   const endRef = useRef(null);
   const inputRef = useRef(null);
   const currentUser = user || 'Ella';
@@ -2492,11 +2608,75 @@ function ChatPage({ user, code, isAdmin }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // Admin: fetch family user list so we can label DM channels
+  useEffect(() => {
+    if (!isAdmin || !code) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/codes`, { headers: { 'X-Admin-Code': code } });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        setFamilyUsers((data.codes || []).filter(u => u.active && !u.is_admin));
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, [isAdmin, code]);
+
+  // Admin: poll milburn thread list (every 15s) so newly-arrived user DMs surface as channels
+  useEffect(() => {
+    if (!isAdmin || !code) return;
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/messages?channel=milburn&admin=1`, { headers: { 'X-User-Code': code } });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        setDmThreadCodes((data.threads || []).map(t => t.thread_for).filter(Boolean));
+      } catch {}
+    };
+    poll();
+    const iv = setInterval(poll, 15000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, [isAdmin, code]);
+
+  // Build the channel list -- admin gets per-user DM channels, users get a single Ask Milburn
+  const labelForCode = (c) => familyUsers.find(u => u.code === c)?.label || c;
+  const channels = (() => {
+    const base = [
+      { id: 'general', channel: 'group',  name: 'Group Chat',    icon: 'forum',        type: 'group' },
+      { id: 'trades',  channel: 'alerts', name: 'Trade Alerts',  icon: 'swap_vert',    type: 'feed'  },
+    ];
+    if (isAdmin) {
+      const codes = Array.from(new Set([...dmThreadCodes, ...newDmCodes]));
+      const dms = codes.map(c => ({
+        id: 'dm:' + c,
+        channel: 'milburn',
+        threadFor: c,
+        name: labelForCode(c),
+        icon: 'chat',
+        type: 'dm',
+      }));
+      return [...base, ...dms];
+    }
+    return [...base, { id: 'milburn', channel: 'milburn', name: 'Ask Milburn', icon: 'support_agent', type: 'dm' }];
+  })();
+  const findChannel = (id) => channels.find(r => r.id === id);
+
+  // If admin's activeRoom is stale (e.g. a dm:code that no longer exists), snap back to general
+  useEffect(() => {
+    if (!findChannel(activeRoom)) setActiveRoom('general');
+  }, [activeRoom, channels.length]);
+
+  const isDmRoom = activeRoom.startsWith('dm:');
+  const currentDmCode = isDmRoom ? activeRoom.slice(3) : null;
+  const availableDmTargets = familyUsers.filter(u => !dmThreadCodes.includes(u.code) && !newDmCodes.includes(u.code));
+
   // -------- Live messages: fetch from /api/messages + poll every 5s --------
   useEffect(() => {
     if (!code) return;
     let mounted = true;
-    const ch = CHANNELS.find(r => r.id === activeRoom);
+    const ch = findChannel(activeRoom);
     if (!ch) return;
 
     const toUiMsg = (m) => ({
@@ -2516,8 +2696,9 @@ function ChatPage({ user, code, isAdmin }) {
       try {
         let qs = `?channel=${ch.channel}`;
         if (ch.channel === 'milburn') {
-          // Users always see their own thread; admin view goes through the Admin panel
-          qs += `&thread_for=${encodeURIComponent(code)}`;
+          // threadFor is set for admin's per-user DM channels; fallback = own code (user's Ask Milburn)
+          const threadFor = ch.threadFor || code;
+          qs += `&thread_for=${encodeURIComponent(threadFor)}`;
         }
         const res = await fetch(`${API_BASE}/api/messages${qs}`, { headers: { 'X-User-Code': code } });
         const data = await res.json();
@@ -2696,14 +2877,14 @@ function ChatPage({ user, code, isAdmin }) {
   const send = async () => {
     const content = newMsg.trim();
     if (!content) return;
-    const ch = CHANNELS.find(r => r.id === activeRoom);
+    const ch = findChannel(activeRoom);
     if (!ch || !code) return;
     // Trade Alerts is a system feed -- users cannot post manually
     if (ch.channel === 'alerts') { setNewMsg(''); return; }
     const payload = { channel: ch.channel, content };
     if (ch.channel === 'milburn') {
-      // User's own thread (admin uses the Admin panel to reply into other threads)
-      payload.thread_for = code;
+      // Admin per-user DMs carry threadFor; users post into their own thread
+      payload.thread_for = ch.threadFor || code;
     }
     // Optimistic append -- the next poll will reconcile
     const optimisticId = 'tmp-' + Date.now();
@@ -2731,8 +2912,17 @@ function ChatPage({ user, code, isAdmin }) {
     if (e.key === 'Escape') { setShowMentions(false); setShowEmojiPicker(null); setShowQuickEmoji(false); }
   };
 
-  const room = CHANNELS.find(r => r.id === activeRoom);
+  const room = findChannel(activeRoom);
   const mentionCandidates = Object.keys(SQUAD_MEMBERS).filter(n => n !== currentUser && n.toLowerCase().includes(mentionFilter));
+
+  const openDmWith = (userCode) => {
+    if (!dmThreadCodes.includes(userCode) && !newDmCodes.includes(userCode)) {
+      setNewDmCodes(prev => [...prev, userCode]);
+    }
+    setActiveRoom('dm:' + userCode);
+    setShowNewDmPicker(false);
+    setShowMobileRooms(false);
+  };
 
   return (
     <div>
@@ -2747,25 +2937,63 @@ function ChatPage({ user, code, isAdmin }) {
       <div className="chat-layout">
         {/* Rooms Panel */}
         <div className={`chat-rooms-panel ${showMobileRooms ? 'mobile-open' : ''}`}>
-          <div className="chat-rooms-header">
+          <div className="chat-rooms-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="label-system" style={{ fontSize: 12 }}>Channels</h3>
+            {isAdmin && availableDmTargets.length > 0 && (
+              <button onClick={() => setShowNewDmPicker(s => !s)} title="New DM"
+                style={{ background: 'none', border: '1px solid rgba(243,156,18,0.3)', color: '#f39c12', borderRadius: 'var(--radius-full)', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}>
+                <Icon name={showNewDmPicker ? 'close' : 'add'} size={14} />
+              </button>
+            )}
           </div>
           <div className="chat-rooms-list">
-            {CHANNELS.map(r => (
-              <button key={r.id} className={`chat-room-item ${activeRoom === r.id ? 'active' : ''}`} onClick={() => { setActiveRoom(r.id); setShowMobileRooms(false); }}>
-                <div className="chat-room-icon" style={r.type === 'dm' ? { background: 'rgba(243,156,18,0.15)' } : {}}>
-                  {r.type === 'dm' ? <span style={{ fontSize: 18 }}>🎩</span> : <Icon name={r.icon} size={18} />}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="chat-room-name">{r.name}</div>
-                  <div className="chat-room-preview">
-                    {r.id === 'general' && 'Family chat'}
-                    {r.id === 'trades' && 'Live trade feed'}
-                    {r.id === 'milburn' && (isAdmin ? 'Family DM inbox' : 'Your DM with Milburn')}
+            {channels.map(r => {
+              const isDm = r.type === 'dm';
+              const preview = r.id === 'general' ? 'Family chat'
+                : r.id === 'trades' ? 'Live trade feed'
+                : isAdmin && isDm ? 'Private DM'
+                : 'Your DM with Milburn';
+              const avatar = isDm && isAdmin ? (
+                <span style={{ fontSize: 18 }}>💬</span>
+              ) : isDm ? (
+                <span style={{ fontSize: 18 }}>🎩</span>
+              ) : (
+                <Icon name={r.icon} size={18} />
+              );
+              return (
+                <button key={r.id} className={`chat-room-item ${activeRoom === r.id ? 'active' : ''}`} onClick={() => { setActiveRoom(r.id); setShowMobileRooms(false); }}>
+                  <div className="chat-room-icon" style={isDm ? { background: 'rgba(243,156,18,0.15)' } : {}}>
+                    {avatar}
                   </div>
-                </div>
-              </button>
-            ))}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="chat-room-name">{r.name}</div>
+                    <div className="chat-room-preview">{preview}</div>
+                  </div>
+                </button>
+              );
+            })}
+            {isAdmin && showNewDmPicker && (
+              <div style={{ padding: '10px 14px', background: 'var(--surface-container-high)', borderTop: '1px solid rgba(73,72,71,0.08)', borderBottom: '1px solid rgba(73,72,71,0.08)' }}>
+                <div className="label-system" style={{ fontSize: 11, marginBottom: 8 }}>Start a private DM</div>
+                {availableDmTargets.length === 0 && <div className="text-muted" style={{ fontSize: 11 }}>You have a thread with every family member.</div>}
+                {availableDmTargets.map(u => (
+                  <button key={u.code} onClick={() => openDmWith(u.code)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px', background: 'transparent', border: '1px solid rgba(73,72,71,0.08)', borderRadius: 'var(--radius-lg)', cursor: 'pointer', textAlign: 'left', marginBottom: 6 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 'var(--radius-full)', background: 'rgba(243,156,18,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 12 }}>💬</span>
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.label || u.code}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {isAdmin && !showNewDmPicker && channels.filter(c => c.type === 'dm').length === 0 && (
+              <div style={{ padding: '14px 16px' }}>
+                <div className="text-muted" style={{ fontSize: 11, lineHeight: 1.5 }}>No DMs yet. Use the + button above to start a private thread with a family member.</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2775,15 +3003,16 @@ function ChatPage({ user, code, isAdmin }) {
           <div className="chat-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: '12px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: activeRoom === 'milburn' ? 'rgba(243,156,18,0.15)' : 'rgba(0,255,163,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {activeRoom === 'milburn' ? <span style={{ fontSize: 20 }}>🎩</span> : <Icon name={room?.icon || 'forum'} size={20} className="text-primary" />}
+                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-lg)', background: (room?.type === 'dm') ? 'rgba(243,156,18,0.15)' : 'rgba(0,255,163,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {room?.type === 'dm' ? <span style={{ fontSize: 20 }}>{isAdmin && isDmRoom ? '💬' : '🎩'}</span> : <Icon name={room?.icon || 'forum'} size={20} className="text-primary" />}
                 </div>
                 <div>
                   <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15 }}>{room?.name || 'Group Chat'}</div>
                   <div className="text-muted" style={{ fontSize: 11 }}>
                     {activeRoom === 'general' && 'Family chat'}
                     {activeRoom === 'trades' && 'Trades post here automatically'}
-                    {activeRoom === 'milburn' && (isAdmin ? 'Inbox \u00B7 all family DMs land here' : 'Private DM with Milburn Pennybags')}
+                    {activeRoom === 'milburn' && !isAdmin && 'Private DM with Milburn Pennybags'}
+                    {isDmRoom && isAdmin && 'Private DM \u00B7 ' + labelForCode(currentDmCode)}
                   </div>
                 </div>
               </div>
@@ -2863,25 +3092,34 @@ function ChatPage({ user, code, isAdmin }) {
             </div>
           )}
 
-          {/* Ask Milburn DM -- ADMIN sees the full inbox (all family threads); users see their own thread */}
-          {activeRoom === 'milburn' && isAdmin && (
-            <div style={{ padding: 16, overflowY: 'auto', flex: 1 }}>
-              <MilburnInbox adminCode={code} setNotification={() => {}} />
-            </div>
-          )}
-          {activeRoom === 'milburn' && !isAdmin && (
+          {/* Ask Milburn DM -- users see their own thread; admin sees per-user DMs as individual channels (dm:<code>) */}
+          {(activeRoom === 'milburn' || isDmRoom) && (
             <div className="chat-messages" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} style={isDragOver ? { outline: '2px dashed var(--primary-fixed)', outlineOffset: -4, background: 'rgba(0,255,163,0.03)' } : {}}>
-              {/* Milburn intro */}
-              <div style={{ textAlign: 'center', padding: '24px 0 16px' }}>
-                <CharacterAvatar name="Milburn Pennybags" size={80} style={{ display: 'inline-flex', marginBottom: 12, borderRadius: 'var(--radius-xl)' }} />
-                <h3 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>Milburn Pennybags</h3>
-                <p className="text-muted" style={{ fontSize: 12 }}>Admin {'\u00B7'} Value Preservation Specialist</p>
-                <p className="text-muted" style={{ fontSize: 11, marginTop: 8, maxWidth: 360, margin: '8px auto 0' }}>Ask me anything about the market, your trades, or how things work.</p>
-              </div>
+              {/* Intro -- user sees Milburn card; admin sees the family member they're DMing */}
+              {!isAdmin && (
+                <div style={{ textAlign: 'center', padding: '24px 0 16px' }}>
+                  <CharacterAvatar name="Milburn Pennybags" size={80} style={{ display: 'inline-flex', marginBottom: 12, borderRadius: 'var(--radius-xl)' }} />
+                  <h3 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>Milburn Pennybags</h3>
+                  <p className="text-muted" style={{ fontSize: 12 }}>Admin {'\u00B7'} Value Preservation Specialist</p>
+                  <p className="text-muted" style={{ fontSize: 11, marginTop: 8, maxWidth: 360, margin: '8px auto 0' }}>Ask me anything about the market, your trades, or how things work.</p>
+                </div>
+              )}
+              {isAdmin && isDmRoom && (
+                <div style={{ textAlign: 'center', padding: '24px 0 16px' }}>
+                  <CharacterAvatar name={labelForCode(currentDmCode)} size={72} style={{ display: 'inline-flex', marginBottom: 10, borderRadius: 'var(--radius-xl)' }} />
+                  <h3 style={{ fontFamily: 'var(--font-headline)', fontSize: 15, fontWeight: 700 }}>{labelForCode(currentDmCode)}</h3>
+                  <p className="text-muted" style={{ fontSize: 11 }}>Private DM {'\u00B7'} only you and them see this</p>
+                </div>
+              )}
               {/* Empty state when no DMs yet */}
-              {!loadingMessages && messages.length === 0 && (
+              {!loadingMessages && messages.length === 0 && !isAdmin && (
                 <div style={{ textAlign: 'center', padding: '16px 24px 24px' }}>
                   <p className="text-muted" style={{ fontSize: 12, maxWidth: 360, margin: '0 auto' }}>Type your question below. Milburn usually replies within a day.</p>
+                </div>
+              )}
+              {!loadingMessages && messages.length === 0 && isAdmin && isDmRoom && (
+                <div style={{ textAlign: 'center', padding: '16px 24px 24px' }}>
+                  <p className="text-muted" style={{ fontSize: 12, maxWidth: 360, margin: '0 auto' }}>No messages yet. Say hi as Milburn to start the conversation.</p>
                 </div>
               )}
               {/* Milburn DM messages */}
@@ -3097,7 +3335,7 @@ function ChatPage({ user, code, isAdmin }) {
           )}
 
           {/* Input bar -- hidden for Trade Alerts feed + for admin on Milburn channel (inbox has per-thread reply boxes) */}
-          {activeRoom !== 'trades' && !(isAdmin && activeRoom === 'milburn') && <div className="chat-input-bar" style={{ position: 'relative' }}>
+          {activeRoom !== 'trades' && <div className="chat-input-bar" style={{ position: 'relative' }}>
             <input ref={fileInputRef} type="file" accept="image/*,.gif" style={{ display: 'none' }} onChange={handleFileSelect} />
             <button className="header-icon-btn" style={{ width: 32, height: 32, flexShrink: 0 }} title="Upload" onClick={() => fileInputRef.current?.click()}><Icon name="attach_file" size={18} /></button>
             <button className="header-icon-btn" style={{ width: 32, height: 32, flexShrink: 0, color: showGifPicker ? 'var(--primary-fixed)' : undefined }} title="GIF" onClick={() => { setShowGifPicker(!showGifPicker); setShowQuickEmoji(false); }}><Icon name="gif_box" size={18} /></button>
@@ -4711,7 +4949,9 @@ function App() {
   // Live data hook -- fetches from CoinGecko + Finnhub proxy
   const { stocks, crypto, isLive, stocksLive, cryptoLive, marketOpen, lastUpdated, refresh } = useLiveData();
 
-  // Load portfolio from localStorage or use defaults
+  // Portfolio: server (Supabase via /api/trades) is the source of truth.
+  // localStorage is a fast-paint cache only -- we load it synchronously for
+  // instant render, then refresh from the server as soon as we have a code.
   const defaultPortfolio = {
     cash: 100000,
     holdings: [],
@@ -4723,11 +4963,27 @@ function App() {
       return saved ? JSON.parse(saved) : defaultPortfolio;
     } catch { return defaultPortfolio; }
   });
+  const [portfolioLoaded, setPortfolioLoaded] = useState(false);
 
-  // Save portfolio to localStorage whenever it changes
+  // Save portfolio to localStorage whenever it changes (cache for next fast paint)
   useEffect(() => {
     try { localStorage.setItem('stockrocket_portfolio', JSON.stringify(portfolio)); } catch {}
   }, [portfolio]);
+
+  // On login (or when live prices first arrive), refresh portfolio from server.
+  // Hydrate with live stock/crypto prices so UI shows accurate value/gain/return.
+  useEffect(() => {
+    if (!accessCode) return;
+    let cancelled = false;
+    (async () => {
+      const data = await fetchServerPortfolio(accessCode);
+      if (cancelled || !data) return;
+      const hydrated = hydrateServerPortfolio(data.portfolio, data.trades, stocks, crypto);
+      setPortfolio(hydrated);
+      setPortfolioLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [accessCode, isLive]); // isLive flips when live prices arrive -- triggers re-hydrate with real prices
 
   // Save user session
   useEffect(() => {
@@ -4842,7 +5098,7 @@ function App() {
       case 'portfolio': return <PortfolioPage portfolio={portfolio} user={user} stocks={stocks} setStockDetail={setStockDetail} />;
       case 'trade': return <TradePage stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
-      case 'crypto': return <CryptoPage crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
+      case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} />;
       case 'chat': return <ChatPage user={user} code={accessCode} isAdmin={isAdmin} />;
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
