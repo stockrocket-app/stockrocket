@@ -1538,7 +1538,7 @@ function Header({ activePage, setActivePage, user, onMenuToggle }) {
 }
 
 // ==================== SIDEBAR ====================
-function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin, tier, onLogout }) {
+function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin, tier, onLogout, milburnUnread = 0 }) {
   const navItems = [
     { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
     { id: 'portfolio', icon: 'account_balance', label: 'Portfolio' },
@@ -1546,7 +1546,7 @@ function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin,
     { id: 'market', icon: 'show_chart', label: 'Markets' },
     { id: 'crypto', icon: 'currency_bitcoin', label: 'Crypto' },
     { id: 'leaderboard', icon: 'emoji_events', label: 'Leaderboard' },
-    { id: 'chat', icon: 'chat_bubble', label: 'Chat' },
+    { id: 'chat', icon: 'chat_bubble', label: 'Chat', badge: milburnUnread },
     { id: 'report', icon: 'summarize', label: 'Weekly Report' },
   ];
   const learnItems = [
@@ -1566,8 +1566,12 @@ function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin,
       </div>
       <nav className="sidebar-nav">
         {navItems.map(item => (
-          <button key={item.id} className={`sidebar-nav-item ${activePage === item.id ? 'active' : ''}`} onClick={() => handleNav(item.id)}>
-            <Icon name={item.icon} /> {item.label}
+          <button key={item.id} className={`sidebar-nav-item ${activePage === item.id ? 'active' : ''}`} onClick={() => handleNav(item.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12 }}>
+            <Icon name={item.icon} />
+            <span style={{ flex: 1 }}>{item.label}</span>
+            {item.badge > 0 && (
+              <span style={{ minWidth: 20, height: 20, padding: '0 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--error)', color: '#fff', borderRadius: 10, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-headline)' }}>{item.badge}</span>
+            )}
           </button>
         ))}
         <div className="sidebar-section-label">Learn</div>
@@ -2757,7 +2761,7 @@ function ChatPage({ user, code, isAdmin }) {
                   <div className="chat-room-preview">
                     {r.id === 'general' && 'Family chat'}
                     {r.id === 'trades' && 'Live trade feed'}
-                    {r.id === 'milburn' && 'Your DM with Milburn'}
+                    {r.id === 'milburn' && (isAdmin ? 'Family DM inbox' : 'Your DM with Milburn')}
                   </div>
                 </div>
               </button>
@@ -2779,7 +2783,7 @@ function ChatPage({ user, code, isAdmin }) {
                   <div className="text-muted" style={{ fontSize: 11 }}>
                     {activeRoom === 'general' && 'Family chat'}
                     {activeRoom === 'trades' && 'Trades post here automatically'}
-                    {activeRoom === 'milburn' && 'Private DM with Milburn Pennybags'}
+                    {activeRoom === 'milburn' && (isAdmin ? 'Inbox \u00B7 all family DMs land here' : 'Private DM with Milburn Pennybags')}
                   </div>
                 </div>
               </div>
@@ -2859,8 +2863,13 @@ function ChatPage({ user, code, isAdmin }) {
             </div>
           )}
 
-          {/* Ask Milburn DM */}
-          {activeRoom === 'milburn' && (
+          {/* Ask Milburn DM -- ADMIN sees the full inbox (all family threads); users see their own thread */}
+          {activeRoom === 'milburn' && isAdmin && (
+            <div style={{ padding: 16, overflowY: 'auto', flex: 1 }}>
+              <MilburnInbox adminCode={code} setNotification={() => {}} />
+            </div>
+          )}
+          {activeRoom === 'milburn' && !isAdmin && (
             <div className="chat-messages" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} style={isDragOver ? { outline: '2px dashed var(--primary-fixed)', outlineOffset: -4, background: 'rgba(0,255,163,0.03)' } : {}}>
               {/* Milburn intro */}
               <div style={{ textAlign: 'center', padding: '24px 0 16px' }}>
@@ -3087,8 +3096,8 @@ function ChatPage({ user, code, isAdmin }) {
             </div>
           )}
 
-          {/* Input bar -- hidden for Trade Alerts feed */}
-          {activeRoom !== 'trades' && <div className="chat-input-bar" style={{ position: 'relative' }}>
+          {/* Input bar -- hidden for Trade Alerts feed + for admin on Milburn channel (inbox has per-thread reply boxes) */}
+          {activeRoom !== 'trades' && !(isAdmin && activeRoom === 'milburn') && <div className="chat-input-bar" style={{ position: 'relative' }}>
             <input ref={fileInputRef} type="file" accept="image/*,.gif" style={{ display: 'none' }} onChange={handleFileSelect} />
             <button className="header-icon-btn" style={{ width: 32, height: 32, flexShrink: 0 }} title="Upload" onClick={() => fileInputRef.current?.click()}><Icon name="attach_file" size={18} /></button>
             <button className="header-icon-btn" style={{ width: 32, height: 32, flexShrink: 0, color: showGifPicker ? 'var(--primary-fixed)' : undefined }} title="GIF" onClick={() => { setShowGifPicker(!showGifPicker); setShowQuickEmoji(false); }}><Icon name="gif_box" size={18} /></button>
@@ -3796,6 +3805,8 @@ function MilburnInbox({ adminCode, setNotification }) {
   const [reply, setReply] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [users, setUsers] = useState([]);     // All active access codes (for starting new DMs)
+  const [showNewDm, setShowNewDm] = useState(false);
   const endRef = useRef(null);
 
   // Load + poll threads every 5s
@@ -3817,6 +3828,32 @@ function MilburnInbox({ adminCode, setNotification }) {
     const iv = setInterval(load, 5000);
     return () => { mounted = false; clearInterval(iv); };
   }, [adminCode]);
+
+  // Load full user list once (so admin can start a thread with anyone, not just people who have already messaged)
+  useEffect(() => {
+    if (!adminCode) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/codes`, { headers: { 'X-Admin-Code': adminCode } });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        setUsers((data.codes || []).filter(u => u.active && !u.is_admin));
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, [adminCode]);
+
+  // Start (or jump to) a private thread with the given user.
+  // If no thread exists yet, create a placeholder so the admin can type the first message.
+  const openThreadWith = (userCode) => {
+    setShowNewDm(false);
+    setThreads(prev => {
+      if (prev.some(t => t.thread_for === userCode)) return prev;
+      return [{ thread_for: userCode, messages: [], last_at: new Date().toISOString() }, ...prev];
+    });
+    setActiveThread(userCode);
+  };
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeThread, threads]);
 
@@ -3854,21 +3891,55 @@ function MilburnInbox({ adminCode, setNotification }) {
     } catch { return ''; }
   };
 
+  const labelFor = (userCode) => users.find(u => u.code === userCode)?.label || userCode;
+  const availableForNew = users.filter(u => !threads.some(t => t.thread_for === u.code));
+
   return (
     <div>
-      <h3 className="section-title" style={{ marginBottom: 12 }}><Icon name="support_agent" size={20} /> Milburn_Inbox</h3>
-      <p className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>Every "Ask Milburn" DM lands here. Replies post into that family member's private thread.</p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+        <div>
+          <h3 className="section-title" style={{ marginBottom: 6 }}><Icon name="support_agent" size={20} /> Milburn_Inbox</h3>
+          <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>Every "Ask Milburn" DM lands here. Start a private thread with any family member to talk 1:1.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowNewDm(s => !s)} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+          <Icon name={showNewDm ? 'close' : 'add'} size={16} /> {showNewDm ? 'Cancel' : 'New DM'}
+        </button>
+      </div>
+
+      {showNewDm && (
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 700, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Start a private DM</div>
+          {users.length === 0 && <div className="text-muted" style={{ fontSize: 12 }}>No family members yet. Add one in Command Center &rarr; Users.</div>}
+          {users.length > 0 && availableForNew.length === 0 && <div className="text-muted" style={{ fontSize: 12 }}>You already have a thread with every active family member.</div>}
+          {availableForNew.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+              {availableForNew.map(u => (
+                <button key={u.code} onClick={() => openThreadWith(u.code)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface-container-highest)', border: '1px solid rgba(73,72,71,0.08)', borderRadius: 'var(--radius-lg)', cursor: 'pointer', textAlign: 'left' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-lg)', background: 'rgba(243,156,18,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: 14 }}>💬</span>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.label || u.code}</div>
+                    <div className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.code}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading && threads.length === 0 && (
         <div className="card" style={{ padding: 48, textAlign: 'center' }}>
           <span className="text-muted" style={{ fontSize: 13 }}>Loading threads...</span>
         </div>
       )}
-      {!loading && threads.length === 0 && (
+      {!loading && threads.length === 0 && !showNewDm && (
         <div className="card" style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📭</div>
           <div style={{ fontFamily: 'var(--font-headline)', fontSize: 15, fontWeight: 700, marginBottom: 6 }}>No DMs yet</div>
-          <div className="text-muted" style={{ fontSize: 12 }}>When a family member messages Milburn, the thread appears here.</div>
+          <div className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>Wait for a family member to message you, or start a private thread with "New DM" above.</div>
         </div>
       )}
 
@@ -3878,9 +3949,11 @@ function MilburnInbox({ adminCode, setNotification }) {
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {threads.map(t => {
               const last = t.messages[t.messages.length - 1];
-              const author = last?.author_name || t.thread_for;
+              const friendlyName = labelFor(t.thread_for);
+              const author = last?.author_name || friendlyName;
               const isActive = t.thread_for === activeThread;
               const fromUser = last && last.author_code === t.thread_for; // last message came from the user (not Milburn)
+              const isEmpty = t.messages.length === 0;
               return (
                 <button key={t.thread_for} onClick={() => setActiveThread(t.thread_for)}
                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '14px 16px', background: isActive ? 'rgba(243,156,18,0.12)' : 'transparent', border: 'none', borderBottom: '1px solid rgba(73,72,71,0.06)', cursor: 'pointer', transition: 'background 0.15s' }}>
@@ -3890,11 +3963,11 @@ function MilburnInbox({ adminCode, setNotification }) {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.thread_for}</span>
-                        <span style={{ fontSize: 10, color: 'var(--outline)', flexShrink: 0 }}>{formatTime(t.last_at)}</span>
+                        <span style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{friendlyName}</span>
+                        <span style={{ fontSize: 10, color: 'var(--outline)', flexShrink: 0 }}>{isEmpty ? 'new' : formatTime(t.last_at)}</span>
                       </div>
                       <div className="text-muted" style={{ fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        <span style={{ opacity: 0.7 }}>{author}:</span> {last?.content || ''}
+                        {isEmpty ? <span style={{ fontStyle: 'italic', opacity: 0.7 }}>No messages yet {'\u2014'} say hi</span> : <><span style={{ opacity: 0.7 }}>{author}:</span> {last?.content || ''}</>}
                       </div>
                     </div>
                   </div>
@@ -3917,8 +3990,8 @@ function MilburnInbox({ adminCode, setNotification }) {
                     <span style={{ fontSize: 16 }}>🎩</span>
                   </div>
                   <div>
-                    <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{current.thread_for}</div>
-                    <div className="text-muted" style={{ fontSize: 11 }}>{current.messages.length} message{current.messages.length === 1 ? '' : 's'}</div>
+                    <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700 }}>{labelFor(current.thread_for)}</div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>{current.messages.length} message{current.messages.length === 1 ? '' : 's'} {'\u00B7'} private DM</div>
                   </div>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', maxHeight: 480 }}>
@@ -3938,7 +4011,7 @@ function MilburnInbox({ adminCode, setNotification }) {
                   <div ref={endRef} />
                 </div>
                 <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(73,72,71,0.08)', display: 'flex', gap: 8 }}>
-                  <input className="input-field" style={{ flex: 1 }} placeholder={`Reply to ${current.thread_for} as Milburn...`} value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); } }} disabled={sending} />
+                  <input className="input-field" style={{ flex: 1 }} placeholder={current.messages.length === 0 ? `Say hi to ${labelFor(current.thread_for)} as Milburn...` : `Reply to ${labelFor(current.thread_for)} as Milburn...`} value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); } }} disabled={sending} />
                   <button className="btn btn-primary" onClick={sendReply} disabled={sending || !reply.trim()} style={{ flexShrink: 0 }}>
                     <Icon name="send" size={16} /> {sending ? 'Sending' : 'Reply'}
                   </button>
@@ -4694,6 +4767,44 @@ function App() {
   const { unlocked: achievementsUnlocked, newAchievement, total: achievementsTotal } = useAchievements(portfolio);
   const leaderboard = useLeaderboard(user, portfolio, stocks, crypto);
 
+  // Milburn inbox unread counter -- only meaningful for admin.
+  // Polls /api/messages every 15s. Counts messages newer than `stockrocket_milburn_seen_at`
+  // that came from someone other than the admin. Clearing happens when admin opens Chat -> Ask Milburn.
+  const [milburnUnread, setMilburnUnread] = useState(0);
+  useEffect(() => {
+    if (!isAdmin || !accessCode) { setMilburnUnread(0); return; }
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/messages?channel=milburn&admin=1`, { headers: { 'X-User-Code': accessCode } });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        const seen = Number(localStorage.getItem('stockrocket_milburn_seen_at') || 0);
+        let count = 0;
+        for (const t of (data.threads || [])) {
+          for (const m of (t.messages || [])) {
+            const at = new Date(m.created_at).getTime();
+            if (m.author_code !== accessCode && at > seen) count++;
+          }
+        }
+        setMilburnUnread(count);
+      } catch {}
+    };
+    poll();
+    const iv = setInterval(poll, 15000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, [isAdmin, accessCode]);
+
+  // When admin visits the Chat page and is on Milburn channel, mark as read.
+  // We just bump the seen timestamp whenever they land on 'chat' page -- good enough for v1.
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (activePage === 'chat') {
+      try { localStorage.setItem('stockrocket_milburn_seen_at', String(Date.now())); } catch {}
+      setMilburnUnread(0);
+    }
+  }, [activePage, isAdmin]);
+
   const handleLogin = (payload) => {
     setUser(payload.name);
     setIsAdmin(!!payload.isAdmin);
@@ -4715,7 +4826,7 @@ function App() {
       <div className="app-layout">
         <Header activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
         {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} />
+        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} milburnUnread={milburnUnread} />
         <main className="main-content"><div className="main-inner">
           <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} user={user} code={accessCode} />
         </div></main>
@@ -4746,7 +4857,7 @@ function App() {
     <div className="app-layout">
       <Header activePage={activePage} setActivePage={setActivePage} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
-      <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} />
+      <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} milburnUnread={milburnUnread} />
       <main className="main-content">
         <div className="main-inner">
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, gap: 12, flexWrap: 'wrap' }}>
