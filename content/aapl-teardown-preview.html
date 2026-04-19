@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0e0e0e" />
+  <title>ACADEMY :: AAPL_TEARDOWN | StockRocket preview</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0e0e0e;
+      --surface: #0e0e0e;
+      --surface-container-lowest: #000000;
+      --surface-container-low: #131313;
+      --surface-container: #1a1919;
+      --surface-container-high: #201f1f;
+      --surface-container-highest: #262626;
+      --surface-bright: #2c2c2c;
+      --primary: #b1ffce;
+      --primary-fixed: #00ffa3;
+      --primary-dim: #00ef99;
+      --on-primary: #00663e;
+      --on-primary-container: #005c38;
+      --secondary: #64fcc9;
+      --tertiary: #72dcff;
+      --tertiary-dim: #00c3ed;
+      --on-surface: #ffffff;
+      --on-surface-variant: #adaaaa;
+      --error: #ff716c;
+      --outline: #777575;
+      --outline-variant: #494847;
+      --font-headline: 'Space Grotesk', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --radius-sm: 0.25rem;
+      --radius-md: 0.5rem;
+      --radius-lg: 1rem;
+      --radius-xl: 1.5rem;
+      --sidebar-width: 256px;
+      --header-height: 64px;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--on-surface);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    ::selection { background: rgba(0,255,163,0.25); color: var(--on-surface); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--surface-container-highest); border-radius: 10px; }
+
+    /* ============== PREVIEW FRAME BANNER ============== */
+    .preview-banner {
+      background: linear-gradient(90deg, rgba(0,255,163,0.10), rgba(114,220,255,0.08));
+      border-bottom: 1px solid var(--outline-variant);
+      padding: 10px 24px;
+      font-family: var(--font-headline);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .preview-banner strong { color: var(--primary-fixed); font-weight: 700; }
+
+    /* ============== LAYOUT ============== */
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) 1fr;
+      min-height: calc(100vh - 41px);
+    }
+
+    /* ============== SIDEBAR ============== */
+    aside.sidebar {
+      background: var(--surface-container-low);
+      border-right: 1px solid var(--outline-variant);
+      padding: 20px 0;
+      position: sticky;
+      top: 41px;
+      height: calc(100vh - 41px);
+      overflow-y: auto;
+    }
+    .brand {
+      padding: 0 20px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--outline-variant);
+      margin-bottom: 16px;
+    }
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      background: var(--primary-fixed);
+      color: var(--on-primary);
+      display: grid;
+      place-items: center;
+      font-family: var(--font-headline);
+      font-weight: 800;
+      font-size: 18px;
+      border-radius: var(--radius-sm);
+    }
+    .brand-name {
+      font-family: var(--font-headline);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      font-size: 15px;
+    }
+    .brand-name span { color: var(--primary-fixed); }
+
+    .nav-section {
+      padding: 12px 20px 6px;
+      font-family: var(--font-headline);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      color: var(--on-surface-variant);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      transition: color 120ms, background 120ms;
+    }
+    .nav-item:hover { color: var(--on-surface); background: var(--surface-container); }
+    .nav-item .mi { font-family: 'Material Symbols Outlined'; font-size: 20px; font-weight: 300; }
+    .nav-item.active {
+      color: var(--primary-fixed);
+      background: rgba(0,255,163,0.07);
+      border-left-color: var(--primary-fixed);
+    }
+
+    /* ============== MAIN ============== */
+    main {
+      padding: 28px 36px 80px;
+      max-width: 920px;
+      width: 100%;
+    }
+
+    /* Top bar inside main */
+    .crumb-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-headline);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+      margin-bottom: 24px;
+    }
+    .crumb-row a {
+      color: var(--on-surface-variant);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .crumb-row a:hover { color: var(--primary-fixed); }
+    .crumb-row .sep { color: var(--outline-variant); }
+    .crumb-row .here { color: var(--on-surface); }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--on-surface-variant);
+      font-family: var(--font-headline);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+    .back-link:hover { color: var(--primary-fixed); }
+    .back-link .mi { font-family: 'Material Symbols Outlined'; font-size: 18px; }
+
+    /* ============== TEARDOWN HEADER ============== */
+    .td-hero {
+      background: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      margin-bottom: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+    .td-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 85% -20%, rgba(0,255,163,0.10), transparent 60%);
+      pointer-events: none;
+    }
+
+    .td-sym-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 14px;
+      position: relative;
+    }
+    .td-symbol {
+      font-family: var(--font-headline);
+      font-weight: 800;
+      font-size: 36px;
+      letter-spacing: 0.02em;
+      color: var(--primary-fixed);
+    }
+    .td-price {
+      font-family: var(--font-headline);
+      font-weight: 600;
+      font-size: 20px;
+      color: var(--on-surface);
+    }
+    .td-price-delta {
+      font-family: var(--font-headline);
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--primary-fixed);
+      background: rgba(0,255,163,0.10);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+    }
+
+    .td-title {
+      font-family: var(--font-headline);
+      font-weight: 700;
+      font-size: 28px;
+      line-height: 1.2;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .td-meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      position: relative;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-family: var(--font-headline);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .chip .mi { font-family: 'Material Symbols Outlined'; font-size: 14px; }
+    .chip.difficulty {
+      background: rgba(114,220,255,0.12);
+      color: var(--tertiary);
+      border: 1px solid rgba(114,220,255,0.25);
+    }
+    .chip.read-time {
+      background: var(--surface-container-high);
+      color: var(--on-surface-variant);
+      border: 1px solid var(--outline-variant);
+    }
+    .chip.playbook {
+      background: rgba(0,255,163,0.10);
+      color: var(--primary-fixed);
+      border: 1px solid rgba(0,255,163,0.30);
+      cursor: pointer;
+    }
+    .chip.playbook:hover { background: rgba(0,255,163,0.18); }
+
+    /* ============== TEARDOWN BODY ============== */
+    article.td-body {
+      background: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-lg);
+      padding: 36px 40px;
+      margin-bottom: 28px;
+    }
+
+    article.td-body section {
+      margin-bottom: 32px;
+    }
+    article.td-body section:last-child { margin-bottom: 0; }
+
+    .section-label {
+      font-family: var(--font-headline);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--primary-fixed);
+      margin-bottom: 6px;
+    }
+    .section-title {
+      font-family: var(--font-headline);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--on-surface);
+      margin-bottom: 14px;
+      letter-spacing: 0.01em;
+    }
+
+    article.td-body p {
+      font-size: 16px;
+      line-height: 1.7;
+      color: #e6e6e6;
+      margin-bottom: 14px;
+    }
+    article.td-body p:last-child { margin-bottom: 0; }
+
+    /* Bull / Bear grid */
+    .bull-bear-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .bull-bear-card {
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      border: 1px solid var(--outline-variant);
+      background: var(--surface-container-high);
+    }
+    .bull-bear-card.bull { border-top: 3px solid var(--primary-fixed); }
+    .bull-bear-card.bear { border-top: 3px solid var(--error); }
+    .bull-bear-card h4 {
+      font-family: var(--font-headline);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    .bull-bear-card.bull h4 { color: var(--primary-fixed); }
+    .bull-bear-card.bear h4 { color: var(--error); }
+    .bull-bear-card ol {
+      padding-left: 16px;
+      color: #e0e0e0;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .bull-bear-card ol li { margin-bottom: 10px; }
+    .bull-bear-card ol li:last-child { margin-bottom: 0; }
+    .bull-bear-card ol strong {
+      color: var(--on-surface);
+      font-weight: 600;
+    }
+
+    /* Earnings snapshot stat grid */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: var(--surface-container-high);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+    }
+    .stat-label {
+      font-family: var(--font-headline);
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-family: var(--font-headline);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--on-surface);
+    }
+    .stat-value.pos { color: var(--primary-fixed); }
+
+    /* Guided questions */
+    .guided-q {
+      background: var(--surface-container-high);
+      border-left: 3px solid var(--tertiary);
+      padding: 16px 20px;
+      border-radius: var(--radius-md);
+      margin-bottom: 12px;
+    }
+    .guided-q .qn {
+      font-family: var(--font-headline);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--tertiary);
+      margin-bottom: 6px;
+    }
+    .guided-q p {
+      font-size: 15px;
+      line-height: 1.65;
+      color: #e6e6e6;
+      margin-bottom: 0;
+    }
+
+    /* ============== PREDICTION CTA ============== */
+    .pred-card {
+      background: var(--surface-container);
+      border: 1px solid rgba(0,255,163,0.28);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    .pred-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(0,255,163,0.12), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(114,220,255,0.06), transparent 55%);
+      pointer-events: none;
+    }
+    .pred-label {
+      font-family: var(--font-headline);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--primary-fixed);
+      font-weight: 700;
+      margin-bottom: 6px;
+      position: relative;
+    }
+    .pred-title {
+      font-family: var(--font-headline);
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      position: relative;
+    }
+    .pred-sub {
+      font-size: 14px;
+      color: var(--on-surface-variant);
+      line-height: 1.6;
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .pred-form {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+      position: relative;
+    }
+    .pred-field {
+      background: var(--surface-container-low);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+    }
+    .pred-field.full { grid-column: 1 / -1; }
+    .pred-field .k {
+      font-family: var(--font-headline);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+      margin-bottom: 4px;
+    }
+    .pred-field .v {
+      font-family: var(--font-headline);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--on-surface);
+    }
+    .direction-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .dir-btn {
+      flex: 1;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-headline);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
+      background: var(--surface-container-high);
+      color: var(--on-surface-variant);
+      border: 1px solid var(--outline-variant);
+      cursor: pointer;
+      text-align: center;
+    }
+    .dir-btn.up-active {
+      background: rgba(0,255,163,0.16);
+      color: var(--primary-fixed);
+      border-color: var(--primary-fixed);
+    }
+    .conf-row {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .conf-dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--surface-container-high);
+      border: 1px solid var(--outline-variant);
+      font-family: var(--font-headline);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--on-surface-variant);
+    }
+    .conf-dot.active {
+      background: var(--primary-fixed);
+      color: var(--on-primary);
+      border-color: var(--primary-fixed);
+    }
+    .pred-rationale {
+      background: var(--surface-container-low);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-bottom: 14px;
+      min-height: 90px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #d7d7d7;
+      font-style: italic;
+      position: relative;
+    }
+    .pred-rationale::before {
+      content: 'RATIONALE';
+      display: block;
+      font-family: var(--font-headline);
+      font-style: normal;
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: var(--on-surface-variant);
+      margin-bottom: 6px;
+    }
+
+    .pb-cite {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0,255,163,0.12);
+      color: var(--primary-fixed);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: var(--font-headline);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+    .pb-cite .mi { font-family: 'Material Symbols Outlined'; font-size: 14px; }
+
+    .pred-submit-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-top: 16px;
+      position: relative;
+    }
+    .pred-submit-note {
+      font-size: 12px;
+      color: var(--on-surface-variant);
+    }
+    .btn-submit {
+      background: var(--primary-fixed);
+      color: var(--on-primary);
+      border: none;
+      padding: 14px 24px;
+      border-radius: var(--radius-md);
+      font-family: var(--font-headline);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-submit:hover { background: var(--primary-dim); }
+    .btn-submit .mi { font-family: 'Material Symbols Outlined'; font-size: 18px; }
+
+    /* Responsive tidy */
+    @media (max-width: 960px) {
+      .app { grid-template-columns: 1fr; }
+      aside.sidebar { display: none; }
+      main { padding: 22px 18px 80px; }
+      .bull-bear-grid { grid-template-columns: 1fr; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .pred-form { grid-template-columns: 1fr; }
+      article.td-body { padding: 24px 22px; }
+    }
+
+    /* progress strip at top of body, for "you've read" feel */
+    .progress-strip {
+      height: 3px;
+      width: 100%;
+      background: var(--surface-container-high);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .progress-strip > span {
+      display: block;
+      height: 100%;
+      width: 65%;
+      background: linear-gradient(90deg, var(--primary-fixed), var(--tertiary));
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="preview-banner">
+    <span><strong>// PREVIEW</strong> &nbsp; ACADEMY &rsaquo; TEARDOWNS &rsaquo; AAPL_DEEP_DIVE &nbsp; <span style="opacity:0.5">non-interactive mock</span></span>
+    <span style="opacity:0.7">studyrocket.preview :: s54e</span>
+  </div>
+
+  <div class="app">
+
+    <!-- ============== SIDEBAR (illustrative: shows where this lives) ============== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">S</div>
+        <div class="brand-name">STOCK<span>ROCKET</span></div>
+      </div>
+
+      <div class="nav-section">Trade</div>
+      <div class="nav-item"><span class="mi">dashboard</span> Dashboard</div>
+      <div class="nav-item"><span class="mi">candlestick_chart</span> Stocks</div>
+      <div class="nav-item"><span class="mi">currency_bitcoin</span> Crypto</div>
+      <div class="nav-item"><span class="mi">pie_chart</span> Portfolio</div>
+      <div class="nav-item"><span class="mi">leaderboard</span> Leaderboard</div>
+
+      <div class="nav-section">Learn</div>
+      <div class="nav-item active"><span class="mi">school</span> Academy</div>
+      <div class="nav-item"><span class="mi">insights</span> Trader Insights</div>
+
+      <div class="nav-section">Social</div>
+      <div class="nav-item"><span class="mi">forum</span> Chat</div>
+      <div class="nav-item"><span class="mi">group</span> Members</div>
+    </aside>
+
+    <!-- ============== MAIN ============== -->
+    <main>
+
+      <div class="crumb-row">
+        <a>ACADEMY</a>
+        <span class="sep">/</span>
+        <a>TEARDOWNS</a>
+        <span class="sep">/</span>
+        <span class="here">AAPL_DEEP_DIVE</span>
+      </div>
+
+      <div class="back-link">
+        <span class="mi">arrow_back</span> Back to Teardowns
+      </div>
+
+      <div class="progress-strip"><span></span></div>
+
+      <!-- ============== HERO ============== -->
+      <section class="td-hero">
+        <div class="td-sym-row">
+          <div class="td-symbol">AAPL</div>
+          <div class="td-price">$228.41</div>
+          <div class="td-price-delta">+1.2%</div>
+        </div>
+        <div class="td-title">Apple :: The World's Most Beloved Moat</div>
+        <div class="td-meta-row">
+          <span class="chip difficulty"><span class="mi">signal_cellular_alt_1_bar</span> Beginner</span>
+          <span class="chip read-time"><span class="mi">schedule</span> 10 min read</span>
+          <span class="chip playbook"><span class="mi">bookmark</span> The Moat</span>
+          <span class="chip playbook"><span class="mi">bookmark</span> Margin of Safety</span>
+        </div>
+      </section>
+
+      <!-- ============== BODY ============== -->
+      <article class="td-body">
+
+        <section>
+          <div class="section-label">// 01</div>
+          <div class="section-title">The Business Model</div>
+          <p>Apple makes money three ways. First, it sells premium consumer hardware: iPhone, Mac, iPad, AirPods, Apple Watch. iPhone alone is about half the company's revenue. Second, it sells services that ride on top of that hardware: App Store fees, iCloud storage, Apple Music, Apple TV+, Apple Pay. Services are roughly a quarter of revenue, growing faster than hardware, with much higher margins. Third, a growing wearables and accessories segment.</p>
+          <p>The cycle that makes Apple special: you buy an iPhone, you get locked into the ecosystem, Apple earns from you for the next decade through services and your next iPhone. Every installed device is an annuity.</p>
+        </section>
+
+        <section>
+          <div class="section-label">// 02</div>
+          <div class="section-title">The Moat</div>
+          <p>Apple's moat is ecosystem lock-in plus brand. Switching from iPhone to Android means losing your iMessage blue bubbles, your AirPods pairing, your Apple Watch, your App Store purchases, your iCloud photos, your family sharing. The cost of switching is emotional and practical. Combined with a brand that commands a 40% premium over comparable hardware, this moat has held for 15+ years.</p>
+          <p>Buffett bought about $150B worth of Apple because he concluded this is one of the most durable consumer businesses ever built. That's the highest compliment the most famous moat investor in history can give a company.</p>
+        </section>
+
+        <section>
+          <div class="section-label">// 03</div>
+          <div class="section-title">Recent Earnings Snapshot</div>
+          <div class="stat-grid">
+            <div class="stat"><div class="stat-label">Revenue (Q)</div><div class="stat-value">$95B</div></div>
+            <div class="stat"><div class="stat-label">EPS</div><div class="stat-value">$1.50</div></div>
+            <div class="stat"><div class="stat-label">Gross Margin</div><div class="stat-value pos">46%</div></div>
+            <div class="stat"><div class="stat-label">Returned To Shareholders</div><div class="stat-value">$29B</div></div>
+          </div>
+          <p>Services growing ~12% year over year, iPhone growing ~3%. Gross margin near royalty-level profitability. Apple returned roughly $29B to shareholders last quarter via buybacks and dividends. No meaningful debt problem. This is a cash-printing machine with an operator CEO.</p>
+        </section>
+
+        <section>
+          <div class="section-label">// 04</div>
+          <div class="section-title">Bull vs Bear</div>
+          <div class="bull-bear-grid">
+            <div class="bull-bear-card bull">
+              <h4>▲ Three Bull Points</h4>
+              <ol>
+                <li><strong>Services flywheel.</strong> More than 2B active Apple devices worldwide, each generating high-margin service revenue forever. This is the business Buffett cares about most.</li>
+                <li><strong>AI catalyst.</strong> Apple Intelligence is shipping across the iPhone lineup. If it convinces the installed base to upgrade at scale, this could be the biggest cycle since iPhone 6.</li>
+                <li><strong>Capital returns.</strong> Apple has bought back roughly 40% of its shares since 2013. Even if revenue flatlined, EPS would keep climbing because the denominator keeps shrinking.</li>
+              </ol>
+            </div>
+            <div class="bull-bear-card bear">
+              <h4>▼ Three Bear Points</h4>
+              <ol>
+                <li><strong>China exposure.</strong> ~17% of revenue comes from China and geopolitical friction is rising. Huawei's domestic resurgence is real. A slow-motion market-share loss could shave growth every year.</li>
+                <li><strong>Innovation lull.</strong> Vision Pro underwhelmed. The Apple Car was cancelled after 10 years and billions invested. Where does the next $100B product line come from?</li>
+                <li><strong>Valuation.</strong> Apple trades at roughly 30x forward earnings. Historically: 12-18x. A multiple compression alone could mean 20-30% downside, even if fundamentals hold.</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-label">// 05</div>
+          <div class="section-title">Management Quality</div>
+          <p>Tim Cook is an operator, not a visionary, and that's exactly what a moat business needs. Since taking over in 2011 he has tripled revenue, quadrupled EPS, and returned more than $800B to shareholders. Criticisms about the innovation bench are legitimate, but execution and capital allocation have been textbook. Watch the CFO transition: Luca Maestri stepped down in 2025, and how the new CFO handles capital returns and China commentary will matter.</p>
+        </section>
+
+        <section>
+          <div class="section-label">// 06</div>
+          <div class="section-title">Three Guided Questions</div>
+
+          <div class="guided-q">
+            <div class="qn">// QUESTION 01</div>
+            <p>Buffett's rule: "Only buy something that you'd be perfectly happy to hold if the market shut down for 10 years." Would you hold Apple for 10 years with no ability to sell? What would have to be true about the business for you to feel comfortable?</p>
+          </div>
+
+          <div class="guided-q">
+            <div class="qn">// QUESTION 02</div>
+            <p>What breaks the moat? Describe one realistic scenario, not a doomsday one, where the iPhone ecosystem loses its grip on consumers.</p>
+          </div>
+
+          <div class="guided-q">
+            <div class="qn">// QUESTION 03</div>
+            <p>If Apple dropped 30% tomorrow on no company-specific news, would you buy more, hold, or sell? Your answer reveals whether you actually believe your thesis or whether you're just along for the ride.</p>
+          </div>
+        </section>
+
+      </article>
+
+      <!-- ============== PREDICTION CTA ============== -->
+      <section class="pred-card">
+        <div class="pred-label">// FORCING FUNCTION</div>
+        <div class="pred-title">Submit Your Prediction</div>
+        <div class="pred-sub">Reading is optional. Predicting is where you learn. Cite one of the unlocked playbooks above, write a 40+ character rationale, and the app will grade you when the target date passes.</div>
+
+        <div class="pred-form">
+
+          <div class="pred-field">
+            <div class="k">Direction</div>
+            <div class="direction-row">
+              <div class="dir-btn up-active">▲ UP</div>
+              <div class="dir-btn">▼ DOWN</div>
+            </div>
+          </div>
+
+          <div class="pred-field">
+            <div class="k">Target Price</div>
+            <div class="v">$245.00</div>
+          </div>
+
+          <div class="pred-field">
+            <div class="k">Target Date</div>
+            <div class="v">May 16, 2026 &nbsp;<span style="color:var(--on-surface-variant); font-weight:400; font-size:11px;">(28 days out)</span></div>
+          </div>
+
+          <div class="pred-field">
+            <div class="k">Confidence</div>
+            <div class="conf-row">
+              <div class="conf-dot">1</div>
+              <div class="conf-dot">2</div>
+              <div class="conf-dot">3</div>
+              <div class="conf-dot active">4</div>
+              <div class="conf-dot">5</div>
+            </div>
+          </div>
+
+          <div class="pred-field full">
+            <div class="k">Playbook Citation (required)</div>
+            <div class="pb-cite"><span class="mi">bookmark</span> The Moat &middot; Warren Buffett</div>
+          </div>
+        </div>
+
+        <div class="pred-rationale">
+          The services flywheel keeps compounding regardless of iPhone cycle softness. Installed base of 2B devices means Apple's earnings floor keeps rising even if hardware is flat. At 30x it's not cheap but ecosystem lock-in is a 15-year proven moat, so a 7-8% move higher into earnings is reasonable.
+        </div>
+
+        <div class="pred-submit-row">
+          <div class="pred-submit-note">Scoring: 40 pts direction + up to 60 pts proximity, multiplied by your confidence (1-5). Wrong direction scores zero.</div>
+          <button class="btn-submit"><span class="mi">rocket_launch</span> Lock In Prediction</button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+</body>
+</html>

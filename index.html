@@ -3944,46 +3944,697 @@ function LessonPage({ lesson, onBack, onNext }) {
   );
 }
 
-// Academy page -- lesson list + lesson viewer
-function LearnPage() {
-  const [activeLesson, setActiveLesson] = useState(null);
-  const lc = { Beginner: 'badge-primary', Intermediate: 'badge-secondary', Advanced: 'badge-error' };
+// -------- Study API hooks --------
+function useStudyCatalog() {
+  const [playbooks, setPlaybooks] = useState([]);
+  const [teardowns, setTeardowns] = useState([]);
+  const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/study`);
+        const j = await res.json();
+        if (!alive) return;
+        if (!res.ok || !j.ok) throw new Error(j.error || 'catalog_failed');
+        setPlaybooks(j.playbooks || []);
+        setTeardowns(j.teardowns || []);
+      } catch (e) { if (alive) setErr(e.message); }
+      finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
+  return { playbooks, teardowns, err, loading };
+}
 
+function useTeardown(slug) {
+  const [teardown, setTeardown] = useState(null);
+  const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!slug) { setTeardown(null); return; }
+    let alive = true;
+    setLoading(true); setErr(null);
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/study?teardown=${encodeURIComponent(slug)}`);
+        const j = await res.json();
+        if (!alive) return;
+        if (!res.ok || !j.ok) throw new Error(j.error || 'teardown_failed');
+        setTeardown(j.teardown);
+      } catch (e) { if (alive) setErr(e.message); }
+      finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [slug]);
+  return { teardown, err, loading };
+}
+
+function useMyPredictions(code) {
+  const [preds, setPreds] = useState([]);
+  const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const reload = useCallback(async () => {
+    if (!code) return;
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/predictions`, { headers: { 'X-User-Code': code } });
+      const j = await res.json();
+      if (!res.ok || !j.ok) throw new Error(j.error || 'predictions_failed');
+      setPreds(j.predictions || []);
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }, [code]);
+  useEffect(() => { reload(); }, [reload]);
+  return { preds, err, loading, reload };
+}
+
+// -------- Prediction Form --------
+function PredictionForm({ code, teardown, playbooks, onSubmitted }) {
+  const [direction, setDirection] = useState('UP');
+  const [target, setTarget] = useState('');
+  const [date, setDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [confidence, setConfidence] = useState(3);
+  const [playbookSlug, setPlaybookSlug] = useState(() => (teardown?.linked_playbooks?.[0]) || (playbooks[0]?.slug) || '');
+  const [rationale, setRationale] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Days until target -- surfaced to the user so they can't forget this is a 7-365 day window
+  const daysOut = (() => {
+    const t = new Date(date + 'T12:00:00Z').getTime();
+    const now = Date.now();
+    return Math.round((t - now) / 86400000);
+  })();
+
+  const rationaleOK = rationale.trim().length >= 40;
+  const targetOK = Number(target) > 0;
+  const windowOK = daysOut >= 7 && daysOut <= 365;
+  const canSubmit = !submitting && code && targetOK && windowOK && rationaleOK && playbookSlug;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true); setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/predictions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
+        body: JSON.stringify({
+          symbol: teardown.symbol,
+          asset_type: teardown.asset_type || 'stock',
+          teardown_slug: teardown.slug,
+          playbook_slug: playbookSlug,
+          direction,
+          target_price: Number(target),
+          target_date: date,
+          confidence: Number(confidence),
+          rationale: rationale.trim(),
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.ok) throw new Error(j.error || 'submit_failed');
+      setRationale(''); setTarget('');
+      onSubmitted?.(j.prediction);
+    } catch (e) { setError(e.message); }
+    finally { setSubmitting(false); }
+  };
+
+  const linked = playbooks.filter(p => teardown?.linked_playbooks?.includes(p.slug));
+  const pbList = linked.length > 0 ? linked : playbooks;
+
+  return (
+    <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)', borderTop: '2px solid var(--primary-fixed)' }}>
+      <p className="label-system" style={{ marginBottom: 8, color: 'var(--primary-fixed)' }}>Make_A_Prediction</p>
+      <h3 style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 800, marginBottom: 6 }}>
+        Where will {teardown.symbol} be on your target date?
+      </h3>
+      <p className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>
+        This is a learning tool, not real money. Commit an answer, watch it resolve, and see whether your thesis held.
+      </p>
+
+      {/* Direction */}
+      <div style={{ marginBottom: 20 }}>
+        <p className="label-system" style={{ marginBottom: 8 }}>Direction</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className={`btn btn-sm ${direction === 'UP' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setDirection('UP')}
+            style={{ flex: 1 }}>
+            <Icon name="trending_up" size={16} /> UP
+          </button>
+          <button
+            className={`btn btn-sm ${direction === 'DOWN' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setDirection('DOWN')}
+            style={{ flex: 1 }}>
+            <Icon name="trending_down" size={16} /> DOWN
+          </button>
+        </div>
+      </div>
+
+      {/* Target price + date */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+        <div>
+          <p className="label-system" style={{ marginBottom: 8 }}>Target_Price</p>
+          <input type="number" step="0.01" min="0" className="input" value={target}
+            onChange={e => setTarget(e.target.value)} placeholder="0.00" />
+        </div>
+        <div>
+          <p className="label-system" style={{ marginBottom: 8 }}>Target_Date</p>
+          <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
+          <p className="text-muted" style={{ fontSize: 11, marginTop: 4, color: windowOK ? 'var(--on-surface-variant)' : 'var(--error)' }}>
+            {daysOut > 0 ? `${daysOut} days out` : 'pick a future date'}{windowOK ? '' : ' (7 to 365 required)'}
+          </p>
+        </div>
+      </div>
+
+      {/* Confidence */}
+      <div style={{ marginBottom: 20 }}>
+        <p className="label-system" style={{ marginBottom: 8 }}>Confidence ({confidence}x multiplier)</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[1, 2, 3, 4, 5].map(n => (
+            <button key={n}
+              onClick={() => setConfidence(n)}
+              className={`btn btn-sm ${confidence === n ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex: 1 }}>
+              {n}
+            </button>
+          ))}
+        </div>
+        <p className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+          1 = hunch {'\u00B7'} 5 = high conviction. Multiplies points (and misses) at resolution.
+        </p>
+      </div>
+
+      {/* Playbook citation -- forcing function */}
+      <div style={{ marginBottom: 20 }}>
+        <p className="label-system" style={{ marginBottom: 8 }}>Cite_A_Playbook</p>
+        <select className="input" value={playbookSlug} onChange={e => setPlaybookSlug(e.target.value)}>
+          {pbList.map(pb => (
+            <option key={pb.slug} value={pb.slug}>{pb.name} -- {pb.school || ''}</option>
+          ))}
+        </select>
+        <p className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+          Predictions must cite a mental model you are leaning on. This is the forcing function.
+        </p>
+      </div>
+
+      {/* Rationale */}
+      <div style={{ marginBottom: 20 }}>
+        <p className="label-system" style={{ marginBottom: 8 }}>Rationale ({rationale.trim().length} / 40 min)</p>
+        <textarea className="input" rows={4} value={rationale}
+          onChange={e => setRationale(e.target.value)}
+          placeholder="What signals support this? What would prove you wrong?"
+          style={{ resize: 'vertical', fontFamily: 'var(--font-body)', minHeight: 96 }} />
+      </div>
+
+      {error && (
+        <div style={{ padding: 10, background: 'rgba(255,113,108,0.1)', color: 'var(--error)', borderRadius: 'var(--radius-md)', marginBottom: 12, fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+
+      <button className="btn btn-primary" onClick={handleSubmit} disabled={!canSubmit}
+        style={{ width: '100%', justifyContent: 'center' }}>
+        {submitting ? 'Locking in...' : <>Lock_In_Prediction <Icon name="lock" size={16} /></>}
+      </button>
+
+      {!code && <p className="text-muted" style={{ fontSize: 12, marginTop: 10, textAlign: 'center' }}>Sign in to submit a prediction.</p>}
+    </div>
+  );
+}
+
+// -------- Teardown reader --------
+function TeardownReader({ slug, playbooks, code, onBack, onSubmitted, onMarkComplete }) {
+  const { teardown, err, loading } = useTeardown(slug);
+  useEffect(() => { window.scrollTo(0, 0); document.querySelector('.main-content')?.scrollTo(0, 0); }, [slug]);
+  useEffect(() => { if (teardown && code) onMarkComplete?.(teardown.slug); }, [teardown, code]);
+
+  if (loading) return <div className="empty-state"><Icon name="menu_book" /><h3>Loading teardown...</h3></div>;
+  if (err || !teardown) return (
+    <div className="empty-state">
+      <Icon name="error" /><h3>Teardown unavailable</h3>
+      <p>{err || 'Not found'}</p>
+      <button className="btn btn-secondary" onClick={onBack}><Icon name="arrow_back" size={16} /> Back</button>
+    </div>
+  );
+
+  const body = Array.isArray(teardown.body) ? teardown.body : [];
+  const dc = { beginner: 'badge-primary', intermediate: 'badge-secondary', advanced: 'badge-error' };
+
+  return (
+    <div>
+      {/* Hero */}
+      <div className="kinetic-bg" style={{ padding: 'clamp(32px, 6vw, 64px) 0' }}>
+        <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginBottom: 24 }}>
+          <Icon name="arrow_back" size={16} /> Back to Academy
+        </button>
+        <p className="label-system" style={{ marginBottom: 10 }}>
+          {teardown.symbol} {'\u00B7'} Company_Teardown
+        </p>
+        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 5vw, 56px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.1, marginBottom: 16 }}>
+          {teardown.title}
+        </h1>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {teardown.difficulty && <span className={`badge ${dc[teardown.difficulty] || 'badge-neutral'}`}>{teardown.difficulty}</span>}
+          {teardown.estimated_read_minutes && <span className="badge badge-neutral"><Icon name="schedule" size={12} /> {teardown.estimated_read_minutes} min read</span>}
+          {teardown.author && <span className="badge badge-neutral"><Icon name="edit" size={12} /> {teardown.author}</span>}
+        </div>
+      </div>
+
+      {/* Body sections */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 32, padding: '32px 0' }}>
+        {body.map((s, i) => (
+          <TeardownSection key={i} section={s} index={i} />
+        ))}
+
+        {/* Prediction CTA */}
+        <PredictionForm code={code} teardown={teardown} playbooks={playbooks} onSubmitted={onSubmitted} />
+
+        {/* Linked playbooks */}
+        {teardown.linked_playbooks?.length > 0 && (
+          <div>
+            <p className="label-system" style={{ marginBottom: 12 }}>Playbooks_Cited_In_This_Teardown</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {teardown.linked_playbooks.map(slug => {
+                const pb = playbooks.find(p => p.slug === slug);
+                return pb ? (
+                  <span key={slug} className="badge badge-neutral">
+                    <Icon name="menu_book" size={12} /> {pb.name}
+                  </span>
+                ) : null;
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Single teardown-body section renderer (handles the JSONB type union)
+function TeardownSection({ section, index }) {
+  const num = String(index + 1).padStart(2, '0');
+  const title = section.title || '';
+  const body = section.body || '';
+
+  if (section.type === 'stats_and_prose') {
+    return (
+      <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)' }}>
+        <p className="label-system" style={{ marginBottom: 8 }}>{num} {'\u00B7'} {title}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+          {(section.stats || []).map((st, i) => (
+            <div key={i} style={{ padding: 14, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-lg)' }}>
+              <p className="label-system" style={{ fontSize: 10, marginBottom: 4 }}>{st.label}</p>
+              <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 800, color: 'var(--primary-fixed)' }}>{st.value}</p>
+              {st.note && <p className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{st.note}</p>}
+            </div>
+          ))}
+        </div>
+        {body.split('\n\n').map((p, i) => (
+          <p key={i} style={{ fontSize: 16, lineHeight: 1.7, color: 'var(--on-surface-variant)', marginBottom: 12 }}>{p}</p>
+        ))}
+      </div>
+    );
+  }
+
+  if (section.type === 'bull_bear') {
+    return (
+      <div>
+        <p className="label-system" style={{ marginBottom: 12 }}>{num} {'\u00B7'} {title}</p>
+        <div className="two-col" style={{ gap: 16 }}>
+          <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)', borderLeft: '3px solid var(--primary-fixed)' }}>
+            <p className="label-system" style={{ marginBottom: 10, color: 'var(--primary-fixed)' }}>Bull_Case</p>
+            {(section.bull || []).map((line, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'flex-start' }}>
+                <Icon name="trending_up" size={16} style={{ color: 'var(--primary-fixed)', marginTop: 2, flexShrink: 0 }} />
+                <span style={{ fontSize: 15, lineHeight: 1.6 }}>{line}</span>
+              </div>
+            ))}
+          </div>
+          <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)', borderLeft: '3px solid var(--error)' }}>
+            <p className="label-system" style={{ marginBottom: 10, color: 'var(--error)' }}>Bear_Case</p>
+            {(section.bear || []).map((line, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'flex-start' }}>
+                <Icon name="trending_down" size={16} style={{ color: 'var(--error)', marginTop: 2, flexShrink: 0 }} />
+                <span style={{ fontSize: 15, lineHeight: 1.6 }}>{line}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (section.type === 'questions') {
+    return (
+      <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)' }}>
+        <p className="label-system" style={{ marginBottom: 10 }}>{num} {'\u00B7'} {title}</p>
+        <p style={{ fontSize: 15, color: 'var(--on-surface-variant)', marginBottom: 16 }}>
+          Questions to wrestle with before locking in a prediction:
+        </p>
+        <ol style={{ paddingLeft: 20 }}>
+          {(section.items || []).map((q, i) => (
+            <li key={i} style={{ fontSize: 16, lineHeight: 1.7, marginBottom: 10, color: 'var(--on-surface)' }}>{q}</li>
+          ))}
+        </ol>
+      </div>
+    );
+  }
+
+  // Default: prose
+  return (
+    <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)' }}>
+      <p className="label-system" style={{ marginBottom: 8 }}>{num} {'\u00B7'} {title}</p>
+      {body.split('\n\n').map((p, i) => (
+        <p key={i} style={{ fontSize: 16, lineHeight: 1.7, color: 'var(--on-surface-variant)', marginBottom: 12 }}>{p}</p>
+      ))}
+    </div>
+  );
+}
+
+// -------- Playbook viewer --------
+function PlaybookCard({ playbook, expanded, onToggle }) {
+  return (
+    <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)', cursor: 'pointer' }} onClick={onToggle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <p className="label-system" style={{ marginBottom: 6 }}>{playbook.school || 'Mental_Model'}</p>
+          <h3 style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>{playbook.name}</h3>
+          {playbook.summary && <p className="text-muted" style={{ fontSize: 14, lineHeight: 1.6 }}>{playbook.summary}</p>}
+        </div>
+        <Icon name={expanded ? 'expand_less' : 'expand_more'} size={24} />
+      </div>
+      {expanded && playbook.body && (
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--outline-variant)' }}>
+          {playbook.body.split('\n\n').map((p, i) => (
+            <p key={i} style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--on-surface-variant)', marginBottom: 12 }}>{p}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------- Predictions list --------
+function PredictionsList({ preds, loading, onOpenTeardown }) {
+  if (loading) return <div className="empty-state"><Icon name="hourglass_empty" /><h3>Loading your predictions...</h3></div>;
+  if (!preds.length) return (
+    <div className="empty-state">
+      <Icon name="bolt" /><h3>No predictions yet</h3>
+      <p>Open a teardown and lock in your first call. It is the best way to test what you have learned.</p>
+    </div>
+  );
+
+  const stat = { correct_direction: { label: 'Correct', cls: 'badge-primary' }, wrong_direction: { label: 'Missed', cls: 'badge-error' }, no_data: { label: 'No data', cls: 'badge-neutral' } };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {preds.map(p => {
+        const resolved = !!p.resolved_at;
+        const out = p.outcome && stat[p.outcome];
+        return (
+          <div key={p.id} className="card" style={{ padding: 'clamp(16px, 2.5vw, 24px)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 800 }}>{p.symbol}</span>
+                  <span className={`badge ${p.direction === 'UP' ? 'badge-primary' : 'badge-error'}`}>
+                    <Icon name={p.direction === 'UP' ? 'trending_up' : 'trending_down'} size={12} /> {p.direction}
+                  </span>
+                  <span className="badge badge-neutral">{p.confidence}x</span>
+                  {resolved
+                    ? <span className={`badge ${out?.cls || 'badge-neutral'}`}>{out?.label || p.outcome}</span>
+                    : <span className="badge badge-neutral">Open</span>}
+                </div>
+                <p className="text-muted" style={{ fontSize: 13, marginBottom: 6 }}>
+                  Target ${Number(p.target_price).toLocaleString()} by {p.target_date}
+                  {resolved && p.resolved_price != null && <> {'\u00B7'} Resolved @ ${Number(p.resolved_price).toLocaleString()}</>}
+                </p>
+                <p style={{ fontSize: 13, color: 'var(--on-surface-variant)', lineHeight: 1.6 }}>{p.rationale}</p>
+                {p.teardown_slug && (
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }}
+                    onClick={() => onOpenTeardown(p.teardown_slug)}>
+                    <Icon name="menu_book" size={12} /> Open teardown
+                  </button>
+                )}
+              </div>
+              <div style={{ textAlign: 'right', minWidth: 100 }}>
+                {resolved
+                  ? <p style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 900, color: p.points_awarded > 0 ? 'var(--primary-fixed)' : 'var(--on-surface-variant)' }}>{p.points_awarded ?? 0} pts</p>
+                  : <p className="text-muted" style={{ fontSize: 12 }}>Resolves {p.target_date}</p>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// -------- Academy (LearnPage) --------
+function LearnPage({ code }) {
+  const [tab, setTab] = useState('overview'); // overview | lessons | teardowns | playbooks | predictions
+  const [activeLesson, setActiveLesson] = useState(null);
+  const [activeTeardown, setActiveTeardown] = useState(null);
+  const [expandedPlaybook, setExpandedPlaybook] = useState(null);
+  const [completions, setCompletions] = useState([]);
+  const { playbooks, teardowns, loading: catLoading, err: catErr } = useStudyCatalog();
+  const { preds, loading: predsLoading, reload: reloadPreds } = useMyPredictions(code);
+
+  const lc = { Beginner: 'badge-primary', Intermediate: 'badge-secondary', Advanced: 'badge-error' };
+  const dc = { beginner: 'badge-primary', intermediate: 'badge-secondary', advanced: 'badge-error' };
+
+  // Load completions once per mount (auth required)
+  useEffect(() => {
+    if (!code) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/study?completions=1`, { headers: { 'X-User-Code': code } });
+        const j = await res.json();
+        if (!alive) return;
+        if (res.ok && j.ok) setCompletions(j.completions || []);
+      } catch (_) { /* ignore */ }
+    })();
+    return () => { alive = false; };
+  }, [code]);
+
+  const markComplete = useCallback(async (slug) => {
+    if (!code || !slug) return;
+    if (completions.includes(slug)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/study`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
+        body: JSON.stringify({ teardown_slug: slug }),
+      });
+      const j = await res.json();
+      if (res.ok && j.ok) setCompletions(prev => prev.includes(slug) ? prev : [...prev, slug]);
+    } catch (_) { /* ignore */ }
+  }, [code, completions]);
+
+  // ========== Lesson detail route (legacy) ==========
   if (activeLesson) {
     const lesson = ACADEMY_LESSONS.find(l => l.id === activeLesson);
     if (lesson) return <LessonPage key={lesson.id} lesson={lesson} onBack={() => setActiveLesson(null)} onNext={(id) => { setActiveLesson(id); }} />;
   }
 
+  // ========== Teardown reader route ==========
+  if (activeTeardown) {
+    return (
+      <TeardownReader
+        slug={activeTeardown}
+        playbooks={playbooks}
+        code={code}
+        onBack={() => setActiveTeardown(null)}
+        onSubmitted={() => { reloadPreds(); setTab('predictions'); setActiveTeardown(null); }}
+        onMarkComplete={markComplete}
+      />
+    );
+  }
+
+  // ========== Catalog routes ==========
+  const tabs = [
+    { id: 'overview', label: 'Overview', icon: 'dashboard' },
+    { id: 'teardowns', label: 'Teardowns', icon: 'menu_book' },
+    { id: 'playbooks', label: 'Playbooks', icon: 'psychology' },
+    { id: 'predictions', label: 'My Predictions', icon: 'bolt' },
+    { id: 'lessons', label: 'Lessons', icon: 'school' },
+  ];
+
   return (
     <div>
-      <div style={{ textAlign: 'center', marginBottom: 48, padding: '40px 0' }}>
+      {/* Hero */}
+      <div style={{ textAlign: 'center', marginBottom: 32, padding: '32px 0' }}>
         <p className="label-system" style={{ marginBottom: 16 }}>Learning_Module</p>
-        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 5vw, 48px)', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.1, marginBottom: 16 }}>Master The<br /><span className="text-primary">Rocket Engine</span></h1>
-        <p className="text-muted" style={{ fontSize: 16, maxWidth: 500, margin: '0 auto 24px' }}>From stocks to crypto to advanced strategies. Learn at your own pace.</p>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <span className="badge badge-neutral"><Icon name="school" size={14} /> {ACADEMY_LESSONS.length} Lessons</span>
-          <span className="badge badge-neutral"><Icon name="schedule" size={14} /> Self-Paced</span>
-          <span className="badge badge-neutral"><Icon name="verified" size={14} /> Beginner Friendly</span>
-        </div>
+        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 5vw, 48px)', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.1, marginBottom: 16 }}>
+          The Academy
+        </h1>
+        <p className="text-muted" style={{ fontSize: 16, maxWidth: 640, margin: '0 auto 8px' }}>
+          Teardowns, playbooks, and predictions. When the market dips, you sharpen the engine.
+        </p>
+        <p className="text-muted" style={{ fontSize: 12, maxWidth: 640, margin: '0 auto' }}>
+          This is a learning tool, not real money.
+        </p>
       </div>
-      <h3 className="section-title" style={{ marginBottom: 20 }}>Core_Curriculum</h3>
-      <div className="lessons-grid">
-        {ACADEMY_LESSONS.map(l => (
-          <div key={l.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setActiveLesson(l.id)}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-              <div className="stat-icon primary" style={{ width: 44, height: 44 }}><Icon name={l.icon} /></div>
-              <span className={`badge ${lc[l.level]}`}>{l.level}</span>
-            </div>
-            <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Lesson {l.number}: {l.title}</h4>
-            <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>{l.subtitle.slice(0, 80)}...</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Icon name="schedule" size={14} className="text-muted" />
-              <span className="text-muted" style={{ fontSize: 11 }}>{l.duration}</span>
-              <span className="text-muted" style={{ fontSize: 11 }}>{'\u00B7'} {l.sections.length} sections</span>
-            </div>
-          </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24, borderBottom: '1px solid var(--outline-variant)', paddingBottom: 12 }}>
+        {tabs.map(t => (
+          <button key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`btn btn-sm ${tab === t.id ? 'btn-primary' : 'btn-secondary'}`}>
+            <Icon name={t.icon} size={14} /> {t.label}
+            {t.id === 'predictions' && preds.length > 0 && <span className="badge badge-neutral" style={{ marginLeft: 6 }}>{preds.length}</span>}
+          </button>
         ))}
       </div>
+
+      {catErr && (
+        <div style={{ padding: 16, background: 'rgba(255,113,108,0.1)', color: 'var(--error)', borderRadius: 'var(--radius-md)', marginBottom: 20 }}>
+          Academy catalog failed to load: {catErr}
+        </div>
+      )}
+
+      {/* ========== Overview ========== */}
+      {tab === 'overview' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+          {/* Teardowns preview */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+              <h3 className="section-title">Company_Teardowns</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setTab('teardowns')}>See all <Icon name="arrow_forward" size={14} /></button>
+            </div>
+            <div className="lessons-grid">
+              {teardowns.slice(0, 3).map(t => (
+                <TeardownCard key={t.slug} teardown={t} completions={completions} onOpen={() => setActiveTeardown(t.slug)} dc={dc} />
+              ))}
+            </div>
+          </div>
+
+          {/* Playbooks preview */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+              <h3 className="section-title">Playbooks</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setTab('playbooks')}>See all <Icon name="arrow_forward" size={14} /></button>
+            </div>
+            <div className="lessons-grid">
+              {playbooks.slice(0, 3).map(pb => (
+                <div key={pb.slug} className="card" style={{ cursor: 'pointer' }} onClick={() => { setExpandedPlaybook(pb.slug); setTab('playbooks'); }}>
+                  <div className="stat-icon primary" style={{ width: 44, height: 44, marginBottom: 12 }}><Icon name="psychology" /></div>
+                  <p className="label-system" style={{ marginBottom: 4 }}>{pb.school || 'Mental_Model'}</p>
+                  <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 800, marginBottom: 6 }}>{pb.name}</h4>
+                  <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.5 }}>{pb.summary}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recent predictions preview */}
+          {preds.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+                <h3 className="section-title">Your_Recent_Predictions</h3>
+                <button className="btn btn-ghost btn-sm" onClick={() => setTab('predictions')}>See all <Icon name="arrow_forward" size={14} /></button>
+              </div>
+              <PredictionsList preds={preds.slice(0, 3)} loading={false} onOpenTeardown={(s) => setActiveTeardown(s)} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========== Teardowns ========== */}
+      {tab === 'teardowns' && (
+        <div>
+          {catLoading ? <div className="empty-state"><Icon name="hourglass_empty" /><h3>Loading teardowns...</h3></div> :
+            teardowns.length === 0 ? <div className="empty-state"><Icon name="menu_book" /><h3>No teardowns yet</h3></div> :
+              <div className="lessons-grid">
+                {teardowns.map(t => (
+                  <TeardownCard key={t.slug} teardown={t} completions={completions} onOpen={() => setActiveTeardown(t.slug)} dc={dc} />
+                ))}
+              </div>}
+        </div>
+      )}
+
+      {/* ========== Playbooks ========== */}
+      {tab === 'playbooks' && (
+        <div>
+          {catLoading ? <div className="empty-state"><Icon name="hourglass_empty" /><h3>Loading playbooks...</h3></div> :
+            playbooks.length === 0 ? <div className="empty-state"><Icon name="psychology" /><h3>No playbooks yet</h3></div> :
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {playbooks.map(pb => (
+                  <PlaybookCard key={pb.slug} playbook={pb}
+                    expanded={expandedPlaybook === pb.slug}
+                    onToggle={() => setExpandedPlaybook(prev => prev === pb.slug ? null : pb.slug)} />
+                ))}
+              </div>}
+        </div>
+      )}
+
+      {/* ========== My Predictions ========== */}
+      {tab === 'predictions' && (
+        <div>
+          <PredictionsList preds={preds} loading={predsLoading} onOpenTeardown={(s) => setActiveTeardown(s)} />
+        </div>
+      )}
+
+      {/* ========== Lessons (legacy) ========== */}
+      {tab === 'lessons' && (
+        <div>
+          <h3 className="section-title" style={{ marginBottom: 20 }}>Core_Curriculum</h3>
+          <div className="lessons-grid">
+            {ACADEMY_LESSONS.map(l => (
+              <div key={l.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setActiveLesson(l.id)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                  <div className="stat-icon primary" style={{ width: 44, height: 44 }}><Icon name={l.icon} /></div>
+                  <span className={`badge ${lc[l.level]}`}>{l.level}</span>
+                </div>
+                <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Lesson {l.number}: {l.title}</h4>
+                <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>{l.subtitle.slice(0, 80)}...</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="schedule" size={14} className="text-muted" />
+                  <span className="text-muted" style={{ fontSize: 11 }}>{l.duration}</span>
+                  <span className="text-muted" style={{ fontSize: 11 }}>{'\u00B7'} {l.sections.length} sections</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------- Teardown card (list item) --------
+function TeardownCard({ teardown, completions, onOpen, dc }) {
+  const done = completions?.includes(teardown.slug);
+  return (
+    <div className="card" style={{ cursor: 'pointer' }} onClick={onOpen}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="stat-icon primary" style={{ width: 44, height: 44 }}><Icon name="menu_book" /></div>
+          <div>
+            <p className="label-system" style={{ marginBottom: 2 }}>{teardown.symbol}</p>
+            <p className="text-muted" style={{ fontSize: 11 }}>{teardown.estimated_read_minutes || 10} min</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {teardown.difficulty && <span className={`badge ${dc[teardown.difficulty] || 'badge-neutral'}`}>{teardown.difficulty}</span>}
+          {done && <Icon name="check_circle" size={18} style={{ color: 'var(--primary-fixed)' }} />}
+        </div>
+      </div>
+      <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 800, marginBottom: 6 }}>{teardown.title}</h4>
+      {teardown.linked_playbooks?.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+          {teardown.linked_playbooks.slice(0, 2).map(pb => (
+            <span key={pb} className="text-muted" style={{ fontSize: 10, padding: '2px 6px', background: 'var(--surface-container-high)', borderRadius: 'var(--radius-sm)' }}>{pb}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -5196,7 +5847,67 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
 }
 
 // ==================== LEADERBOARD PAGE ====================
-function LeaderboardPage({ players, user, achievementsUnlocked }) {
+// Prediction leaderboard -- aggregates /api/predictions?leaderboard=1 and maps
+// user_code -> display name via the portfolio leaderboard "players" array we
+// already have. Shows Total Points, Resolved Count, Avg Accuracy.
+function PredictionAccuracyBoard({ players, code }) {
+  const [rows, setRows] = useState([]);
+  const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!code) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/predictions?leaderboard=1`, { headers: { 'X-User-Code': code } });
+        const j = await res.json();
+        if (!alive) return;
+        if (!res.ok || !j.ok) throw new Error(j.error || 'failed');
+        setRows(j.leaderboard || []);
+      } catch (e) { if (alive) setErr(e.message); }
+      finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [code]);
+
+  const labelFor = (uc) => (players.find(p => p.code === uc)?.name) || uc;
+  const isMe = (uc) => uc === code;
+
+  if (loading) return <div className="card" style={{ padding: 24, textAlign: 'center' }}><span className="text-muted">Loading prediction standings...</span></div>;
+  if (err) return <div className="card" style={{ padding: 24, textAlign: 'center' }}><span className="text-muted">Could not load: {err}</span></div>;
+  if (rows.length === 0) return (
+    <div className="card" style={{ padding: 32, textAlign: 'center' }}>
+      <div className="stat-icon primary" style={{ width: 48, height: 48, margin: '0 auto 12px' }}><Icon name="bolt" size={24} /></div>
+      <div style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700, marginBottom: 6 }}>No resolved predictions yet</div>
+      <p className="text-muted" style={{ fontSize: 13 }}>Open a teardown in the Academy and lock in your first call. Points appear once the target date passes.</p>
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '40px 1fr 80px 80px 80px', padding: '12px 16px', borderBottom: '1px solid var(--outline-variant)' }}>
+        <span className="label-system" style={{ fontSize: 9 }}>#</span>
+        <span className="label-system" style={{ fontSize: 9 }}>Player</span>
+        <span className="label-system" style={{ fontSize: 9, textAlign: 'right' }}>Points</span>
+        <span className="label-system" style={{ fontSize: 9, textAlign: 'right' }}>Resolved</span>
+        <span className="label-system" style={{ fontSize: 9, textAlign: 'right' }}>Avg Acc</span>
+      </div>
+      {rows.map((r, i) => (
+        <div key={r.user_code} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 80px 80px 80px', padding: '12px 16px', borderBottom: i === rows.length - 1 ? 'none' : '1px solid rgba(73,72,71,0.08)', background: isMe(r.user_code) ? 'rgba(0,255,163,0.05)' : 'transparent', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 900, fontSize: 18, color: i === 0 ? 'var(--primary-fixed)' : 'var(--on-surface-variant)' }}>{i + 1}</span>
+          <span style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, color: isMe(r.user_code) ? 'var(--primary-fixed)' : 'var(--on-surface)' }}>
+            {labelFor(r.user_code)}{isMe(r.user_code) ? ' (You)' : ''}
+          </span>
+          <span style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 800, textAlign: 'right', color: 'var(--primary-fixed)' }}>{r.total_points}</span>
+          <span style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, textAlign: 'right' }}>{r.resolved_count}</span>
+          <span style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, textAlign: 'right' }}>{r.avg_score.toFixed(0)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LeaderboardPage({ players, user, achievementsUnlocked, code }) {
   // Empty-state guard -- the leaderboard fetch is async and may not have
   // returned yet (or there are no active users for some reason).
   if (!players || players.length === 0) {
@@ -5331,6 +6042,10 @@ function LeaderboardPage({ players, user, achievementsUnlocked }) {
           <span className="label-system" style={{ fontSize: 9 }}>Today</span>
         </div>
       </div>
+
+      {/* Prediction Accuracy -- Academy leaderboard */}
+      <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="bolt" size={20} /> Prediction_Accuracy</h3>
+      <PredictionAccuracyBoard players={players} code={code} />
 
       {/* Player Cards */}
       <h3 className="section-title" style={{ marginTop: 48, marginBottom: 24 }}><Icon name="group" size={20} /> Player Breakdown</h3>
@@ -5802,11 +6517,11 @@ function App() {
       case 'trade': return <TradePage stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
       case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
-      case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} />;
+      case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} code={accessCode} />;
       case 'chat': return <ChatPage user={user} displayName={displayName} code={accessCode} isAdmin={isAdmin} initialRoom={pendingChatRoom} onRoomChange={setCurrentChatRoom} />;
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
       case 'insights': return <InsightsPage />;
-      case 'learn': return <LearnPage />;
+      case 'learn': return <LearnPage code={accessCode} />;
       case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} user={user} adminCode={accessCode} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
       default: return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
     }
