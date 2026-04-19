@@ -6476,9 +6476,15 @@ function UnreadHeaderBanner({ summary, activePage, currentChatRoom, isAdmin, onO
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); }}
       style={{
-        // Regular block element rendered OUTSIDE app-layout (see App render)
-        // so it doesn't land in the CSS grid sidebar slot. Sits above the
-        // layout and pushes everything down a thin 38px strip.
+        // Fixed with a huge z-index so it floats in front of any header
+        // (on iPad the app-header is sticky/fixed with its own z-index and
+        // was clipping this banner). RSJ approved "in front of it for a
+        // moment" -- covering the top ~38px of the header while unread is
+        // fine, clicking the banner takes you to the channel which clears it.
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -6492,6 +6498,8 @@ function UnreadHeaderBanner({ summary, activePage, currentChatRoom, isAdmin, onO
         borderBottom: '1px solid rgba(0,0,0,0.2)',
         boxSizing: 'border-box',
         flexShrink: 0,
+        zIndex: 9999,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
       }}
     >
       <CharacterAvatar name={latest.author} size={24} style={{ borderRadius: '50%', flexShrink: 0 }} />
