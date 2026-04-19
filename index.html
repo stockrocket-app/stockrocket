@@ -3379,7 +3379,12 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
   };
 
   const room = findChannel(activeRoom);
-  const mentionCandidates = Object.keys(SQUAD_MEMBERS).filter(n => n !== currentUser && n.toLowerCase().includes(mentionFilter));
+  // @mention autocomplete: pulls from the live roster so any active user --
+  // existing or newly added in the admin panel -- is mentionable. Excludes the
+  // current user from their own mention picker.
+  const mentionCandidates = chatMemberList
+    .map(m => m.label)
+    .filter(n => n && n !== currentUser && n.toLowerCase().includes(mentionFilter));
 
   const openDmWith = (userCode) => {
     if (!dmThreadCodes.includes(userCode) && !newDmCodes.includes(userCode)) {
@@ -3396,7 +3401,7 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
         <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em' }}>Chat</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="pulse-dot"></span>
-          <span className="label-system">{Object.keys(SQUAD_MEMBERS).length} Members Online</span>
+          <span className="label-system">{chatMemberList.length} Members Online</span>
         </div>
       </div>
 
@@ -3744,19 +3749,23 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
             </div>
           )}
 
-          {/* @mention autocomplete */}
+          {/* @mention autocomplete -- driven by live roster, shows avatar */}
           {showMentions && mentionCandidates.length > 0 && (
             <div style={{ padding: '0 24px', marginBottom: -8 }}>
               <div style={{ background: 'var(--surface-container-high)', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(73,72,71,0.1)', overflow: 'hidden' }}>
                 {mentionCandidates.map(name => {
                   const m = getSquadMember(name);
+                  const memberMeta = chatMemberList.find(u => u.label === name);
                   return (
                     <button key={name} onClick={() => insertMention(name)}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid rgba(73,72,71,0.05)', cursor: 'pointer', color: 'var(--on-surface)', textAlign: 'left', transition: 'background 0.1s' }}
-                      onMouseEnter={e => e.target.style.background = 'rgba(0,255,163,0.05)'} onMouseLeave={e => e.target.style.background = 'none'}>
-                      <span style={{ fontSize: 20 }}>{m.emoji}</span>
-                      <div>
-                        <div style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 600 }}>{name}</div>
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,163,0.05)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                      <CharacterAvatar name={name} size={32} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontFamily: 'var(--font-headline)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{name}</span>
+                          {memberMeta?.is_admin && <span style={{ fontSize: 10, color: 'var(--primary-fixed, #00ffa3)' }}>★</span>}
+                        </div>
                         <div style={{ fontSize: 10, color: 'var(--on-surface-variant)' }}>{m.strategy}</div>
                       </div>
                     </button>
