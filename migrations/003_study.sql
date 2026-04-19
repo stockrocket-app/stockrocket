@@ -286,11 +286,24 @@ $json$::jsonb),
  'Nvidia: The Pick-and-Shovel of the AI Gold Rush',
  'intermediate',
  ARRAY['ten-bagger','trend-is-friend','moat'],
- 12,
+ 14,
  'RSJ',
  $json$
 {
   "sections": [
+    {
+      "type": "stats_and_prose",
+      "label": "The Bet (Next 12 Months)",
+      "stats": [
+        {"label": "Current Price", "value": "$176", "note": "snapshot Apr 2026"},
+        {"label": "52-Week High", "value": "$212"},
+        {"label": "Off High", "value": "-26%", "pos": false},
+        {"label": "Analyst Target", "value": "$237 to $255"},
+        {"label": "Implied Upside", "value": "+35% to +40%", "pos": true},
+        {"label": "Horizon", "value": "12 months"}
+      ],
+      "body": "The thesis in one line: buy the pullback on a business whose numbers are still going vertical.\n\nNVDA is trading roughly 26% off its 52-week high of $212 despite accelerating fundamentals. Wall Street's consensus target clusters around $237 to $255, implying ~35% to 40% upside over the next twelve months. The Street is saying: the pullback is a multiple compression, not a business problem.\n\nThis is the core setup the teardown defends or attacks. If you disagree with the consensus, you should be able to say what you're seeing that they're missing."
+    },
     {
       "type": "prose",
       "label": "The Business Model",
@@ -298,8 +311,33 @@ $json$::jsonb),
     },
     {
       "type": "prose",
-      "label": "The Moat",
+      "label": "The Moat (Software)",
       "body": "CUDA. Nvidia spent 17 years building the software layer that every AI researcher and engineer has been trained on. Switching to AMD, Google TPU, or a custom chip means rewriting your AI stack, retraining your engineers, and accepting benchmarks that are often worse. The software moat is deeper than the hardware lead.\n\nAMD has competitive silicon on paper. It doesn't matter if the tooling is worse. Plus Nvidia's systems-level approach (NVLink for chip interconnect, InfiniBand via the Mellanox acquisition, reference server designs) makes them a full-stack supplier, not just a chip vendor. A hyperscaler ordering from Nvidia gets a complete AI factory. A hyperscaler ordering from a competitor gets boxes and a homework assignment."
+    },
+    {
+      "type": "stats_and_prose",
+      "label": "The Moat (Physical): Why Fabs Take Years",
+      "stats": [
+        {"label": "Build Time (Taiwan)", "value": "~2 yrs"},
+        {"label": "Build Time (US)", "value": "3 to 5 yrs"},
+        {"label": "Cost Per Fab", "value": "$20B+"},
+        {"label": "Workhours", "value": "30M to 40M"},
+        {"label": "Steel", "value": "83,000 tons"},
+        {"label": "Wiring", "value": "5,600 miles"},
+        {"label": "Equipment Install", "value": "+10 mo"}
+      ],
+      "body": "There is a second moat most AI headlines miss: physics and time. A leading-edge chip fab takes roughly 2 years to build in Taiwan and 3 to 5 years in the US. Each facility runs $20B+ to construct, consumes 30 to 40 million workhours, 83,000 tons of steel, and 5,600 miles of wiring. Even after the shell is finished, you need another ~10 months for equipment install and qualification before a single production chip ships.\n\nTSMC's Arizona fabs broke ground in 2021 and are only now ramping. That physical timeline IS the moat. A competitor with money and talent cannot simply decide to flood the market next year, because the fabs to do it don't exist yet. Supply is locked to the build schedule for roughly half a decade. In a demand environment where hyperscaler orders already reach into 2027, that gap is what holds pricing and margin."
+    },
+    {
+      "type": "stats_and_prose",
+      "label": "Forward Guidance: What Jensen Is Saying",
+      "stats": [
+        {"label": "Q1 Revenue Guide", "value": "~$78B"},
+        {"label": "Orders Locked (thru 2027)", "value": "$1T+"},
+        {"label": "Next Architecture", "value": "Vera Rubin (2026)"},
+        {"label": "Gross Margin", "value": "~75%"}
+      ],
+      "body": "Jensen has publicly cited more than $1 trillion in Blackwell and Vera Rubin orders locked in through 2027. Q1 guidance sits at roughly $78B. The Rubin handoff in 2026 is the event most investors are watching; it is the architecture that drives the next leg of data-center refresh cycles.\n\nHyperscaler capex is still ripping across the Big 4 (MSFT, GOOG, META, AMZN) with no sign of pullback in public guidance. Net: the business is accelerating while the stock sits 26% off its high. That is the pattern the bull case is built on."
     },
     {
       "type": "stats_and_prose",
@@ -316,14 +354,17 @@ $json$::jsonb),
       "type": "bull_bear",
       "label": "Bull vs Bear",
       "bull": [
-        {"title": "AI is a 10-20 year build-out.", "body": "Training frontier models, then serving inference at global scale, then sovereign AI, then robots and cars. The demand curve compounds. Nvidia is the default provider across every layer."},
-        {"title": "Software moat deepens over time.", "body": "Every new AI framework, every new research paper, every new LLM targets CUDA first. Each year makes switching harder, not easier."},
-        {"title": "New markets still opening.", "body": "Sovereign AI (countries building national compute), robotics, drug discovery, autonomous vehicles. Each is a separate multi-year market that didn't exist five years ago."}
+        {"title": "Demand visibility is locked.", "body": "Jensen cited $1T+ in Blackwell and Vera Rubin orders through 2027, with Q1 guidance already at ~$78B. You don't guide to numbers that big if you can't see the backlog."},
+        {"title": "Rubin handoff drives the next leg.", "body": "The 2026 architecture refresh (Vera Rubin) is the event that resets the data-center upgrade cycle. Every hyperscaler will need it. That is the catalyst most bulls are buying."},
+        {"title": "Physical supply is years behind demand.", "body": "Leading-edge fabs take 2 to 5 years to build and ~10 months to qualify. Supply cannot respond quickly. That time gap is what defends pricing and margin."},
+        {"title": "Software moat deepens annually.", "body": "Every new AI framework, every new research paper, every new LLM targets CUDA first. Each year makes switching harder, not easier."},
+        {"title": "New markets still opening.", "body": "Sovereign AI, robotics, drug discovery, autonomous vehicles. Each is a separate multi-year market that didn't exist five years ago."}
       ],
       "bear": [
-        {"title": "Cyclical risk.", "body": "If hyperscalers pause capex in 2026 because they've bought enough, Nvidia's revenue flatlines overnight and the multiple compresses hard."},
-        {"title": "Customer concentration.", "body": "Four customers (MSFT, GOOG, META, AMZN) make up ~40% of data center revenue. If they slow spending at the same time, the stock falls first and fastest."},
-        {"title": "Competition and custom silicon.", "body": "AMD's MI300 is gaining share. Google's TPU, Amazon's Trainium, Meta's MTIA are all in-house chips. At some scale, every hyperscaler is incentivized to build their own."}
+        {"title": "Cyclical risk on capex.", "body": "If the Big 4 hyperscalers pause capex in 2026 because they've bought enough, Nvidia's revenue flatlines overnight and the multiple compresses hard."},
+        {"title": "Customer concentration.", "body": "Four customers (MSFT, GOOG, META, AMZN) make up ~40% of data center revenue. If they slow in sync, the stock falls first and fastest."},
+        {"title": "Custom silicon chipping at share.", "body": "Google TPU, Amazon Trainium, Meta MTIA, and AMD MI300 are all real now. At scale, every hyperscaler is incentivized to build their own for a fraction of the workloads."},
+        {"title": "Consensus is already baked in.", "body": "$237 to $255 targets mean Wall Street is already long the thesis. For new money to win, the actual result has to beat a consensus that is already bullish."}
       ]
     },
     {
@@ -333,11 +374,12 @@ $json$::jsonb),
     },
     {
       "type": "questions",
-      "label": "Three Guided Questions",
+      "label": "Four Guided Questions",
       "questions": [
-        "Lynch says a \"ten-bagger\" is a stock that returns 10x. Nvidia has done that several times over. Is it too late, or is the AI supercycle just beginning? Pick a side and defend it with something more specific than vibes.",
-        "What's the first sign that the AI capex cycle is peaking? Name three leading indicators you'd watch, things that would change before earnings actually miss.",
-        "If Microsoft announced tomorrow that they had a custom chip matching H100 performance, what happens to NVDA stock? Bigger question: how likely is that scenario, and how would you hedge if you wanted to stay long?"
+        "Consensus says $237 to $255 over the next year, implying ~35% to 40% upside. Do you agree? If not, where is the Street wrong: demand, margin, or multiple?",
+        "If fabs take 2 to 5 years to build, what has to happen for supply to catch demand before 2028? Name the specific milestones (TSMC Arizona, Intel 18A, Samsung, new entrants) you'd track.",
+        "What is the first sign that the AI capex cycle is peaking? Name three leading indicators that would change before earnings actually miss (hyperscaler capex calls, order backlog commentary, power constraints, GPU lease rates).",
+        "If Microsoft announced tomorrow that they had a custom chip matching Blackwell performance, what happens to NVDA stock? How likely is that scenario in 2026 versus 2028, and how would you hedge if you wanted to stay long?"
       ]
     }
   ]

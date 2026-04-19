@@ -4235,10 +4235,12 @@ function TeardownReader({ slug, playbooks, code, onBack, onSubmitted, onMarkComp
   );
 }
 
-// Single teardown-body section renderer (handles the JSONB type union)
+// Single teardown-body section renderer (handles the JSONB type union).
+// Accepts both the richer seed schema (label / {title,body} cases / questions)
+// and the simpler shorthand (title / string cases / items).
 function TeardownSection({ section, index }) {
   const num = String(index + 1).padStart(2, '0');
-  const title = section.title || '';
+  const title = section.title || section.label || '';
   const body = section.body || '';
 
   if (section.type === 'stats_and_prose') {
@@ -4249,7 +4251,7 @@ function TeardownSection({ section, index }) {
           {(section.stats || []).map((st, i) => (
             <div key={i} style={{ padding: 14, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-lg)' }}>
               <p className="label-system" style={{ fontSize: 10, marginBottom: 4 }}>{st.label}</p>
-              <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 800, color: 'var(--primary-fixed)' }}>{st.value}</p>
+              <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 800, color: st.pos === false ? 'var(--error)' : 'var(--primary-fixed)' }}>{st.value}</p>
               {st.note && <p className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{st.note}</p>}
             </div>
           ))}
@@ -4262,25 +4264,34 @@ function TeardownSection({ section, index }) {
   }
 
   if (section.type === 'bull_bear') {
+    const normalize = (x) => typeof x === 'string' ? { body: x } : (x || {});
+    const bulls = (section.bull || []).map(normalize);
+    const bears = (section.bear || []).map(normalize);
     return (
       <div>
         <p className="label-system" style={{ marginBottom: 12 }}>{num} {'\u00B7'} {title}</p>
         <div className="two-col" style={{ gap: 16 }}>
           <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)', borderLeft: '3px solid var(--primary-fixed)' }}>
             <p className="label-system" style={{ marginBottom: 10, color: 'var(--primary-fixed)' }}>Bull_Case</p>
-            {(section.bull || []).map((line, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'flex-start' }}>
-                <Icon name="trending_up" size={16} style={{ color: 'var(--primary-fixed)', marginTop: 2, flexShrink: 0 }} />
-                <span style={{ fontSize: 15, lineHeight: 1.6 }}>{line}</span>
+            {bulls.map((b, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', alignItems: 'flex-start' }}>
+                <Icon name="trending_up" size={16} style={{ color: 'var(--primary-fixed)', marginTop: 3, flexShrink: 0 }} />
+                <div>
+                  {b.title && <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{b.title}</div>}
+                  <div style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--on-surface-variant)' }}>{b.body}</div>
+                </div>
               </div>
             ))}
           </div>
           <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)', borderLeft: '3px solid var(--error)' }}>
             <p className="label-system" style={{ marginBottom: 10, color: 'var(--error)' }}>Bear_Case</p>
-            {(section.bear || []).map((line, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'flex-start' }}>
-                <Icon name="trending_down" size={16} style={{ color: 'var(--error)', marginTop: 2, flexShrink: 0 }} />
-                <span style={{ fontSize: 15, lineHeight: 1.6 }}>{line}</span>
+            {bears.map((b, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', alignItems: 'flex-start' }}>
+                <Icon name="trending_down" size={16} style={{ color: 'var(--error)', marginTop: 3, flexShrink: 0 }} />
+                <div>
+                  {b.title && <div style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{b.title}</div>}
+                  <div style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--on-surface-variant)' }}>{b.body}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -4290,6 +4301,7 @@ function TeardownSection({ section, index }) {
   }
 
   if (section.type === 'questions') {
+    const qs = section.questions || section.items || [];
     return (
       <div className="card" style={{ padding: 'clamp(20px, 3vw, 32px)' }}>
         <p className="label-system" style={{ marginBottom: 10 }}>{num} {'\u00B7'} {title}</p>
@@ -4297,7 +4309,7 @@ function TeardownSection({ section, index }) {
           Questions to wrestle with before locking in a prediction:
         </p>
         <ol style={{ paddingLeft: 20 }}>
-          {(section.items || []).map((q, i) => (
+          {qs.map((q, i) => (
             <li key={i} style={{ fontSize: 16, lineHeight: 1.7, marginBottom: 10, color: 'var(--on-surface)' }}>{q}</li>
           ))}
         </ol>
