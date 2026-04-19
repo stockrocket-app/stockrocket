@@ -71,6 +71,30 @@ export default async function handler(req) {
     });
   }
 
+  // -------- PUBLIC: list active chat members (label + admin flag only) --------
+  // Used by the group chat avatar strip so anyone who logs in sees everyone who
+  // has an active account. Never exposes the raw `code` (password), email, note,
+  // tier, or use counts -- only the fields needed to render a name + badge.
+  if (req.method === 'GET' && url.searchParams.get('public') === '1') {
+    const { data, error } = await db.select(
+      'stockrocket_access_codes',
+      'select=label,code,is_admin&active=eq.true&order=is_admin.desc'
+    );
+    if (error) return json({ ok: false, error: 'list_failed' }, 200);
+    // Dedupe stable public id from code hash so client can key without ever seeing the raw code
+    const members = (data || []).map(u => ({
+      label: u.label || 'Unnamed',
+      is_admin: !!u.is_admin,
+      // Short stable id from the code -- lets the client dedupe + key React lists
+      // without exposing the code itself. Any 8-char slice of a hash is fine.
+      id: hashId(u.code || ''),
+    })).sort((a, b) => {
+      if (a.is_admin !== b.is_admin) return a.is_admin ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+    return json({ ok: true, members });
+  }
+
   // -------- ADMIN routes: require valid admin code --------
   const adminCode = (req.headers.get('x-admin-code') || '').trim().toUpperCase();
   if (!adminCode) return json({ error: 'admin_code_required' }, 401);
@@ -202,6 +226,22 @@ function supabase(url, serviceKey) {
       return { data: null, error: null };
     },
   };
+}
+
+// Tiny deterministic 8-char hex id from a string. Used to give each member
+// a stable React key without exposing their raw access code.
+function hashId(str) {
+  let h1 = 0xdeadbeef ^ 0;
+  let h2 = 0x41c6ce57 ^ 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hex = ((h2 >>> 0) * 4294967296 + (h1 >>> 0)).toString(16).padStart(16, '0');
+  return hex.slice(0, 8);
 }
 
 function json(obj, status = 200) {

@@ -307,6 +307,105 @@ h1,h2,h3,h4,h5,h6 { font-family: var(--font-headline); font-weight: 700; letter-
   .chat-alert-icon { width: 32px; height: 32px; }
 }
 
+/* ==================== CHAT ALERT MODAL ====================
+   Big centered popup alternative to the slim banner. Renders a dark backdrop
+   that blocks the rest of the UI, with a card that scales from phone to
+   desktop. Clicking the card or the primary button opens the chat; clicking
+   the backdrop, the X, or the ghost button dismisses it. Auto-dismiss at 15s. */
+.chat-alert-modal-backdrop {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: chatAlertFade 0.18s ease-out;
+}
+.chat-alert-modal {
+  position: relative;
+  width: min(440px, 100%);
+  background: var(--surface-container-high, var(--surface-container, #1d1c1b));
+  color: var(--on-surface);
+  border: 1px solid rgba(0, 255, 163, 0.35);
+  border-radius: var(--radius-xl, 16px);
+  padding: 28px 24px 20px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 255, 163, 0.06);
+  cursor: pointer;
+  animation: chatAlertPop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+.chat-alert-modal:hover { box-shadow: 0 34px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(0, 255, 163, 0.14); }
+.chat-alert-modal-close {
+  position: absolute; top: 12px; right: 12px;
+  background: none; border: none; cursor: pointer;
+  color: var(--on-surface-variant);
+  padding: 8px; border-radius: var(--radius-full, 999px);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.chat-alert-modal-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--on-surface); }
+.chat-alert-modal-top { display: flex; align-items: center; gap: 16px; }
+.chat-alert-modal-head { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.chat-alert-modal-kicker {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-label); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--primary-fixed, #00ffa3);
+}
+.chat-alert-modal-name {
+  font-family: var(--font-headline); font-weight: 700; font-size: 22px; line-height: 1.15;
+  color: var(--on-surface);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chat-alert-modal-room {
+  font-size: 12px; color: var(--on-surface-variant);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chat-alert-modal-preview {
+  margin: 18px 0 20px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--primary-fixed, #00ffa3);
+  border-radius: 0 10px 10px 0;
+  font-size: 14px; line-height: 1.5;
+  color: var(--on-surface);
+  max-height: 120px; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.chat-alert-modal-actions { display: flex; gap: 10px; }
+.chat-alert-modal-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: var(--radius-full, 999px);
+  font-family: var(--font-label); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; transition: all 0.18s;
+}
+.chat-alert-modal-btn--ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--on-surface-variant);
+}
+.chat-alert-modal-btn--ghost:hover { background: rgba(255, 255, 255, 0.06); color: var(--on-surface); }
+.chat-alert-modal-btn--primary {
+  background: var(--primary-fixed, #00ffa3);
+  border: 1px solid var(--primary-fixed, #00ffa3);
+  color: #0a0a0a;
+}
+.chat-alert-modal-btn--primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+@keyframes chatAlertFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes chatAlertPop {
+  from { transform: translateY(24px) scale(0.92); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+@media (max-width: 767px) {
+  .chat-alert-modal-backdrop { padding: 14px; }
+  .chat-alert-modal { padding: 22px 18px 16px; }
+  .chat-alert-modal-name { font-size: 18px; }
+  .chat-alert-modal-preview { font-size: 13px; margin: 14px 0 16px; padding: 12px 14px; -webkit-line-clamp: 3; }
+  .chat-alert-modal-top { gap: 14px; }
+  .chat-alert-modal-btn { padding: 11px 14px; font-size: 11px; }
+}
+
 /* ==================== CHAT ==================== */
 .chat-layout { display: flex; height: calc(100vh - var(--header-height) - 48px); gap: 0; border-radius: var(--radius-xl); overflow: hidden; border: 1px solid rgba(73,72,71,0.1); }
 .chat-rooms-panel { width: 220px; background: var(--surface-container-low); border-right: 1px solid rgba(73,72,71,0.05); display: flex; flex-direction: column; flex-shrink: 0; }

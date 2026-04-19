@@ -421,7 +421,19 @@ const SQUAD_MEMBERS = {
   'Milburn Pennybags': { avatar: 'images/avatars/milburn.png', color: '#64fcc9', strategy: 'Value Preservation' },
 };
 
-const getSquadMember = (name) => SQUAD_MEMBERS[name] || { avatar: null, color: '#64748b', strategy: 'Learning' };
+// Deterministic hue from a name so everyone who isn't a hardcoded character
+// (Taylor, future users) still gets a unique colored initial circle instead of
+// a muted gray placeholder. Pure function -- same name always produces same color.
+function hashHue(str) {
+  let h = 5381;
+  for (let i = 0; i < (str || '').length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return Math.abs(h) % 360;
+}
+const getSquadMember = (name) => SQUAD_MEMBERS[name] || {
+  avatar: null,
+  color: `hsl(${hashHue(name)}, 65%, 60%)`,
+  strategy: 'Learning',
+};
 
 // A player's displayed strategy tag. 0-trade users always read as "Learning"
 // regardless of whether their name matches a hardcoded SQUAD_MEMBERS entry --
@@ -3030,6 +3042,15 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
   const currentUser = displayName || user || 'Ella';
   const mySquad = getSquadMember(currentUser);
 
+  // Live roster of active users from /api/codes?public=1. Refreshes every 60s so
+  // any new user RSJ adds in the admin panel shows up in the group-chat strip
+  // without a code change. Falls back to the hardcoded SQUAD_MEMBERS set while
+  // the first fetch is in flight so there's never an empty chat header.
+  const chatMembers = useChatMembers();
+  const chatMemberList = (chatMembers && chatMembers.length > 0)
+    ? chatMembers
+    : Object.keys(SQUAD_MEMBERS).map(name => ({ label: name, is_admin: name === 'Milburn Pennybags', id: name }));
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   // Admin: fetch family user list so we can label DM channels
@@ -3484,16 +3505,24 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
             </div>
           </div>
 
-          {/* Squad avatars strip -- only in Group Chat */}
+          {/* Members strip -- only in Group Chat. Driven by the live access-code
+              roster via useChatMembers, so any user RSJ adds in the admin panel
+              automatically shows up here. */}
           {activeRoom === 'general' && (
-            <div style={{ padding: '8px 24px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(73,72,71,0.05)' }}>
-              {Object.entries(SQUAD_MEMBERS).map(([name, m]) => (
-                <div key={name} title={name} style={{ position: 'relative', flexShrink: 0 }}>
-                  <CharacterAvatar name={name} size={46} style={{ border: name === currentUser ? `2px solid ${m.color}` : '2px solid transparent' }} />
-                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#00ffa3', border: '2px solid var(--bg)' }}></div>
-                </div>
-              ))}
-              <span className="text-muted" style={{ fontSize: 10, marginLeft: 4 }}>{Object.keys(SQUAD_MEMBERS).length} online</span>
+            <div style={{ padding: '8px 24px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(73,72,71,0.05)', flexWrap: 'wrap' }}>
+              {chatMemberList.map((member) => {
+                const decoration = getSquadMember(member.label);
+                return (
+                  <div key={member.id || member.label} title={member.is_admin ? `${member.label} (admin)` : member.label} style={{ position: 'relative', flexShrink: 0 }}>
+                    <CharacterAvatar name={member.label} size={46} style={{ border: member.label === currentUser ? `2px solid ${decoration.color}` : '2px solid transparent' }} />
+                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#00ffa3', border: '2px solid var(--bg)' }}></div>
+                    {member.is_admin && (
+                      <div style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: '50%', background: 'var(--primary-fixed, #00ffa3)', color: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, border: '2px solid var(--bg)' }}>★</div>
+                    )}
+                  </div>
+                );
+              })}
+              <span className="text-muted" style={{ fontSize: 10, marginLeft: 4 }}>{chatMemberList.length} online</span>
             </div>
           )}
           </div>
@@ -6160,32 +6189,55 @@ function Notification({ notification, onClose }) {
   return <div className={`notification notification-${notification.type}`}><Icon name={notification.type === 'success' ? 'check_circle' : 'error'} size={18} /> {notification.message}</div>;
 }
 
-// ==================== CHAT ALERT BANNER ====================
-// A slim banner that drops down from the top of the viewport whenever a new
-// chat message arrives in a room the user is not currently watching. Click to
-// jump into that room; click the X or wait 6 seconds to dismiss.
-function ChatAlertBanner({ alert, onDismiss, onOpen }) {
+// ==================== CHAT ALERT MODAL ====================
+// A big centered card with a dark backdrop that pops up whenever a new chat
+// message arrives in a room the user is not currently watching. Works the same
+// on desktop and mobile -- the backdrop blocks everything behind it, the card
+// auto-scales to the viewport. Click the card or the "Open Chat" button to
+// jump to that room; click the backdrop, the X, the "Later" button, or wait
+// 15 seconds to dismiss.
+function ChatAlertModal({ alert, onDismiss, onOpen }) {
   useEffect(() => {
     if (!alert) return;
-    const t = setTimeout(onDismiss, 6000);
+    const t = setTimeout(onDismiss, 15000);
     return () => clearTimeout(t);
   }, [alert]);
   if (!alert) return null;
   const isGif = alert.isGif;
+  const previewText = isGif ? 'Sent a GIF' : (alert.message || '').trim();
   return (
-    <div className="chat-alert-banner" role="alert" onClick={onOpen}>
-      <div className="chat-alert-icon"><Icon name="chat_bubble" size={18} /></div>
-      <div className="chat-alert-body">
-        <div className="chat-alert-title">
-          {alert.user}
-          <span className="chat-alert-room">in {alert.roomLabel}</span>
+    <div className="chat-alert-modal-backdrop" role="dialog" aria-modal="true" aria-label="New chat message" onClick={onDismiss}>
+      <div className="chat-alert-modal" onClick={(e) => { e.stopPropagation(); onOpen(); }}>
+        <button
+          className="chat-alert-modal-close"
+          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          aria-label="Dismiss"
+        >
+          <Icon name="close" size={20} />
+        </button>
+        <div className="chat-alert-modal-top">
+          <CharacterAvatar name={alert.user} size={72} />
+          <div className="chat-alert-modal-head">
+            <div className="chat-alert-modal-kicker">
+              <Icon name="chat_bubble" size={12} />
+              <span>New message</span>
+            </div>
+            <div className="chat-alert-modal-name">{alert.user || 'Someone'}</div>
+            <div className="chat-alert-modal-room">in {alert.roomLabel}</div>
+          </div>
         </div>
-        <div className="chat-alert-preview">{isGif ? 'Sent a GIF' : alert.message}</div>
+        <div className="chat-alert-modal-preview">{previewText || '(empty message)'}</div>
+        <div className="chat-alert-modal-actions">
+          <button
+            className="chat-alert-modal-btn chat-alert-modal-btn--ghost"
+            onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          >Later</button>
+          <button
+            className="chat-alert-modal-btn chat-alert-modal-btn--primary"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          >Open Chat</button>
+        </div>
       </div>
-      <span className="chat-alert-cta">Open chat</span>
-      <button className="chat-alert-close" onClick={(e) => { e.stopPropagation(); onDismiss(); }} aria-label="Dismiss">
-        <Icon name="close" size={16} />
-      </button>
     </div>
   );
 }
@@ -6201,6 +6253,35 @@ function readChatAlertSeen() {
 }
 function writeChatAlertSeen(obj) {
   try { localStorage.setItem(CHAT_ALERT_SEEN_KEY, JSON.stringify(obj)); } catch {}
+}
+
+// ==================== CHAT MEMBERS HOOK ====================
+// Polls the public /api/codes?public=1 endpoint every 60s to build a live list
+// of everyone with an active access code. Drives the group-chat avatar strip so
+// any new user who RSJ adds in the admin panel automatically appears in the
+// chat roster -- no code change required.
+function useChatMembers() {
+  const [members, setMembers] = useState([]);
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/codes?public=1`, { cache: 'no-store' });
+        const data = await res.json();
+        if (mounted && data.ok && Array.isArray(data.members)) {
+          setMembers(data.members);
+        }
+      } catch {
+        // Silent -- next poll will retry. Falls back to an empty strip, which
+        // then shows the static SQUAD_MEMBERS decoration set as a last resort
+        // (handled in ChatPage).
+      }
+    };
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, []);
+  return members;
 }
 
 function useChatAlerts({ code, isAdmin, activePage, currentChatRoom, setAlert }) {
@@ -6518,7 +6599,7 @@ function App() {
         <main className="main-content"><div className="main-inner">
           <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} user={user} code={accessCode} />
         </div></main>
-        <ChatAlertBanner alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
+        <ChatAlertModal alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
         <Notification notification={notification} onClose={() => setNotification(null)} />
         <AchievementToast achievement={newAchievement} />
       </div>
@@ -6571,7 +6652,7 @@ function App() {
           {renderPage()}
         </div>
       </main>
-      <ChatAlertBanner alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
+      <ChatAlertModal alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
       <Notification notification={notification} onClose={() => setNotification(null)} />
       <AchievementToast achievement={newAchievement} />
     </div>
