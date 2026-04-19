@@ -103,6 +103,22 @@ export default async function handler(req) {
     if (!isFinite(shares) || shares <= 0) return json({ error: 'invalid_shares' }, 400);
     if (!isFinite(price) || price <= 0) return json({ error: 'invalid_price' }, 400);
 
+    // ------------------------------------------------------------------
+    // CRYPTO KILL SWITCH -- 2026-04-18
+    // Incident: client was reading BTC price from the MOCK_CRYPTO seed
+    // ($97,245) when CoinGecko failed silently, and writing those bad
+    // prices to the ledger. Six trades were rectified (see stockrocket_
+    // trade_corrections). Re-enable only after the unified price service
+    // lands (task #74), with deviation guard + staleness check +
+    // circuit breaker. See invariants doc in /docs/PRICE_INVARIANTS.md.
+    // ------------------------------------------------------------------
+    if (assetType === 'crypto') {
+      return json({
+        error: 'crypto_trading_paused',
+        detail: 'Crypto trading is temporarily paused while we migrate to a unified price service. Stocks still work.'
+      }, 503);
+    }
+
     const total = shares * price;
 
     const portfolio = await getPortfolio(me.code);

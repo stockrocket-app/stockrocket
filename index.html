@@ -152,11 +152,24 @@ async function fetchServerPortfolio(code) {
 // Returns { ok: true, portfolio, trade } on success, { ok: false, error, detail } on failure.
 async function executeServerTrade({ code, type, symbol, name, assetType, shares, price }) {
   if (!code) return { ok: false, error: 'not_authenticated' };
+  // PRICE INTEGRITY GUARD -- single choke point. Incident 2026-04-18: UI passed
+  // a stale seed price ($97,245 for BTC) into six trades because the live feed
+  // was silently mocked. A non-finite or non-positive price must ALWAYS fail
+  // fast here, before the network call, regardless of which call site built
+  // the request. See docs/PRICE_INVARIANTS.md.
+  const px = Number(price);
+  if (!isFinite(px) || px <= 0) {
+    return { ok: false, error: 'stale_price', detail: 'Live price unavailable -- trade blocked. Please wait for prices to refresh.' };
+  }
+  const qty = Number(shares);
+  if (!isFinite(qty) || qty <= 0) {
+    return { ok: false, error: 'invalid_shares', detail: 'Invalid share amount' };
+  }
   try {
     const res = await fetch(`${API_BASE}/api/trades`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
-      body: JSON.stringify({ type, symbol, name, asset_type: assetType, shares, price }),
+      body: JSON.stringify({ type, symbol, name, asset_type: assetType, shares: qty, price: px }),
     });
     let data = {};
     try { data = await res.json(); } catch { data = {}; }
@@ -258,12 +271,18 @@ const MOCK_STOCKS = [
   { symbol: 'CRM', name: 'Salesforce Inc.', price: 312.80, change: 4.50, changePercent: 1.46, sector: 'Tech', marketCap: '$300B' },
 ];
 
+// CRYPTO DIRECTORY -- metadata only, NEVER prices.
+// Incident 2026-04-18: six BTC trades were written at $97,245 because a seed
+// price here was used as a silent fallback when CoinGecko failed. Prices are
+// now ALWAYS null on this list. The UI must render "price unavailable" if the
+// live feed is down, and trade handlers must refuse to submit any crypto order
+// with a non-positive, non-finite price. See docs/PRICE_INVARIANTS.md.
 const MOCK_CRYPTO = [
-  { symbol: 'BTC', name: 'Bitcoin', price: 97245.00, change: 2145.30, changePercent: 2.25, marketCap: '$1.9T' },
-  { symbol: 'ETH', name: 'Ethereum', price: 3842.15, change: -52.40, changePercent: -1.34, marketCap: '$462B' },
-  { symbol: 'SOL', name: 'Solana', price: 198.72, change: 12.45, changePercent: 6.68, marketCap: '$92B' },
-  { symbol: 'ADA', name: 'Cardano', price: 0.78, change: 0.04, changePercent: 5.41, marketCap: '$28B' },
-  { symbol: 'DOT', name: 'Polkadot', price: 8.92, change: -0.21, changePercent: -2.30, marketCap: '$12B' },
+  { symbol: 'BTC', name: 'Bitcoin',  price: null, change: null, changePercent: null, marketCap: null, stale: true },
+  { symbol: 'ETH', name: 'Ethereum', price: null, change: null, changePercent: null, marketCap: null, stale: true },
+  { symbol: 'SOL', name: 'Solana',   price: null, change: null, changePercent: null, marketCap: null, stale: true },
+  { symbol: 'ADA', name: 'Cardano',  price: null, change: null, changePercent: null, marketCap: null, stale: true },
+  { symbol: 'DOT', name: 'Polkadot', price: null, change: null, changePercent: null, marketCap: null, stale: true },
 ];
 
 const TRADER_INSIGHTS = [
@@ -953,19 +972,35 @@ const LiveData = {
     } catch { return []; }
   },
 
-  // Fetch real crypto prices from CoinGecko (direct -- no key needed)
+  // Fetch real crypto prices from CoinGecko (direct -- no key needed).
+  // Every returned price MUST be a finite positive number. If CoinGecko returns
+  // anything else (0, null, undefined, NaN, string, missing field), the entry
+  // is dropped and the function returns null for the WHOLE batch, forcing
+  // useLiveData into its stale branch. No partial results, no silent sentinels.
   async fetchCrypto() {
     try {
       const ids = 'bitcoin,ethereum,solana,cardano,polkadot';
       const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`);
+      if (!res.ok) return null;
       const data = await res.json();
+      if (!data || typeof data !== 'object') return null;
       const map = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', cardano: 'ADA', polkadot: 'DOT' };
       const nameMap = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', solana: 'Solana', cardano: 'Cardano', polkadot: 'Polkadot' };
-      return Object.entries(data).map(([id, d]) => ({
-        symbol: map[id], name: nameMap[id], price: d.usd,
-        change: d.usd * (d.usd_24h_change / 100), changePercent: d.usd_24h_change || 0,
-        marketCap: d.usd_market_cap ? '$' + (d.usd_market_cap / 1e9).toFixed(0) + 'B' : 'N/A'
-      }));
+      const out = [];
+      for (const [id, d] of Object.entries(data)) {
+        const px = Number(d?.usd);
+        if (!isFinite(px) || px <= 0) return null; // bail the whole batch on ANY bad price
+        out.push({
+          symbol: map[id],
+          name: nameMap[id],
+          price: px,
+          change: isFinite(Number(d?.usd_24h_change)) ? px * (Number(d.usd_24h_change) / 100) : 0,
+          changePercent: isFinite(Number(d?.usd_24h_change)) ? Number(d.usd_24h_change) : 0,
+          marketCap: isFinite(Number(d?.usd_market_cap)) ? '$' + (Number(d.usd_market_cap) / 1e9).toFixed(0) + 'B' : 'N/A',
+          timestamp: Date.now(),
+        });
+      }
+      return out.length ? out : null;
     } catch { return null; }
   },
 
@@ -1014,28 +1049,100 @@ const COINGECKO_IDS = { BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', ADA: 'ca
 const CRYPTO_SYMBOLS = new Set(Object.keys(COINGECKO_IDS));
 
 // Hook to fetch live data. No silent mock fallback -- if a feed is down,
-// the UI should honestly show "prices unavailable" via the isLive/status flags.
+// the UI shows "prices unavailable" via the isLive/status flags AND any crypto
+// entries are explicitly marked {price: null, stale: true} so trade handlers
+// can refuse to submit. Stocks keep a last-known snapshot because markets close
+// (the prev-close number is a real, honest number). Crypto has no equivalent:
+// 24/7 market means any staleness is a real failure, not a weekend.
+//
+// Three defences live here (see docs/PRICE_INVARIANTS.md):
+//   - Deviation guard: a crypto tick that moves > 30% vs last good is rejected
+//     and marked stale. Three consecutive "deviant" ticks for the same symbol
+//     are accepted (real flash move, not a bad feed).
+//   - Staleness check: a price older than 90s is derived-stale, even if the
+//     last fetch was a "success" (helps when polling stalls).
+//   - Circuit breaker: 3 consecutive crypto fetch failures trips the breaker
+//     and we skip fetching for 5 minutes, keeping state explicitly stale.
+const CRYPTO_STALE_MS = 90_000;
+const CRYPTO_DEVIATION = 0.30;
+const CRYPTO_DEVIATION_ACCEPT_AFTER = 3;
+const CRYPTO_FAILURE_TRIP = 3;
+const CRYPTO_BREAKER_OPEN_MS = 5 * 60 * 1000;
+
 function useLiveData() {
   const [stocks, setStocks] = useState(MOCK_STOCKS);      // seed with static last-known so layout doesn't flicker
-  const [crypto, setCrypto] = useState(MOCK_CRYPTO);
+  const [crypto, setCrypto] = useState(MOCK_CRYPTO);      // null-price directory; no price leaks possible
   const [stocksLive, setStocksLive] = useState(false);
   const [cryptoLive, setCryptoLive] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [cryptoLastUpdated, setCryptoLastUpdated] = useState(null);
   const [marketOpen, setMarketOpen] = useState(() => isUsMarketOpen());
 
+  // Guard state (refs -- we don't want deviation/breaker changes to trigger
+  // re-renders by themselves; only the resulting crypto state does).
+  const lastGoodCrypto = useRef(new Map());     // symbol -> last accepted price
+  const deviationStreak = useRef(new Map());    // symbol -> consecutive deviant ticks
+  const failureStreak = useRef(0);              // consecutive batch failures
+  const breakerOpenUntil = useRef(0);           // ms epoch; fetch skipped while now() < this
+
   const refresh = useCallback(async () => {
-    // Crypto: 24/7 real market -- always refresh
-    const liveCrypto = await LiveData.fetchCrypto();
-    if (liveCrypto && liveCrypto.length > 0) {
-      // Preserve category from MOCK_CRYPTO so UI filters keep working
-      const merged = MOCK_CRYPTO.map(mc => {
-        const live = liveCrypto.find(lc => lc.symbol === mc.symbol);
-        return live ? { ...mc, ...live } : mc;
-      });
-      setCrypto(merged);
-      setCryptoLive(true);
-    } else {
+    // Crypto: 24/7 real market -- always refresh unless breaker is open
+    const now = Date.now();
+    if (now < breakerOpenUntil.current) {
+      // Breaker open: skip fetch, keep state stale so trades stay blocked.
+      setCrypto(prev => prev.map(p => ({ ...p, price: null, stale: true })));
       setCryptoLive(false);
+      setCryptoLastUpdated(null);
+    } else {
+      const liveCrypto = await LiveData.fetchCrypto();
+      if (liveCrypto && liveCrypto.length > 0) {
+        failureStreak.current = 0;
+        // Merge: every symbol in MOCK_CRYPTO (the directory) must find a match
+        // in liveCrypto OR get marked stale. No silent fallthrough to
+        // directory-only. Deviation guard runs per symbol.
+        const merged = MOCK_CRYPTO.map(mc => {
+          const live = liveCrypto.find(lc => lc.symbol === mc.symbol);
+          if (!live || !isFinite(Number(live.price)) || Number(live.price) <= 0) {
+            return { ...mc, price: null, stale: true };
+          }
+          const px = Number(live.price);
+          const lastGood = lastGoodCrypto.current.get(mc.symbol);
+          if (isFinite(lastGood) && lastGood > 0) {
+            const deviation = Math.abs(px - lastGood) / lastGood;
+            if (deviation > CRYPTO_DEVIATION) {
+              // Deviant tick. Count it; after N consecutive, accept.
+              const streak = (deviationStreak.current.get(mc.symbol) || 0) + 1;
+              deviationStreak.current.set(mc.symbol, streak);
+              if (streak < CRYPTO_DEVIATION_ACCEPT_AFTER) {
+                // Reject this tick: hold last-good but mark the row stale so
+                // the UI shows staleness and trades stay blocked for this sym.
+                return { ...mc, price: null, stale: true, deviationRejected: true };
+              }
+              // Streak exceeded -- accept the new price as the new normal.
+              deviationStreak.current.set(mc.symbol, 0);
+            } else {
+              deviationStreak.current.set(mc.symbol, 0);
+            }
+          }
+          lastGoodCrypto.current.set(mc.symbol, px);
+          return { ...mc, ...live, stale: false };
+        });
+        setCrypto(merged);
+        setCryptoLive(merged.some(m => !m.stale));
+        setCryptoLastUpdated(Date.now());
+      } else {
+        // Fetch failed. Trip the breaker if we hit the failure threshold.
+        failureStreak.current += 1;
+        if (failureStreak.current >= CRYPTO_FAILURE_TRIP) {
+          breakerOpenUntil.current = Date.now() + CRYPTO_BREAKER_OPEN_MS;
+          // Reset streak so the breaker doesn't stay open permanently on the
+          // next failure after it re-closes.
+          failureStreak.current = 0;
+        }
+        setCrypto(MOCK_CRYPTO.map(mc => ({ ...mc, price: null, stale: true })));
+        setCryptoLive(false);
+        setCryptoLastUpdated(null);
+      }
     }
 
     // Stocks: only fetch during US market hours (avoids wasted calls + avoids
@@ -1084,7 +1191,7 @@ function useLiveData() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  return { stocks, crypto, stocksLive, cryptoLive, isLive: stocksLive || cryptoLive, marketOpen, lastUpdated, refresh };
+  return { stocks, crypto, stocksLive, cryptoLive, isLive: stocksLive || cryptoLive, marketOpen, lastUpdated, cryptoLastUpdated, refresh };
 }
 
 // Market-hours check used by useLiveData (kept in sync with useMarketCountdown)
