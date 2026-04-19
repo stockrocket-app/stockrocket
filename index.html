@@ -413,6 +413,49 @@ const TRADER_INSIGHTS = [
   'The real power of compounding is not just returns, but time spent being right.',
 ];
 
+// ==================== AVATAR UPLOAD HELPERS ====================
+// Resize an image file to 200x200 JPEG @ 0.8 quality before upload.
+// Typical output is 5-15KB -- small enough to store as a base64 data URL on
+// stockrocket_access_codes.avatar_url without bloating the row or the public
+// /api/codes?public=1 response. Uses a center-cover crop so the subject stays
+// centered regardless of source aspect ratio.
+function resizeAvatarFile(file, size = 200, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('No file selected'));
+    if (!/^image\//.test(file.type)) return reject(new Error('That file is not an image'));
+    if (file.size > 10 * 1024 * 1024) return reject(new Error('Image is too large -- keep it under 10MB'));
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          // Center-cover crop: fill the square, crop the long side.
+          const scale = Math.max(size / img.width, size / img.height);
+          const sw = size / scale;
+          const sh = size / scale;
+          const sx = (img.width - sw) / 2;
+          const sy = (img.height - sh) / 2;
+          ctx.fillStyle = '#0a0a0a';
+          ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        } catch (e) {
+          reject(new Error('Could not process image -- try a different file'));
+        }
+      };
+      img.onerror = () => reject(new Error('Could not read that image'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 // The 4 characters -- avatar images in images/avatars/
 const SQUAD_MEMBERS = {
   'Ella': { avatar: 'images/avatars/ella.png', color: '#00ffa3', strategy: 'Momentum Scalping' },
@@ -420,6 +463,15 @@ const SQUAD_MEMBERS = {
   'PCM': { avatar: 'images/avatars/pcm.png', color: '#ff716c', strategy: 'High-Frequency Vol' },
   'Milburn Pennybags': { avatar: 'images/avatars/milburn.png', color: '#64fcc9', strategy: 'Value Preservation' },
 };
+
+// Live avatar overrides -- admin-uploaded custom portraits. Keyed by user label.
+// Populated by useChatMembers on every 60s poll. Takes precedence over the
+// hardcoded SQUAD_MEMBERS avatars so RSJ can replace any character portrait
+// from the Admin panel without a code change. Any component that renders a
+// CharacterAvatar inside a tree that re-renders while this map is populated
+// (chat, leaderboard, trade alerts when they next refresh) picks up the new
+// portrait automatically.
+const LIVE_AVATARS = {};
 
 // Deterministic hue from a name so everyone who isn't a hardcoded character
 // (Taylor, future users) still gets a unique colored initial circle instead of
@@ -429,10 +481,24 @@ function hashHue(str) {
   for (let i = 0; i < (str || '').length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
   return Math.abs(h) % 360;
 }
-const getSquadMember = (name) => SQUAD_MEMBERS[name] || {
-  avatar: null,
-  color: `hsl(${hashHue(name)}, 65%, 60%)`,
-  strategy: 'Learning',
+const getSquadMember = (name) => {
+  const live = LIVE_AVATARS[name];
+  const base = SQUAD_MEMBERS[name];
+  if (live) {
+    // Custom upload always wins. Keep the strategy + color from SQUAD_MEMBERS
+    // if the name matches a hardcoded character (so Milburn stays Milburn-green
+    // in color accents) but swap the portrait image.
+    return {
+      avatar: live,
+      color: base?.color || `hsl(${hashHue(name)}, 65%, 60%)`,
+      strategy: base?.strategy || 'Learning',
+    };
+  }
+  return base || {
+    avatar: null,
+    color: `hsl(${hashHue(name)}, 65%, 60%)`,
+    strategy: 'Learning',
+  };
 };
 
 // A player's displayed strategy tag. 0-trade users always read as "Learning"
@@ -5038,6 +5104,29 @@ function AccessCodesAdmin({ adminCode, setNotification }) {
     fetchUsers();
   };
 
+  // Avatar upload: file input -> canvas-resized JPEG data URL -> PATCH /api/codes.
+  // The resize helper (resizeAvatarFile) caps output at 200x200 @ 0.8 quality so
+  // rows never bloat past ~15KB. null clears the avatar (admin can fall back to
+  // the initial circle or hardcoded SQUAD_MEMBERS portrait).
+  const uploadAvatar = async (code, file, label) => {
+    try {
+      const dataUrl = await resizeAvatarFile(file);
+      if (await patchUser(code, { avatar_url: dataUrl })) {
+        setNotification({ type: 'success', message: `Avatar updated for ${label || code}` });
+        fetchUsers();
+      }
+    } catch (e) {
+      setNotification({ type: 'error', message: e.message || 'Upload failed' });
+    }
+  };
+  const clearAvatar = async (code, label) => {
+    if (!confirm(`Remove custom avatar for ${label || code}?`)) return;
+    if (await patchUser(code, { avatar_url: null })) {
+      setNotification({ type: 'success', message: `Avatar cleared` });
+      fetchUsers();
+    }
+  };
+
   const copy = async (value, thing = 'value') => {
     try { await navigator.clipboard.writeText(value); setNotification({ type: 'success', message: `Copied ${thing}` }); } catch {}
   };
@@ -5101,13 +5190,48 @@ function AccessCodesAdmin({ adminCode, setNotification }) {
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
-            <thead><tr><th>User</th><th>Email</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Avatar</th><th>User</th><th>Email</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {users.map(u => {
                 const isSelf = u.code === adminCode;
                 const showPassword = revealed[u.code] && !isSelf;
+                // getSquadMember consults LIVE_AVATARS first; here we also pull
+                // u.avatar_url directly so the admin panel shows the upload
+                // immediately without waiting for the 60s useChatMembers poll.
+                const decoration = getSquadMember(u.label || '');
+                const shownAvatar = u.avatar_url || decoration.avatar;
+                const fallbackColor = decoration.color;
                 return (
                   <tr key={u.code}>
+                    <td style={{ width: 88 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                        {shownAvatar ? (
+                          <img src={shownAvatar} alt={u.label || 'avatar'} style={{ width: 48, height: 48, borderRadius: 'var(--radius-lg)', objectFit: 'cover', border: `2px solid ${fallbackColor}40`, background: `${fallbackColor}15` }} />
+                        ) : (
+                          <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-lg)', background: `${fallbackColor}20`, border: `2px solid ${fallbackColor}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 18, color: fallbackColor }}>
+                            {(u.label || '?')[0].toUpperCase()}
+                          </div>
+                        )}
+                        <label className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: '2px 6px', cursor: 'pointer', margin: 0 }} title="Upload a custom avatar (auto-resized to 200x200)">
+                          <Icon name="upload" size={10} /> {u.avatar_url ? 'replace' : 'upload'}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            style={{ display: 'none' }}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              e.target.value = ''; // allow re-selecting the same file
+                              if (f) uploadAvatar(u.code, f, u.label);
+                            }}
+                          />
+                        </label>
+                        {u.avatar_url && (
+                          <button className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: '2px 6px', color: 'var(--error)' }} onClick={() => clearAvatar(u.code, u.label)}>
+                            <Icon name="close" size={10} /> clear
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div className="stock-symbol-text" style={{ fontWeight: 600 }}>{u.label || '—'}</div>
@@ -5169,7 +5293,7 @@ function AccessCodesAdmin({ adminCode, setNotification }) {
                   </tr>
                 );
               })}
-              {users.length === 0 && <tr><td colSpan="5" className="text-muted" style={{ padding: 24, textAlign: 'center' }}>No users yet. Add one above.</td></tr>}
+              {users.length === 0 && <tr><td colSpan="6" className="text-muted" style={{ padding: 24, textAlign: 'center' }}>No users yet. Add one above.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -6278,6 +6402,15 @@ function useChatMembers() {
         const res = await fetch(`${API_BASE}/api/codes?public=1`, { cache: 'no-store' });
         const data = await res.json();
         if (mounted && data.ok && Array.isArray(data.members)) {
+          // Seed LIVE_AVATARS so CharacterAvatar components outside the chat
+          // (leaderboard, trade alerts, podium) also pick up custom uploads.
+          // Clear stale entries whose label no longer appears in the response.
+          const liveNames = new Set(data.members.map(m => m.label));
+          Object.keys(LIVE_AVATARS).forEach(k => { if (!liveNames.has(k)) delete LIVE_AVATARS[k]; });
+          data.members.forEach(m => {
+            if (m.avatar_url) LIVE_AVATARS[m.label] = m.avatar_url;
+            else delete LIVE_AVATARS[m.label];
+          });
           setMembers(data.members);
         }
       } catch {

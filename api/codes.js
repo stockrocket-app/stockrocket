@@ -78,13 +78,14 @@ export default async function handler(req) {
   if (req.method === 'GET' && url.searchParams.get('public') === '1') {
     const { data, error } = await db.select(
       'stockrocket_access_codes',
-      'select=label,code,is_admin&active=eq.true&order=is_admin.desc'
+      'select=label,code,is_admin,avatar_url&active=eq.true&order=is_admin.desc'
     );
     if (error) return json({ ok: false, error: 'list_failed' }, 200);
     // Dedupe stable public id from code hash so client can key without ever seeing the raw code
     const members = (data || []).map(u => ({
       label: u.label || 'Unnamed',
       is_admin: !!u.is_admin,
+      avatar_url: u.avatar_url || null,
       // Short stable id from the code -- lets the client dedupe + key React lists
       // without exposing the code itself. Any 8-char slice of a hash is fine.
       id: hashId(u.code || ''),
@@ -124,6 +125,19 @@ export default async function handler(req) {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: 'invalid_email_format', detail: 'Enter a valid email or leave blank.' }, 400);
     }
+    // Avatar: accept base64 data URL, capped at ~200KB to keep row size sane.
+    // Client should resize to 200x200 JPEG @ 0.8 quality before sending (~5-15KB typical).
+    let avatarUrl = null;
+    if (typeof body.avatar_url === 'string' && body.avatar_url.trim()) {
+      const a = body.avatar_url.trim();
+      if (!/^data:image\/(jpeg|png|webp);base64,/.test(a)) {
+        return json({ error: 'invalid_avatar_format', detail: 'Avatar must be a data:image/(jpeg|png|webp);base64,... URL.' }, 400);
+      }
+      if (a.length > 300000) {
+        return json({ error: 'avatar_too_large', detail: 'Avatar must be under ~200KB. Try a smaller image.' }, 400);
+      }
+      avatarUrl = a;
+    }
     const payload = {
       code,
       tier: ['free', 'family', 'pro'].includes(body.tier) ? body.tier : 'family',
@@ -136,6 +150,7 @@ export default async function handler(req) {
       uses_current: 0,
       active: true,
       created_by: adminCode,
+      avatar_url: avatarUrl,
     };
     const { data, error } = await db.insert('stockrocket_access_codes', payload);
     if (error) return json({ error: 'create_failed', detail: error }, 400);
@@ -164,6 +179,21 @@ export default async function handler(req) {
     if (body.expires_at !== undefined) patch.expires_at = body.expires_at || null;
     if (body.uses_max !== undefined) patch.uses_max = Math.max(1, Math.min(10000, parseInt(body.uses_max, 10) || 999));
     if (body.reset_uses === true) patch.uses_current = 0;
+    // Avatar: null clears it, data URL sets it. Same size + mime validation as POST.
+    if (body.avatar_url !== undefined) {
+      if (body.avatar_url === null || body.avatar_url === '') {
+        patch.avatar_url = null;
+      } else if (typeof body.avatar_url === 'string') {
+        const a = body.avatar_url.trim();
+        if (!/^data:image\/(jpeg|png|webp);base64,/.test(a)) {
+          return json({ error: 'invalid_avatar_format', detail: 'Avatar must be a data:image/(jpeg|png|webp);base64,... URL.' }, 400);
+        }
+        if (a.length > 300000) {
+          return json({ error: 'avatar_too_large', detail: 'Avatar must be under ~200KB.' }, 400);
+        }
+        patch.avatar_url = a;
+      }
+    }
     // Change password: body.new_code rotates the code column
     if (body.new_code !== undefined) {
       const newCode = String(body.new_code || '').trim();
