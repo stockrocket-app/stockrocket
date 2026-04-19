@@ -4182,7 +4182,10 @@ function TeardownReader({ slug, playbooks, code, onBack, onSubmitted, onMarkComp
     </div>
   );
 
-  const body = Array.isArray(teardown.body) ? teardown.body : [];
+  // Body may arrive as { sections: [...] } (current seed) or as a bare array (future shorthand).
+  const body = Array.isArray(teardown.body?.sections)
+    ? teardown.body.sections
+    : (Array.isArray(teardown.body) ? teardown.body : []);
   const dc = { beginner: 'badge-primary', intermediate: 'badge-secondary', advanced: 'badge-error' };
 
   return (
