@@ -972,32 +972,34 @@ const LiveData = {
     } catch { return []; }
   },
 
-  // Fetch real crypto prices from CoinGecko (direct -- no key needed).
-  // Every returned price MUST be a finite positive number. If CoinGecko returns
-  // anything else (0, null, undefined, NaN, string, missing field), the entry
-  // is dropped and the function returns null for the WHOLE batch, forcing
-  // useLiveData into its stale branch. No partial results, no silent sentinels.
+  // Fetch real crypto prices via the unified /api/price service.
+  // Upstream: Coinbase Exchange stats (primary) + CoinGecko (fallback). See
+  // api/price.js. Every returned price MUST be finite + positive. If ANY entry
+  // comes back stale / invalid, we bail the whole batch (return null) so
+  // useLiveData enters its stale branch and trade handlers block. No silent
+  // partial results, no hardcoded sentinels.
   async fetchCrypto() {
     try {
-      const ids = 'bitcoin,ethereum,solana,cardano,polkadot';
-      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`);
+      const symbols = 'BTC,ETH,SOL,ADA,DOT';
+      const res = await fetch(`${API_BASE}/api/price?symbols=${symbols}&asset_type=crypto`);
       if (!res.ok) return null;
       const data = await res.json();
-      if (!data || typeof data !== 'object') return null;
-      const map = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', cardano: 'ADA', polkadot: 'DOT' };
-      const nameMap = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', solana: 'Solana', cardano: 'Cardano', polkadot: 'Polkadot' };
+      if (!data?.ok || !Array.isArray(data.prices)) return null;
+      const nameMap = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana', ADA: 'Cardano', DOT: 'Polkadot' };
       const out = [];
-      for (const [id, d] of Object.entries(data)) {
-        const px = Number(d?.usd);
-        if (!isFinite(px) || px <= 0) return null; // bail the whole batch on ANY bad price
+      for (const entry of data.prices) {
+        const px = Number(entry?.price);
+        if (entry?.stale || !isFinite(px) || px <= 0) return null; // bail the whole batch on ANY bad price
+        const pct = isFinite(Number(entry?.change_pct)) ? Number(entry.change_pct) : 0;
         out.push({
-          symbol: map[id],
-          name: nameMap[id],
+          symbol: entry.symbol,
+          name: nameMap[entry.symbol] || entry.symbol,
           price: px,
-          change: isFinite(Number(d?.usd_24h_change)) ? px * (Number(d.usd_24h_change) / 100) : 0,
-          changePercent: isFinite(Number(d?.usd_24h_change)) ? Number(d.usd_24h_change) : 0,
-          marketCap: isFinite(Number(d?.usd_market_cap)) ? '$' + (Number(d.usd_market_cap) / 1e9).toFixed(0) + 'B' : 'N/A',
-          timestamp: Date.now(),
+          change: isFinite(Number(entry?.change)) ? Number(entry.change) : px * (pct / 100),
+          changePercent: pct,
+          marketCap: isFinite(Number(entry?.market_cap)) ? '$' + (Number(entry.market_cap) / 1e9).toFixed(0) + 'B' : 'N/A',
+          source: entry.source || null,
+          timestamp: Number(entry?.fetched_at) || Date.now(),
         });
       }
       return out.length ? out : null;

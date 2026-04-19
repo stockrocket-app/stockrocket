@@ -27,8 +27,17 @@
 // INVARIANTS (enforced here; see docs/PRICE_INVARIANTS.md):
 //   I1. A returned entry with price !== null implies price is finite and > 0.
 //   I2. Every entry carries fetched_at in ms since epoch.
-//   I3. Every entry carries source ('finnhub' | 'coingecko').
+//   I3. Every entry carries source ('finnhub' | 'coinbase' | 'coingecko').
 //   I4. No entry ever carries a hardcoded seed value.
+//
+// CRYPTO SOURCING (2026-04-18 post-incident):
+//   Primary: Coinbase Exchange public stats endpoint
+//     (https://api.exchange.coinbase.com/products/{SYM}-USD/stats) -- public,
+//     no key, per-symbol, reliable.
+//   Fallback: CoinGecko simple/price -- used only if Coinbase fails for a given
+//     symbol. CoinGecko was the original primary and caused the 04-18 incident
+//     via rate-limiting + silent failures; it's retained as a last resort so a
+//     single-vendor outage doesn't kill the feed.
 //
 // Env vars: FINNHUB_KEY
 
@@ -128,59 +137,109 @@ async function fetchStockBatch(symbols) {
   return results;
 }
 
-// ---------------- Crypto (CoinGecko) ----------------
+// ---------------- Crypto (Coinbase primary, CoinGecko fallback) ----------------
+// Per-symbol two-phase strategy: try Coinbase first (fast, reliable, no key).
+// If Coinbase fails for a symbol, try CoinGecko for just that symbol. If both
+// fail, surface a stale entry with source='coingecko' and error='upstream_failure'.
+// CoinGecko is batch-aware, so we only hit it once per request for whichever
+// symbols fell through.
 async function fetchCryptoBatch(symbols) {
-  const idMap = {}; // id -> symbol
+  const known = [];
   const unknown = [];
   for (const sym of symbols) {
-    const id = COINGECKO_IDS[sym];
-    if (id) idMap[id] = sym;
+    if (COINGECKO_IDS[sym]) known.push(sym);
     else unknown.push(sym);
   }
 
-  const ids = Object.keys(idMap);
-  let livePrices = {};
-  if (ids.length) {
+  // Phase 1: Coinbase per-symbol, in parallel.
+  const coinbasePrimary = await Promise.all(known.map(async sym => {
     try {
       const res = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`,
-        { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
+        `https://api.exchange.coinbase.com/products/${encodeURIComponent(sym)}-USD/stats`,
+        { signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined }
       );
-      if (res.ok) livePrices = await res.json();
-    } catch (_) {
-      livePrices = {};
+      if (!res.ok) return { symbol: sym, ok: false };
+      const d = await res.json();
+      const px = Number(d?.last);
+      const open = Number(d?.open);
+      if (!isFinite(px) || px <= 0) return { symbol: sym, ok: false };
+      const pct = (isFinite(open) && open > 0) ? ((px - open) / open) * 100 : null;
+      return {
+        symbol: sym,
+        ok: true,
+        entry: {
+          symbol: sym,
+          asset_type: 'crypto',
+          price: px,
+          change: pct !== null ? px * (pct / 100) : null,
+          change_pct: pct,
+          high: isFinite(Number(d?.high)) ? Number(d.high) : null,
+          low: isFinite(Number(d?.low)) ? Number(d.low) : null,
+          volume: isFinite(Number(d?.volume)) ? Number(d.volume) : null,
+          market_cap: null, // Coinbase stats does not expose mcap
+          source: 'coinbase',
+          fetched_at: Date.now(),
+          stale: false,
+        },
+      };
+    } catch {
+      return { symbol: sym, ok: false };
+    }
+  }));
+
+  const entries = new Map();
+  const needFallback = [];
+  for (const r of coinbasePrimary) {
+    if (r.ok) entries.set(r.symbol, r.entry);
+    else needFallback.push(r.symbol);
+  }
+
+  // Phase 2: CoinGecko batch fallback for any symbols that Coinbase couldn't
+  // serve. Single request for all fallback symbols.
+  if (needFallback.length) {
+    const ids = needFallback.map(s => COINGECKO_IDS[s]).filter(Boolean);
+    let livePrices = {};
+    if (ids.length) {
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`,
+          { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
+        );
+        if (res.ok) livePrices = await res.json();
+      } catch (_) {
+        livePrices = {};
+      }
+    }
+    for (const sym of needFallback) {
+      const id = COINGECKO_IDS[sym];
+      const d = id ? livePrices[id] : null;
+      const px = Number(d?.usd);
+      if (!isFinite(px) || px <= 0) {
+        entries.set(sym, staleEntry(sym, 'crypto', 'coingecko', d ? 'invalid_price' : 'upstream_failure'));
+        continue;
+      }
+      const pct = isFinite(Number(d?.usd_24h_change)) ? Number(d.usd_24h_change) : null;
+      entries.set(sym, {
+        symbol: sym,
+        asset_type: 'crypto',
+        price: px,
+        change: pct !== null ? px * (pct / 100) : null,
+        change_pct: pct,
+        market_cap: isFinite(Number(d?.usd_market_cap)) ? Number(d.usd_market_cap) : null,
+        source: 'coingecko',
+        fetched_at: Date.now(),
+        stale: false,
+      });
     }
   }
 
-  const out = [];
-  // Known symbols -- either live or stale-tagged individually.
-  for (const [id, sym] of Object.entries(idMap)) {
-    const d = livePrices[id];
-    const px = Number(d?.usd);
-    if (!isFinite(px) || px <= 0) {
-      out.push(staleEntry(sym, 'crypto', 'coingecko', d ? 'invalid_price' : 'upstream_failure'));
-      continue;
-    }
-    const pct = isFinite(Number(d?.usd_24h_change)) ? Number(d.usd_24h_change) : null;
-    out.push({
-      symbol: sym,
-      asset_type: 'crypto',
-      price: px,
-      change: pct !== null ? px * (pct / 100) : null,
-      change_pct: pct,
-      market_cap: isFinite(Number(d?.usd_market_cap)) ? Number(d.usd_market_cap) : null,
-      source: 'coingecko',
-      fetched_at: Date.now(),
-      stale: false,
-    });
-  }
   // Unknown symbols -- surface as stale with a clear error, never a price.
   for (const sym of unknown) {
-    out.push(staleEntry(sym, 'crypto', 'coingecko', 'unknown_symbol'));
+    entries.set(sym, staleEntry(sym, 'crypto', 'coinbase', 'unknown_symbol'));
   }
+
   // Preserve the caller-requested ordering.
-  const bySymbol = new Map(out.map(e => [e.symbol, e]));
-  return symbols.map(s => bySymbol.get(s) || staleEntry(s, 'crypto', 'coingecko', 'unknown_symbol'));
+  return symbols.map(s => entries.get(s) || staleEntry(s, 'crypto', 'coinbase', 'unknown_symbol'));
 }
 
 function staleEntry(symbol, asset_type, source, error, detail) {

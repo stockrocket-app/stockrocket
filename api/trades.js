@@ -20,6 +20,23 @@ export const config = { runtime: 'edge' };
 const STARTING_CASH = 100000;
 const EPSILON = 1e-8;
 
+// Server-side price verification bounds. Client-submitted price must land
+// within these deviation bands of the live price the server pulls at trade
+// time. See docs/PRICE_INVARIANTS.md for the rationale. Bounds are intentionally
+// loose enough to absorb normal tick drift between the client's last sample
+// and the server fetch, tight enough to reject a stale or mocked value.
+const PRICE_DEVIATION_LIMITS = { stock: 0.03, crypto: 0.05 };
+
+// CoinGecko symbol -> id map (mirrored from api/price.js). Kept local so this
+// Edge Function has zero imports from neighbours.
+const COINGECKO_IDS = {
+  BTC: 'bitcoin',
+  ETH: 'ethereum',
+  SOL: 'solana',
+  ADA: 'cardano',
+  DOT: 'polkadot',
+};
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -104,19 +121,25 @@ export default async function handler(req) {
     if (!isFinite(price) || price <= 0) return json({ error: 'invalid_price' }, 400);
 
     // ------------------------------------------------------------------
-    // CRYPTO KILL SWITCH -- 2026-04-18
-    // Incident: client was reading BTC price from the MOCK_CRYPTO seed
-    // ($97,245) when CoinGecko failed silently, and writing those bad
-    // prices to the ledger. Six trades were rectified (see stockrocket_
-    // trade_corrections). Re-enable only after the unified price service
-    // lands (task #74), with deviation guard + staleness check +
-    // circuit breaker. See invariants doc in /docs/PRICE_INVARIANTS.md.
+    // SERVER-SIDE PRICE VERIFICATION -- 2026-04-18 incident fix
     // ------------------------------------------------------------------
-    if (assetType === 'crypto') {
+    // The client sends the price it just rendered; the server MUST NOT trust
+    // it. We pull a live price here (Coinbase primary, CoinGecko fallback for
+    // crypto; Finnhub for stocks) and reject the trade if the client price
+    // deviates more than PRICE_DEVIATION_LIMITS allows. If the server cannot
+    // get a live price at all, we FAIL CLOSED -- no trade, no phantom ledger
+    // row. This closes the last hole that made the 04-18 incident possible.
+    // See docs/PRICE_INVARIANTS.md.
+    const verification = await verifyTradePrice(symbol, assetType, price);
+    if (!verification.ok) {
       return json({
-        error: 'crypto_trading_paused',
-        detail: 'Crypto trading is temporarily paused while we migrate to a unified price service. Stocks still work.'
-      }, 503);
+        error: verification.error,
+        detail: verification.detail,
+        server_price: verification.serverPrice ?? null,
+        client_price: price,
+        deviation_pct: verification.deviationPct ?? null,
+        source: verification.source ?? null,
+      }, 400);
     }
 
     const total = shares * price;
@@ -239,4 +262,99 @@ function json(obj, status = 200) {
     status,
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...CORS },
   });
+}
+
+// ==================== Server-side price verification ====================
+// Pull a live price server-side and compare to the client-submitted price.
+// Returns:
+//   { ok: true, serverPrice, source }
+//   { ok: false, error, detail, serverPrice?, deviationPct?, source? }
+//
+// Fail-closed policy: if no live price is available, the trade is rejected.
+// This is the hard stop that prevents a repeat of the 2026-04-18 incident
+// where a silent client-side fallback produced phantom prices for the ledger.
+async function verifyTradePrice(symbol, assetType, clientPrice) {
+  const limit = PRICE_DEVIATION_LIMITS[assetType];
+  if (!limit) {
+    return { ok: false, error: 'invalid_asset_type', detail: `unsupported asset_type=${assetType}` };
+  }
+
+  const live = assetType === 'crypto'
+    ? await fetchLiveCryptoPrice(symbol)
+    : await fetchLiveStockPrice(symbol);
+
+  if (!live || !isFinite(live.price) || live.price <= 0) {
+    // Fail closed -- no price, no trade.
+    return {
+      ok: false,
+      error: 'price_unverifiable',
+      detail: 'Live price unavailable for verification. Try again in a moment.',
+      source: live?.source || null,
+    };
+  }
+
+  const deviation = Math.abs(clientPrice - live.price) / live.price;
+  if (deviation > limit) {
+    return {
+      ok: false,
+      error: 'price_deviation',
+      detail: `Your price is ${(deviation * 100).toFixed(2)}% off the live market (limit ${(limit * 100).toFixed(0)}%). Refresh and retry.`,
+      serverPrice: live.price,
+      deviationPct: deviation * 100,
+      source: live.source,
+    };
+  }
+
+  return { ok: true, serverPrice: live.price, source: live.source };
+}
+
+// Crypto: Coinbase primary, CoinGecko fallback. Single-symbol variant of the
+// fetcher in api/price.js -- kept local so trades.js has no cross-file imports.
+async function fetchLiveCryptoPrice(symbol) {
+  // Coinbase first
+  try {
+    const res = await fetch(
+      `https://api.exchange.coinbase.com/products/${encodeURIComponent(symbol)}-USD/stats`,
+      { signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined }
+    );
+    if (res.ok) {
+      const d = await res.json();
+      const px = Number(d?.last);
+      if (isFinite(px) && px > 0) return { price: px, source: 'coinbase' };
+    }
+  } catch (_) { /* fall through */ }
+
+  // CoinGecko fallback
+  const id = COINGECKO_IDS[symbol];
+  if (!id) return null;
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
+      { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
+    );
+    if (!res.ok) return null;
+    const d = await res.json();
+    const px = Number(d?.[id]?.usd);
+    if (isFinite(px) && px > 0) return { price: px, source: 'coingecko' };
+  } catch (_) { /* fall through */ }
+
+  return null;
+}
+
+// Stocks: Finnhub. No fallback provider for stocks yet -- if Finnhub fails,
+// verifyTradePrice returns fail-closed, which is the correct outcome.
+async function fetchLiveStockPrice(symbol) {
+  const key = process.env.FINNHUB_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${key}`,
+      { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
+    );
+    if (!res.ok) return null;
+    const d = await res.json();
+    const px = Number(d?.c);
+    if (isFinite(px) && px > 0) return { price: px, source: 'finnhub' };
+  } catch (_) { /* fall through */ }
+  return null;
 }
