@@ -3084,6 +3084,10 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
   useEffect(() => { if (initialRoom && initialRoom !== activeRoom) setActiveRoom(initialRoom); }, [initialRoom]);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(true);
+  // Per-user read cursors for the active channel: { [user_label]: iso_timestamp }
+  // Populated by with_reads=1 in the group fetch. Drives the tiny-avatar row
+  // rendered under each message (shows who has scrolled past it).
+  const [reads, setReads] = useState({});
   const [newMsg, setNewMsg] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(null); // message id for reaction picker
   const [showQuickEmoji, setShowQuickEmoji] = useState(false); // input emoji picker
@@ -3212,10 +3216,14 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
           const threadFor = ch.threadFor || code;
           qs += `&thread_for=${encodeURIComponent(threadFor)}`;
         }
+        // Group + alerts also carry the reads map so we can render per-user
+        // read receipts below each message.
+        if (ch.channel === 'group' || ch.channel === 'alerts') qs += '&with_reads=1';
         const res = await fetch(`${API_BASE}/api/messages${qs}`, { headers: { 'X-User-Code': code } });
         const data = await res.json();
         if (!mounted || !data.ok) return;
         setMessages((data.messages || []).map(toUiMsg));
+        if (data.reads) setReads(data.reads);
       } catch (e) {
         // Silent: network hiccup, next poll will retry
       } finally {
@@ -3223,10 +3231,35 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
       }
     };
 
+    // Tell the server this user has now seen the most recent messages in
+    // this channel. Fires on room mount + every 10s while active AND every
+    // time the tab regains focus. The server stamps last_seen_at=now(); the
+    // reads map returned by fetchMessages then includes this user on the
+    // next poll, updating the tiny-avatar row under recent messages.
+    const markSeen = async () => {
+      try {
+        // Trade Alerts is a feed, not a conversation -- no seen tracking needed.
+        if (ch.channel === 'alerts') return;
+        await fetch(`${API_BASE}/api/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
+          body: JSON.stringify({ action: 'mark_seen', channel: ch.channel }),
+        });
+      } catch {}
+    };
+
     setLoadingMessages(true);
     fetchMessages();
-    const interval = setInterval(fetchMessages, 5000);
-    return () => { mounted = false; clearInterval(interval); };
+    markSeen();
+    const interval = setInterval(() => {
+      fetchMessages();
+      // Only bump seen while the tab is visible -- a background tab doesn't
+      // mean the user actually saw anything.
+      if (document.visibilityState === 'visible') markSeen();
+    }, 5000);
+    const onVis = () => { if (document.visibilityState === 'visible') { fetchMessages(); markSeen(); } };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { mounted = false; clearInterval(interval); document.removeEventListener('visibilitychange', onVis); };
   }, [activeRoom, code]);
 
   // Typing indicator -- will be driven by Supabase Realtime presence
@@ -3763,10 +3796,35 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
                       </div>
                     )}
 
-                    {/* Time + read receipts */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    {/* Time + per-user read receipts */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                       <span className="chat-msg-time">{m.time}</span>
-                      {m.own && <span style={{ color: m.read ? 'var(--primary-fixed)' : 'var(--outline)', fontSize: 12 }}>{'\u2713\u2713'}</span>}
+                      {/* Tiny avatar row: every user (besides the author) whose
+                          last_seen_at for this channel is >= this message's
+                          created_at. Check-mark sized at 14px so it reads as
+                          a read receipt, not a full avatar. */}
+                      {(() => {
+                        const seenBy = chatMemberList.filter(cm =>
+                          cm.label !== m.user &&
+                          reads[cm.label] &&
+                          new Date(reads[cm.label]) >= new Date(m.created_at)
+                        );
+                        if (seenBy.length === 0) {
+                          // Your own unread message shows a single hollow check
+                          // instead of a row of names -- clearer than "0 seen".
+                          return m.own ? <span style={{ color: 'var(--outline)', fontSize: 12 }} title="Sent">{'\u2713'}</span> : null;
+                        }
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`Seen by ${seenBy.map(s => s.label).join(', ')}`}>
+                            {seenBy.slice(0, 6).map(s => (
+                              <CharacterAvatar key={s.id || s.label} name={s.label} size={14} style={{ borderWidth: 1, borderRadius: '50%' }} />
+                            ))}
+                            {seenBy.length > 6 && (
+                              <span style={{ fontSize: 10, color: 'var(--outline)', fontFamily: 'var(--font-headline)' }}>+{seenBy.length - 6}</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {!m.own && m.reactions?.length === 0 && (
                         <button onClick={() => setShowEmojiPicker(showEmojiPicker === m.id ? null : m.id)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--outline)', padding: 0, opacity: 0.5 }}>
@@ -6375,6 +6433,89 @@ function ChatAlertModal({ alert, onDismiss, onOpen }) {
   );
 }
 
+// ==================== PERSISTENT UNREAD BANNER ====================
+// Sticky strip above the Header that stays visible until unread messages have
+// been viewed. Unlike ChatAlertModal (which auto-dismisses after 15s), this
+// banner only disappears when the user actually opens the relevant channel
+// -- mark_seen fires, the server row updates, and the next useUnreadSummary
+// poll returns total:0, which unmounts this component.
+function UnreadHeaderBanner({ summary, activePage, currentChatRoom, isAdmin, onOpen }) {
+  const latest = summary && summary.latest_unread;
+  if (!latest || !summary.total) return null;
+  // Suppress when the user is already on the chat page looking at the
+  // same channel the unread is in. Admins on Milburn see any dm:* room as
+  // "watching Milburn" -- they'll clear their own unread by scrolling through
+  // threads, and forcing them to read every thread before the banner clears
+  // would be hostile.
+  const isWatching = (() => {
+    if (activePage !== 'chat') return false;
+    if (latest.channel === 'group' && currentChatRoom === 'general') return true;
+    if (latest.channel === 'alerts' && currentChatRoom === 'trades') return true;
+    if (latest.channel === 'milburn') {
+      // Admins only suppress when on the exact dm:{thread_for} room so a
+      // second unread in another thread still surfaces.
+      if (isAdmin && latest.thread_for && currentChatRoom === ('dm:' + latest.thread_for)) return true;
+      if (!isAdmin && currentChatRoom === 'milburn') return true;
+    }
+    return false;
+  })();
+  if (isWatching) return null;
+
+  const preview = (latest.preview || '').trim();
+  const isGif = isImageContent(preview);
+  const roomLabel =
+    latest.channel === 'group' ? 'Group chat'
+    : latest.channel === 'alerts' ? 'Trade alerts'
+    : latest.channel === 'milburn' ? (isAdmin ? 'Ask Milburn inbox' : 'Milburn DM')
+    : 'Chat';
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); }}
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 90,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '8px 16px',
+        background: 'var(--volt, #c7ff00)',
+        color: '#0a0a0a',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-body)',
+        borderBottom: '1px solid rgba(0,0,0,0.15)',
+      }}
+    >
+      <CharacterAvatar name={latest.author} size={28} style={{ borderRadius: '50%', flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ fontSize: 11, fontFamily: 'var(--font-label)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="chat_bubble" size={12} />
+          <span>{summary.total > 1 ? `${summary.total} unread` : 'Unread'} -- {roomLabel}</span>
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <strong style={{ fontWeight: 800 }}>{latest.author || 'Someone'}:</strong>{' '}
+          {isGif ? <em>Sent a GIF</em> : (preview || '(empty message)')}
+        </div>
+      </div>
+      <div style={{
+        padding: '6px 12px',
+        background: '#0a0a0a',
+        color: 'var(--volt, #c7ff00)',
+        fontSize: 11,
+        fontFamily: 'var(--font-label)',
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        fontWeight: 700,
+        flexShrink: 0,
+      }}>Open Chat</div>
+    </div>
+  );
+}
+
 // ==================== CHAT ALERTS HOOK ====================
 // Polls the group channel and the user's Milburn thread(s) every 10 seconds
 // and surfaces a banner when a new message arrives from someone else in a
@@ -6424,6 +6565,44 @@ function useChatMembers() {
     return () => { mounted = false; clearInterval(iv); };
   }, []);
   return members;
+}
+
+// ==================== UNREAD SUMMARY HOOK ====================
+// Polls /api/messages?unread=1 every 10s. Returns { total, channels, latest_unread }.
+// Drives the persistent top-nav banner -- the banner keeps showing until the user
+// actually opens the channel, which fires mark_seen (see ChatPage), which wipes
+// the unread row on the next poll. No localStorage, no per-device drift --
+// the server-side stockrocket_chat_reads table is the single source of truth.
+function useUnreadSummary({ code, activePage, currentChatRoom }) {
+  const [summary, setSummary] = useState({ total: 0, channels: {}, latest_unread: null });
+  useEffect(() => {
+    if (!code) { setSummary({ total: 0, channels: {}, latest_unread: null }); return; }
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/messages?unread=1`, {
+          headers: { 'X-User-Code': code },
+          cache: 'no-store',
+        });
+        const data = await res.json();
+        if (!mounted || !data.ok) return;
+        setSummary({
+          total: Number(data.total) || 0,
+          channels: data.channels || {},
+          latest_unread: data.latest_unread || null,
+        });
+      } catch {
+        // Silent -- next poll will retry
+      }
+    };
+    poll();
+    const iv = setInterval(poll, 10000);
+    return () => { mounted = false; clearInterval(iv); };
+    // Re-run when the user navigates. Landing on the chat page triggers
+    // mark_seen client-side, and re-running this effect gives us a prompt
+    // fetch so the banner clears fast instead of waiting up to 10s.
+  }, [code, activePage, currentChatRoom]);
+  return summary;
 }
 
 function useChatAlerts({ code, isAdmin, activePage, currentChatRoom, setAlert }) {
@@ -6660,6 +6839,30 @@ function App() {
     currentChatRoom,
     setAlert: setChatAlert,
   });
+
+  // Persistent unread summary -- drives the sticky banner that only clears
+  // when the user actually opens the channel (mark_seen fires in ChatPage).
+  const unreadSummary = useUnreadSummary({
+    code: accessCode,
+    activePage,
+    currentChatRoom,
+  });
+  const handleOpenUnreadBanner = () => {
+    const latest = unreadSummary && unreadSummary.latest_unread;
+    if (!latest) return;
+    // Map channel -> room id. Admin Milburn routes to the specific
+    // dm:{thread_for} so the admin lands directly in the thread that
+    // has the unread message. Non-admins have a single Ask Milburn DM.
+    let room = 'general';
+    if (latest.channel === 'group') room = 'general';
+    else if (latest.channel === 'alerts') room = 'trades';
+    else if (latest.channel === 'milburn') {
+      room = isAdmin ? (latest.thread_for ? 'dm:' + latest.thread_for : 'general') : 'milburn';
+    }
+    setPendingChatRoom(room);
+    setActivePage('chat');
+  };
+
   const handleOpenChatAlert = () => {
     if (!chatAlert) return;
     // Mark the target room's "seen" timestamp as now so we don't re-alert.
@@ -6735,6 +6938,7 @@ function App() {
   if (stockDetail) {
     return (
       <div className="app-layout">
+        <UnreadHeaderBanner summary={unreadSummary} activePage={activePage} currentChatRoom={currentChatRoom} isAdmin={isAdmin} onOpen={() => { setStockDetail(null); handleOpenUnreadBanner(); }} />
         <Header activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
         {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
         <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} milburnUnread={milburnUnread} />
@@ -6767,6 +6971,7 @@ function App() {
 
   return (
     <div className="app-layout">
+      <UnreadHeaderBanner summary={unreadSummary} activePage={activePage} currentChatRoom={currentChatRoom} isAdmin={isAdmin} onOpen={handleOpenUnreadBanner} />
       <Header activePage={activePage} setActivePage={setActivePage} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
       <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} milburnUnread={milburnUnread} />
