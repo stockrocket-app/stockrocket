@@ -6476,38 +6476,42 @@ function UnreadHeaderBanner({ summary, activePage, currentChatRoom, isAdmin, onO
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); }}
       style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 90,
+        // Regular block element rendered OUTSIDE app-layout (see App render)
+        // so it doesn't land in the CSS grid sidebar slot. Sits above the
+        // layout and pushes everything down a thin 38px strip.
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        padding: '8px 16px',
+        width: '100%',
+        height: 38,
+        padding: '0 16px',
         background: 'var(--volt, #c7ff00)',
         color: '#0a0a0a',
         cursor: 'pointer',
         fontFamily: 'var(--font-body)',
-        borderBottom: '1px solid rgba(0,0,0,0.15)',
+        borderBottom: '1px solid rgba(0,0,0,0.2)',
+        boxSizing: 'border-box',
+        flexShrink: 0,
       }}
     >
-      <CharacterAvatar name={latest.author} size={28} style={{ borderRadius: '50%', flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <div style={{ fontSize: 11, fontFamily: 'var(--font-label)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <CharacterAvatar name={latest.author} size={24} style={{ borderRadius: '50%', flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
           <Icon name="chat_bubble" size={12} />
-          <span>{summary.total > 1 ? `${summary.total} unread` : 'Unread'} -- {roomLabel}</span>
-        </div>
-        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {summary.total > 1 ? `${summary.total} unread` : 'Unread'} -- {roomLabel}
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
           <strong style={{ fontWeight: 800 }}>{latest.author || 'Someone'}:</strong>{' '}
           {isGif ? <em>Sent a GIF</em> : (preview || '(empty message)')}
-        </div>
+        </span>
       </div>
       <div style={{
-        padding: '6px 12px',
+        padding: '4px 10px',
         background: '#0a0a0a',
         color: 'var(--volt, #c7ff00)',
-        fontSize: 11,
+        fontSize: 10,
         fontFamily: 'var(--font-label)',
-        letterSpacing: '0.1em',
+        letterSpacing: '0.12em',
         textTransform: 'uppercase',
         fontWeight: 700,
         flexShrink: 0,
@@ -6937,18 +6941,19 @@ function App() {
   // Stock detail page (overlay -- any page can navigate here)
   if (stockDetail) {
     return (
-      <div className="app-layout">
+      <>
         <UnreadHeaderBanner summary={unreadSummary} activePage={activePage} currentChatRoom={currentChatRoom} isAdmin={isAdmin} onOpen={() => { setStockDetail(null); handleOpenUnreadBanner(); }} />
-        <Header activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
-        {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} milburnUnread={milburnUnread} />
-        <main className="main-content"><div className="main-inner">
-          <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} user={user} code={accessCode} />
-        </div></main>
-        <ChatAlertModal alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
-        <Notification notification={notification} onClose={() => setNotification(null)} />
-        <AchievementToast achievement={newAchievement} />
-      </div>
+        <div className="app-layout">
+          <Header activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
+          {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
+          <Sidebar activePage={activePage} setActivePage={(p) => { setStockDetail(null); setActivePage(p); }} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} milburnUnread={milburnUnread} />
+          <main className="main-content"><div className="main-inner">
+            <StockDetailPage symbol={stockDetail} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} onBack={() => setStockDetail(null)} user={user} code={accessCode} />
+          </div></main>
+          <Notification notification={notification} onClose={() => setNotification(null)} />
+          <AchievementToast achievement={newAchievement} />
+        </div>
+      </>
     );
   }
 
@@ -6970,8 +6975,9 @@ function App() {
   };
 
   return (
-    <div className="app-layout">
+    <>
       <UnreadHeaderBanner summary={unreadSummary} activePage={activePage} currentChatRoom={currentChatRoom} isAdmin={isAdmin} onOpen={handleOpenUnreadBanner} />
+    <div className="app-layout">
       <Header activePage={activePage} setActivePage={setActivePage} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
       <Sidebar activePage={activePage} setActivePage={setActivePage} user={user} onClose={() => setSidebarOpen(false)} className={sidebarOpen ? 'mobile-open' : ''} isAdmin={isAdmin} tier={tier} onLogout={handleLogout} milburnUnread={milburnUnread} />
@@ -6999,10 +7005,10 @@ function App() {
           {renderPage()}
         </div>
       </main>
-      <ChatAlertModal alert={chatAlert} onDismiss={() => setChatAlert(null)} onOpen={handleOpenChatAlert} />
       <Notification notification={notification} onClose={() => setNotification(null)} />
       <AchievementToast achievement={newAchievement} />
     </div>
+    </>
   );
 }
 
