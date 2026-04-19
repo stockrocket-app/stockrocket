@@ -183,7 +183,15 @@ async function handleUnreadSummary(db, me) {
   const seenByChannel = {};
   for (const r of readRows || []) seenByChannel[r.channel] = r.last_seen_at;
 
+  // Channels tracked for the summary. Trade alerts are still counted so the
+  // sidebar and per-channel callouts can light up, but they are INTENTIONALLY
+  // excluded from `total` / `latest_unread` below -- the persistent top-nav
+  // banner should only nag the user for real conversations (group + milburn),
+  // not the trade-alerts feed (which auto-posts on every execution and is
+  // noisy by design). RSJ asked for this: "getting too loud with the trade
+  // alert -- just do the messages."
   const channels = ['group', 'alerts'];
+  const NON_BANNER_CHANNELS = new Set(['alerts']);
   // Milburn: a user only sees their own thread; an admin sees all threads.
   const out = { ok: true, channels: {}, total: 0, latest_unread: null };
 
@@ -207,6 +215,7 @@ async function handleUnreadSummary(db, me) {
         preview: (unread[0].content || '').slice(0, 120),
       } : null,
     };
+    if (NON_BANNER_CHANNELS.has(ch)) continue; // feed channel -- don't drive the banner
     out.total += unread.length;
     if (unread[0] && (!out.latest_unread || unread[0].created_at > out.latest_unread.created_at)) {
       out.latest_unread = { channel: ch, ...out.channels[ch].latest };
