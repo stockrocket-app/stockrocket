@@ -20,12 +20,14 @@ export const config = { runtime: 'edge' };
 const STARTING_CASH = 100000;
 const EPSILON = 1e-8;
 
-// Server-side price verification bounds. Client-submitted price must land
-// within these deviation bands of the live price the server pulls at trade
-// time. See docs/PRICE_INVARIANTS.md for the rationale. Bounds are intentionally
-// loose enough to absorb normal tick drift between the client's last sample
-// and the server fetch, tight enough to reject a stale or mocked value.
-const PRICE_DEVIATION_LIMITS = { stock: 0.03, crypto: 0.05 };
+// Server-authoritative execution price drift thresholds. The server always
+// uses ITS OWN live price as the execution price; the client price is
+// advisory. These thresholds only govern an audit flag (display_drift_pct):
+// if the client displayed something farther off than this, we record it in
+// the trade row so we can investigate after the fact. Nothing bounces. The
+// only hard rejection is "no live price available at all anywhere" which
+// still fails closed. See docs/PRICE_INVARIANTS.md.
+const DISPLAY_DRIFT_FLAG = { stock: 0.03, crypto: 0.05 };
 
 // CoinGecko symbol -> id map (mirrored from api/price.js). Kept local so this
 // Edge Function has zero imports from neighbours.
@@ -121,34 +123,36 @@ export default async function handler(req) {
     if (!isFinite(price) || price <= 0) return json({ error: 'invalid_price' }, 400);
 
     // ------------------------------------------------------------------
-    // SERVER-SIDE PRICE VERIFICATION -- 2026-04-18 incident fix
+    // SERVER-AUTHORITATIVE PRICING -- 2026-04-18 incident fix (final form)
     // ------------------------------------------------------------------
-    // The client sends the price it just rendered; the server MUST NOT trust
-    // it. We pull a live price here (Coinbase primary, CoinGecko fallback for
-    // crypto; Finnhub for stocks) and reject the trade if the client price
-    // deviates more than PRICE_DEVIATION_LIMITS allows. If the server cannot
-    // get a live price at all, we FAIL CLOSED -- no trade, no phantom ledger
-    // row. This closes the last hole that made the 04-18 incident possible.
-    // See docs/PRICE_INVARIANTS.md.
-    const verification = await verifyTradePrice(symbol, assetType, price);
-    if (!verification.ok) {
+    // The server fetches a live price (Coinbase -> CoinGecko for crypto,
+    // Finnhub for stocks) and USES IT as the execution price. The client-
+    // submitted price is advisory only. This eliminates the rejection-loop
+    // class of bugs (fast-moving crypto bouncing every retry) and makes the
+    // phantom-price class impossible -- the server literally cannot trade
+    // against a mock value because it never reads the client's price as
+    // truth. Fail-closed only if no vendor returns a price at all.
+    const resolved = await fetchLivePrice(symbol, assetType);
+    if (!resolved || !isFinite(resolved.price) || resolved.price <= 0) {
       return json({
-        error: verification.error,
-        detail: verification.detail,
-        server_price: verification.serverPrice ?? null,
+        error: 'price_unverifiable',
+        detail: 'Live price unavailable right now. Please try again in a moment.',
         client_price: price,
-        deviation_pct: verification.deviationPct ?? null,
-        source: verification.source ?? null,
       }, 400);
     }
-
-    const total = shares * price;
+    const executionPrice = resolved.price;
+    const displayDrift = Math.abs(price - executionPrice) / executionPrice;
+    const displayDriftFlagged = displayDrift > (DISPLAY_DRIFT_FLAG[assetType] || 0.05);
+    const total = shares * executionPrice;
 
     const portfolio = await getPortfolio(me.code);
     const cash = Number(portfolio.cash) || 0;
     const holdings = (portfolio.holdings && typeof portfolio.holdings === 'object') ? portfolio.holdings : {};
     let newCash = cash;
     const newHoldings = { ...holdings };
+
+    // Capture pre-trade avg cost so SELL can compute realized P&L in the response
+    const preTradeAvgCost = Number(holdings[symbol]?.avgCost) || null;
 
     if (type === 'BUY') {
       if (total > cash + 0.005) {
@@ -160,7 +164,7 @@ export default async function handler(req) {
         const curShares = Number(existing.shares) || 0;
         const curCost = Number(existing.avgCost) || 0;
         const newShares = curShares + shares;
-        const newAvg = newShares > 0 ? ((curShares * curCost) + total) / newShares : price;
+        const newAvg = newShares > 0 ? ((curShares * curCost) + total) / newShares : executionPrice;
         newHoldings[symbol] = {
           symbol,
           name: name || existing.name || symbol,
@@ -169,7 +173,7 @@ export default async function handler(req) {
           avgCost: newAvg,
         };
       } else {
-        newHoldings[symbol] = { symbol, name: name || symbol, assetType, shares, avgCost: price };
+        newHoldings[symbol] = { symbol, name: name || symbol, assetType, shares, avgCost: executionPrice };
       }
     } else {
       // SELL
@@ -190,7 +194,7 @@ export default async function handler(req) {
       }
     }
 
-    // Insert trade row (append-only ledger)
+    // Insert trade row (append-only ledger) -- price = executionPrice (server-authoritative)
     const tradeRow = {
       user_code: me.code,
       trade_type: type,
@@ -198,7 +202,7 @@ export default async function handler(req) {
       symbol,
       name: name || symbol,
       shares,
-      price,
+      price: executionPrice,
       total,
       cash_after: newCash,
     };
@@ -215,10 +219,30 @@ export default async function handler(req) {
     const { data: portUp, error: portErr } = await db.upsert('stockrocket_portfolios', portfolioRow, 'user_code');
     if (portErr) return json({ error: 'portfolio_upsert_failed', detail: portErr }, 500);
 
+    // Enriched execution metadata for the client to spell out P&L
+    const executionMeta = {
+      executed_price: executionPrice,
+      client_price: price,
+      display_drift_pct: displayDrift * 100,
+      display_drift_flagged: displayDriftFlagged,
+      source: resolved.source,
+      // For SELL: realized P&L vs the lot-level avg cost at the moment of sale
+      realized_gain: type === 'SELL' && preTradeAvgCost
+        ? (executionPrice - preTradeAvgCost) * shares
+        : null,
+      realized_gain_pct: type === 'SELL' && preTradeAvgCost
+        ? ((executionPrice - preTradeAvgCost) / preTradeAvgCost) * 100
+        : null,
+      avg_cost_at_trade: preTradeAvgCost,
+      // For BUY: the new blended avg cost after this purchase
+      new_avg_cost: type === 'BUY' ? Number(newHoldings[symbol]?.avgCost) : null,
+    };
+
     return json({
       ok: true,
       trade: tradeIns?.[0] || tradeRow,
       portfolio: portUp?.[0] || portfolioRow,
+      execution: executionMeta,
     });
   }
 
@@ -264,48 +288,16 @@ function json(obj, status = 200) {
   });
 }
 
-// ==================== Server-side price verification ====================
-// Pull a live price server-side and compare to the client-submitted price.
-// Returns:
-//   { ok: true, serverPrice, source }
-//   { ok: false, error, detail, serverPrice?, deviationPct?, source? }
-//
-// Fail-closed policy: if no live price is available, the trade is rejected.
-// This is the hard stop that prevents a repeat of the 2026-04-18 incident
-// where a silent client-side fallback produced phantom prices for the ledger.
-async function verifyTradePrice(symbol, assetType, clientPrice) {
-  const limit = PRICE_DEVIATION_LIMITS[assetType];
-  if (!limit) {
-    return { ok: false, error: 'invalid_asset_type', detail: `unsupported asset_type=${assetType}` };
-  }
-
-  const live = assetType === 'crypto'
-    ? await fetchLiveCryptoPrice(symbol)
-    : await fetchLiveStockPrice(symbol);
-
-  if (!live || !isFinite(live.price) || live.price <= 0) {
-    // Fail closed -- no price, no trade.
-    return {
-      ok: false,
-      error: 'price_unverifiable',
-      detail: 'Live price unavailable for verification. Try again in a moment.',
-      source: live?.source || null,
-    };
-  }
-
-  const deviation = Math.abs(clientPrice - live.price) / live.price;
-  if (deviation > limit) {
-    return {
-      ok: false,
-      error: 'price_deviation',
-      detail: `Your price is ${(deviation * 100).toFixed(2)}% off the live market (limit ${(limit * 100).toFixed(0)}%). Refresh and retry.`,
-      serverPrice: live.price,
-      deviationPct: deviation * 100,
-      source: live.source,
-    };
-  }
-
-  return { ok: true, serverPrice: live.price, source: live.source };
+// ==================== Server-authoritative price fetch ====================
+// Pull a live price via the same multi-source chain used by /api/price
+// (Coinbase primary, CoinGecko fallback for crypto; Finnhub for stocks).
+// Returns { price, source } or null on total vendor failure. The caller
+// uses the returned price as the AUTHORITATIVE execution price -- the
+// client-submitted price is advisory only, used for display-drift audit.
+async function fetchLivePrice(symbol, assetType) {
+  if (assetType === 'crypto') return fetchLiveCryptoPrice(symbol);
+  if (assetType === 'stock') return fetchLiveStockPrice(symbol);
+  return null;
 }
 
 // Crypto: Coinbase primary, CoinGecko fallback. Single-symbol variant of the

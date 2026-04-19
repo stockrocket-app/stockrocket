@@ -176,7 +176,10 @@ async function executeServerTrade({ code, type, symbol, name, assetType, shares,
     if (!res.ok || !data.ok) {
       return { ok: false, error: data.error || 'trade_failed', detail: data.detail };
     }
-    return { ok: true, portfolio: data.portfolio, trade: data.trade };
+    // Server returns the authoritative execution price in data.trade.price and
+    // enriched P&L in data.execution. Pass both through so the caller can show
+    // what actually filled (vs what the client displayed at tap time).
+    return { ok: true, portfolio: data.portfolio, trade: data.trade, execution: data.execution || null };
   } catch {
     return { ok: false, error: 'network_error' };
   }
@@ -191,6 +194,8 @@ function errorMessageForTrade(err, detail) {
     case 'invalid_shares':        return 'Invalid share amount';
     case 'invalid_price':         return 'Invalid price';
     case 'symbol_required':       return 'Symbol required';
+    case 'price_unverifiable':    return 'Live price is unavailable right now. Give it a second and try again.';
+    case 'stale_price':           return detail || 'Live price unavailable -- please wait for prices to refresh.';
     case 'auth_required':
     case 'auth_denied':           return 'Please sign in again';
     case 'network_error':         return 'Network error -- trade not saved. Please retry.';
@@ -1550,10 +1555,16 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
       holdings: hydrated.holdings,
       trades: [...(prev.trades || []), newTrade],
     }));
-    setNotification({ type: 'success', message: `${tradeType} ${qty} ${asset.symbol} @ ${formatCurrency(asset.price)}` });
+    // Use the SERVER's execution price in the toast -- that's the price actually paid.
+    const execPx = Number(result.trade?.price) || asset.price;
+    const ex = result.execution || {};
+    const gain = (tradeType === 'SELL' && isFinite(ex.realized_gain))
+      ? ` • Realized ${ex.realized_gain >= 0 ? '+' : ''}${formatCurrency(ex.realized_gain)} (${ex.realized_gain_pct >= 0 ? '+' : ''}${(ex.realized_gain_pct || 0).toFixed(2)}%)`
+      : '';
+    setNotification({ type: 'success', message: `${tradeType} ${qty} ${asset.symbol} @ ${formatCurrency(execPx)}${gain}` });
     setShares('');
-    // Broadcast to Trade Alerts channel (fire-and-forget)
-    postTradeAlert({ code, type: tradeType, symbol: asset.symbol, shares: qty, price: asset.price });
+    // Broadcast to Trade Alerts channel at the SERVER price (not what the UI rendered)
+    postTradeAlert({ code, type: tradeType, symbol: asset.symbol, shares: qty, price: execPx });
   };
 
   if (!asset) return <div className="empty-state"><Icon name="error" /><h3>Asset not found</h3><button className="btn btn-secondary" onClick={onBack}>Go Back</button></div>;
@@ -2305,13 +2316,14 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
           <div className="empty-state"><Icon name="rocket_launch" /><h3>No holdings yet</h3><p>Head to the Trade page to make your first investment</p></div>
         ) : (
           <table className="data-table">
-            <thead><tr><th>Asset_Name</th><th>Shares</th><th>Price</th><th>Total</th><th>P/L</th><th>Action</th></tr></thead>
+            <thead><tr><th>Asset_Name</th><th>Shares</th><th>Avg Cost</th><th>Live</th><th>Total</th><th>P/L</th><th>Action</th></tr></thead>
             <tbody>
               {portfolio.holdings.map(h => (
                 <tr key={h.symbol}>
                   <td><div className="stock-symbol-text">{h.symbol}</div><div className="stock-name-text">{h.name}</div></td>
                   <td style={{ fontFamily: 'var(--font-headline)' }}>{h.shares}</td>
-                  <td style={{ fontFamily: 'var(--font-headline)' }}>{formatCurrency(h.currentPrice)}</td>
+                  <td style={{ fontFamily: 'var(--font-headline)' }}>{formatCurrency(h.avgCost)}</td>
+                  <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(h.currentPrice)}</td>
                   <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(h.value)}</td>
                   <td><span className={`badge ${h.gain >= 0 ? 'badge-primary' : 'badge-error'}`}>{h.gain >= 0 ? '+' : ''}{formatCurrency(h.gain)} ({h.returnPercent.toFixed(1)}%)</span></td>
                   <td><button className="btn btn-ghost btn-sm">Execute</button></td>
@@ -2441,15 +2453,16 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
     const assetType = selectedAsset.type || (crypto?.some(c => c.symbol === selectedAsset.symbol) ? 'crypto' : 'stock');
     const result = await executeServerTrade({
       code, type: tradeType, symbol: selectedAsset.symbol, name: selectedAsset.name,
-      assetType, shares: qty, price: execPrice,
+      assetType, shares: qty, price: execPrice, // client price is advisory; server is authoritative
     });
     if (!result.ok) {
       setNotification({ type: 'error', message: errorMessageForTrade(result.error, result.detail) });
       return;
     }
-    // Server confirmed + persisted. Hydrate with live prices, append trade to history.
+    // Server confirmed + persisted. Server's executed price is authoritative.
     const hydrated = hydrateServerPortfolio(result.portfolio, [], stocks, crypto);
-    const newTrade = { ...shapeServerTrade(result.trade), orderType };
+    const newTrade = { ...shapeServerTrade(result.trade), orderType, execution: result.execution || null };
+    const execPx = Number(result.trade?.price) || execPrice;
     setPortfolio(prev => ({
       cash: hydrated.cash,
       holdings: hydrated.holdings,
@@ -2459,8 +2472,8 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
     setShares('');
     setLimitPrice('');
     setTimeout(() => setShowSuccess(null), 4000);
-    // Broadcast to Trade Alerts channel (fire-and-forget)
-    postTradeAlert({ code, type: tradeType, symbol: selectedAsset.symbol, shares: qty, price: execPrice });
+    // Broadcast to Trade Alerts channel with the SERVER's executed price (not client price)
+    postTradeAlert({ code, type: tradeType, symbol: selectedAsset.symbol, shares: qty, price: execPx });
   };
 
   // Educational tip based on current action
@@ -2496,11 +2509,34 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
             <p style={{ fontSize: 16, color: 'var(--on-surface-variant)', marginBottom: 16 }}>
               {showSuccess.type === 'BUY' ? 'Bought' : 'Sold'} <strong>{showSuccess.shares} {showSuccess.symbol}</strong> @ {formatCurrency(showSuccess.price)}
             </p>
-            <div style={{ padding: 20, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-xl)', marginBottom: 20, border: `1px solid ${showSuccess.type === 'BUY' ? 'rgba(255,113,108,0.3)' : 'rgba(0,255,163,0.3)'}` }}>
+            <div style={{ padding: 20, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-xl)', marginBottom: 12, border: `1px solid ${showSuccess.type === 'BUY' ? 'rgba(255,113,108,0.3)' : 'rgba(0,255,163,0.3)'}` }}>
               <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900, color: showSuccess.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)' }}>
                 {showSuccess.type === 'BUY' ? '-' : '+'}{formatCurrency(showSuccess.total)}
               </div>
             </div>
+            {/* Server-driven P&L block: shows blended avg on BUY, realized gain on SELL */}
+            {showSuccess.execution && showSuccess.type === 'BUY' && Number.isFinite(showSuccess.execution.new_avg_cost) && (
+              <div style={{ padding: '12px 16px', background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                <span className="label-system">New_Avg_Cost</span>
+                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(showSuccess.execution.new_avg_cost)}</span>
+              </div>
+            )}
+            {showSuccess.execution && showSuccess.type === 'SELL' && Number.isFinite(showSuccess.execution.realized_gain) && (
+              <div style={{ padding: '12px 16px', background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span className="label-system">Realized_Gain</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 800, color: showSuccess.execution.realized_gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>
+                    {showSuccess.execution.realized_gain >= 0 ? '+' : ''}{formatCurrency(showSuccess.execution.realized_gain)} ({showSuccess.execution.realized_gain_pct >= 0 ? '+' : ''}{(showSuccess.execution.realized_gain_pct || 0).toFixed(2)}%)
+                  </span>
+                </div>
+                {Number.isFinite(showSuccess.execution.avg_cost_at_trade) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--on-surface-variant)', fontSize: 12 }}>
+                    <span>avg cost was</span>
+                    <span>{formatCurrency(showSuccess.execution.avg_cost_at_trade)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <p className="text-muted" style={{ fontSize: 12 }}>Saved to your portfolio</p>
           </div>
         </div>
@@ -2777,15 +2813,16 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
     }
     const result = await executeServerTrade({
       code, type: tradeType, symbol: selected.symbol, name: selected.name,
-      assetType: 'crypto', shares: qty, price: selected.price,
+      assetType: 'crypto', shares: qty, price: selected.price, // advisory only; server is authoritative
     });
     if (!result.ok) {
       setNotification({ type: 'error', message: errorMessageForTrade(result.error, result.detail) });
       return;
     }
-    // Server returns the full portfolio (stocks + crypto). Hydrate with live prices.
+    // Server returns the full portfolio (stocks + crypto) and the authoritative executed price.
     const hydrated = hydrateServerPortfolio(result.portfolio, [], stocks, crypto);
-    const newTrade = shapeServerTrade(result.trade);
+    const newTrade = { ...shapeServerTrade(result.trade), execution: result.execution || null };
+    const execPx = Number(result.trade?.price) || selected.price;
     setPortfolio(prev => ({
       cash: hydrated.cash,
       holdings: hydrated.holdings,
@@ -2794,8 +2831,8 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
     setShowSuccess(newTrade);
     setAmount('');
     setTimeout(() => setShowSuccess(null), 4000);
-    // Broadcast to Trade Alerts channel (fire-and-forget)
-    postTradeAlert({ code, type: tradeType, symbol: selected.symbol, shares: qty, price: selected.price });
+    // Broadcast with server's executed price (not client price)
+    postTradeAlert({ code, type: tradeType, symbol: selected.symbol, shares: qty, price: execPx });
   };
 
   return (
@@ -2810,13 +2847,36 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
       {showSuccess && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease' }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }} />
-          <div style={{ position: 'relative', textAlign: 'center', padding: '48px 64px' }}>
+          <div style={{ position: 'relative', textAlign: 'center', padding: '48px 64px', maxWidth: 420 }}>
             <div style={{ fontSize: 64, marginBottom: 16, animation: 'bounceIn 0.5s ease' }}>{showSuccess.type === 'BUY' ? '🚀' : '💰'}</div>
             <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900, marginBottom: 8 }}>{showSuccess.type === 'BUY' ? 'Purchase Complete!' : 'Sale Complete!'}</h2>
             <p className="text-muted" style={{ fontSize: 16, marginBottom: 16 }}>{showSuccess.type === 'BUY' ? 'Bought' : 'Sold'} <strong>{showSuccess.shares} {showSuccess.symbol}</strong> @ {formatCurrency(showSuccess.price)}</p>
-            <div style={{ padding: 20, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-xl)', border: `1px solid ${showSuccess.type === 'BUY' ? 'rgba(255,113,108,0.3)' : 'rgba(0,255,163,0.3)'}` }}>
+            <div style={{ padding: 20, background: 'var(--surface-container-high)', borderRadius: 'var(--radius-xl)', marginBottom: 12, border: `1px solid ${showSuccess.type === 'BUY' ? 'rgba(255,113,108,0.3)' : 'rgba(0,255,163,0.3)'}` }}>
               <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900, color: showSuccess.type === 'BUY' ? 'var(--error)' : 'var(--primary-fixed)' }}>{showSuccess.type === 'BUY' ? '-' : '+'}{formatCurrency(showSuccess.total)}</div>
             </div>
+            {/* Server-driven P&L block */}
+            {showSuccess.execution && showSuccess.type === 'BUY' && Number.isFinite(showSuccess.execution.new_avg_cost) && (
+              <div style={{ padding: '12px 16px', background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                <span className="label-system">New_Avg_Cost</span>
+                <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(showSuccess.execution.new_avg_cost)}</span>
+              </div>
+            )}
+            {showSuccess.execution && showSuccess.type === 'SELL' && Number.isFinite(showSuccess.execution.realized_gain) && (
+              <div style={{ padding: '12px 16px', background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span className="label-system">Realized_Gain</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 800, color: showSuccess.execution.realized_gain >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>
+                    {showSuccess.execution.realized_gain >= 0 ? '+' : ''}{formatCurrency(showSuccess.execution.realized_gain)} ({showSuccess.execution.realized_gain_pct >= 0 ? '+' : ''}{(showSuccess.execution.realized_gain_pct || 0).toFixed(2)}%)
+                  </span>
+                </div>
+                {Number.isFinite(showSuccess.execution.avg_cost_at_trade) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--on-surface-variant)', fontSize: 12 }}>
+                    <span>avg cost was</span>
+                    <span>{formatCurrency(showSuccess.execution.avg_cost_at_trade)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
