@@ -1337,7 +1337,13 @@ function useLeaderboard(myCode, stocks, crypto) {
     return () => { mounted = false; clearInterval(iv); };
   }, [myCode]);
 
-  // Live price index -- rebuilt on every stocks/crypto change
+  // Live price index -- rebuilt on every stocks/crypto change.
+  // Values may be null when the feed is stale (crypto defence after 2026-04-18 incident).
+  // Consumers MUST fall back to avgCost when a symbol's live price is null/missing;
+  // valuing shares at $0 would make users holding stale-feed assets look like huge
+  // losers even though their money is still there. Trading is blocked elsewhere
+  // (executeServerTrade + UI Buy button) when price is null -- valuation uses cost
+  // basis, which is an honest floor ("what they paid", no phantom gains/losses).
   const allAssets = [...(stocks || []), ...(crypto || [])];
   const priceBy = new Map(allAssets.map(a => [a.symbol, a.price]));
 
@@ -1348,11 +1354,16 @@ function useLeaderboard(myCode, stocks, crypto) {
       const h = holdingsObj[sym] || {};
       const shares = Number(h.shares) || 0;
       const avgCost = Number(h.avgCost) || 0;
-      const livePrice = priceBy.has(sym) ? priceBy.get(sym) : avgCost;
+      // Nullish coalescing: null/undefined live price -> fall back to avgCost.
+      // `priceBy.get()` returns undefined for missing symbols and null for
+      // stale-feed symbols; both fall back correctly.
+      const rawLive = priceBy.get(sym);
+      const livePrice = (Number.isFinite(rawLive) && rawLive > 0) ? rawLive : avgCost;
+      const priceStale = !(Number.isFinite(rawLive) && rawLive > 0);
       const value = shares * livePrice;
       const gain = value - shares * avgCost;
       const returnPercent = avgCost > 0 ? ((livePrice - avgCost) / avgCost) * 100 : 0;
-      return { symbol: sym, name: h.name || sym, assetType: h.assetType || 'stock', shares, avgCost, livePrice, value, gain, returnPercent };
+      return { symbol: sym, name: h.name || sym, assetType: h.assetType || 'stock', shares, avgCost, livePrice, value, gain, returnPercent, priceStale };
     });
 
     const cash = Number(p.cash) || 0;
@@ -1941,10 +1952,19 @@ function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin,
 function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achievementsUnlocked, achievementsTotal, leaderboard }) {
   const [chartPeriod, setChartPeriod] = useState('1M');
   const allAssets = [...(stocks || []), ...(crypto || [])];
-  // Recalculate holdings with current prices
+  // Recalculate holdings with current prices.
+  // Fallback chain: live > previously-rendered currentPrice > avgCost. Null-safe:
+  // when the crypto feed is stale the live entry exists but live.price is null
+  // (see LiveData.fetchCrypto), so we must NOT use `live ? live.price : ...`.
   const holdings = portfolio.holdings.map(h => {
     const live = allAssets.find(a => a.symbol === h.symbol);
-    const currentPrice = live ? live.price : h.currentPrice;
+    const livePx = Number(live?.price);
+    const prevPx = Number(h.currentPrice);
+    const avgPx  = Number(h.avgCost);
+    const currentPrice = (Number.isFinite(livePx) && livePx > 0) ? livePx
+                       : (Number.isFinite(prevPx) && prevPx > 0) ? prevPx
+                       : (Number.isFinite(avgPx)  && avgPx  > 0) ? avgPx
+                       : 0;
     const value = h.shares * currentPrice;
     const gain = (currentPrice - h.avgCost) * h.shares;
     return { ...h, currentPrice, value, gain, returnPercent: h.avgCost > 0 ? ((currentPrice - h.avgCost) / h.avgCost) * 100 : 0 };
@@ -5568,20 +5588,34 @@ function App() {
     if (user) try { localStorage.setItem('stockrocket_user', user); } catch {}
   }, [user]);
 
-  // Update portfolio holdings with live prices when they change
+  // Update portfolio holdings with live prices when they change.
+  // Walks BOTH stocks and crypto. Guards against null/zero live prices so a
+  // stale-feed symbol (BTC when CoinGecko is dead) doesn't zero out the
+  // holding -- falls back to the previously-held currentPrice, then avgCost.
   useEffect(() => {
     if (!isLive) return;
+    const priceBy = new Map();
+    for (const s of (stocks || [])) priceBy.set(s.symbol, s.price);
+    for (const c of (crypto || [])) priceBy.set(c.symbol, c.price);
     setPortfolio(prev => {
       const updated = prev.holdings.map(h => {
-        const liveStock = stocks.find(s => s.symbol === h.symbol);
-        if (!liveStock) return h;
-        const newValue = h.shares * liveStock.price;
-        const newGain = (liveStock.price - h.avgCost) * h.shares;
-        return { ...h, currentPrice: liveStock.price, value: newValue, gain: newGain, returnPercent: ((liveStock.price - h.avgCost) / h.avgCost) * 100 };
+        const rawLive = priceBy.get(h.symbol);
+        const livePx = Number(rawLive);
+        const prevPx = Number(h.currentPrice);
+        const avgPx  = Number(h.avgCost);
+        const nextPx = (Number.isFinite(livePx) && livePx > 0) ? livePx
+                     : (Number.isFinite(prevPx) && prevPx > 0) ? prevPx
+                     : (Number.isFinite(avgPx)  && avgPx  > 0) ? avgPx
+                     : 0;
+        if (nextPx === Number(h.currentPrice)) return h;
+        const newValue = h.shares * nextPx;
+        const newGain = (nextPx - h.avgCost) * h.shares;
+        const returnPercent = h.avgCost > 0 ? ((nextPx - h.avgCost) / h.avgCost) * 100 : 0;
+        return { ...h, currentPrice: nextPx, value: newValue, gain: newGain, returnPercent };
       });
       return { ...prev, holdings: updated };
     });
-  }, [stocks, isLive]);
+  }, [stocks, crypto, isLive]);
 
   const [isAdmin, setIsAdmin] = useState(!!restoredAuth?.isAdmin);
   const [stockDetail, setStockDetail] = useState(null); // symbol for stock detail page
