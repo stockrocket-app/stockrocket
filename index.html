@@ -6586,9 +6586,9 @@ function useChatMembers() {
 // the unread row on the next poll. No localStorage, no per-device drift --
 // the server-side stockrocket_chat_reads table is the single source of truth.
 function useUnreadSummary({ code, activePage, currentChatRoom }) {
-  const [summary, setSummary] = useState({ total: 0, channels: {}, latest_unread: null });
+  const [summary, setSummary] = useState({ total: 0, channels: {}, latest_unread: null, _debug: 'init' });
   useEffect(() => {
-    if (!code) { setSummary({ total: 0, channels: {}, latest_unread: null }); return; }
+    if (!code) { setSummary({ total: 0, channels: {}, latest_unread: null, _debug: 'no-code' }); return; }
     let mounted = true;
     const poll = async () => {
       try {
@@ -6596,15 +6596,26 @@ function useUnreadSummary({ code, activePage, currentChatRoom }) {
           headers: { 'X-User-Code': code },
           cache: 'no-store',
         });
-        const data = await res.json();
-        if (!mounted || !data.ok) return;
+        const raw = await res.text();
+        let data;
+        try { data = JSON.parse(raw); } catch { data = null; }
+        // DEBUG: expose to console so we can see what the endpoint actually
+        // returns live. Temp -- tied to the "banner not showing" diagnosis.
+        try { console.log('[UnreadSummary] status=', res.status, 'body=', data || raw); } catch {}
+        if (!mounted) return;
+        if (!data || !data.ok) {
+          setSummary(prev => ({ ...prev, _debug: `err status=${res.status}` }));
+          return;
+        }
         setSummary({
           total: Number(data.total) || 0,
           channels: data.channels || {},
           latest_unread: data.latest_unread || null,
+          _debug: `ok total=${data.total || 0} ch=${data.latest_unread ? data.latest_unread.channel : '-'}`,
         });
-      } catch {
-        // Silent -- next poll will retry
+      } catch (e) {
+        try { console.log('[UnreadSummary] fetch threw', e && e.message); } catch {}
+        if (mounted) setSummary(prev => ({ ...prev, _debug: 'throw ' + (e && e.message || 'unknown') }));
       }
     };
     poll();
@@ -6985,6 +6996,16 @@ function App() {
   return (
     <>
       <UnreadHeaderBanner summary={unreadSummary} activePage={activePage} currentChatRoom={currentChatRoom} isAdmin={isAdmin} onOpen={handleOpenUnreadBanner} />
+      {/* TEMP DEBUG pill -- remove after diagnosing the "banner not showing" issue.
+          Shows what useUnreadSummary last saw from /api/messages?unread=1.
+          Floats top-right above everything. */}
+      <div style={{
+        position: 'fixed', top: 4, right: 8, zIndex: 10000,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: 10, padding: '2px 6px',
+        background: 'rgba(0,0,0,0.7)', color: '#c7ff00',
+        border: '1px solid #c7ff00', borderRadius: 0, pointerEvents: 'none',
+      }}>BD {unreadSummary._debug || '?'}</div>
     <div className="app-layout">
       <Header activePage={activePage} setActivePage={setActivePage} user={user} onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       {sidebarOpen && <div className="sidebar-overlay visible" onClick={() => setSidebarOpen(false)} />}
