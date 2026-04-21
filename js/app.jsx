@@ -20,26 +20,37 @@ const MOCK_STOCKS = [
   { symbol: 'V', name: 'Visa Inc.', price: 296.80, change: 2.34, changePercent: 0.80, sector: 'Finance', marketCap: '$580B' },
   { symbol: 'MA', name: 'Mastercard Inc.', price: 518.60, change: 3.10, changePercent: 0.60, sector: 'Finance', marketCap: '$510B' },
   { symbol: 'GS', name: 'Goldman Sachs', price: 592.30, change: -4.20, changePercent: -0.70, sector: 'Finance', marketCap: '$195B' },
+  { symbol: 'BRK.B', name: 'Berkshire Hathaway', price: 478.25, change: 2.40, changePercent: 0.50, sector: 'Finance', marketCap: '$1.03T' },
   // Healthcare
   { symbol: 'UNH', name: 'UnitedHealth Group', price: 512.40, change: 5.80, changePercent: 1.15, sector: 'Healthcare', marketCap: '$470B' },
+  { symbol: 'LLY', name: 'Eli Lilly & Co.', price: 824.60, change: 11.35, changePercent: 1.39, sector: 'Healthcare', marketCap: '$782B' },
   { symbol: 'JNJ', name: 'Johnson & Johnson', price: 158.90, change: -0.65, changePercent: -0.41, sector: 'Healthcare', marketCap: '$382B' },
   { symbol: 'PFE', name: 'Pfizer Inc.', price: 26.45, change: 0.32, changePercent: 1.22, sector: 'Healthcare', marketCap: '$149B' },
   // Consumer / Retail
   { symbol: 'WMT', name: 'Walmart Inc.', price: 92.56, change: -0.45, changePercent: -0.48, sector: 'Retail', marketCap: '$680B' },
   { symbol: 'COST', name: 'Costco Wholesale', price: 925.70, change: 8.40, changePercent: 0.92, sector: 'Retail', marketCap: '$410B' },
+  { symbol: 'HD', name: 'Home Depot', price: 395.80, change: -1.95, changePercent: -0.49, sector: 'Retail', marketCap: '$394B' },
   { symbol: 'NKE', name: 'Nike Inc.', price: 78.30, change: -1.20, changePercent: -1.51, sector: 'Retail', marketCap: '$118B' },
   { symbol: 'SBUX', name: 'Starbucks Corp.', price: 98.45, change: 0.90, changePercent: 0.92, sector: 'Consumer', marketCap: '$112B' },
+  { symbol: 'MCD', name: 'McDonald\u0027s Corp.', price: 312.40, change: 1.85, changePercent: 0.60, sector: 'Consumer', marketCap: '$225B' },
+  { symbol: 'KO', name: 'Coca-Cola Co.', price: 71.85, change: 0.45, changePercent: 0.63, sector: 'Consumer', marketCap: '$309B' },
+  { symbol: 'PEP', name: 'PepsiCo Inc.', price: 157.90, change: -0.80, changePercent: -0.50, sector: 'Consumer', marketCap: '$216B' },
   { symbol: 'DIS', name: 'Walt Disney Co.', price: 112.80, change: 2.15, changePercent: 1.94, sector: 'Entertainment', marketCap: '$206B' },
   // Energy
   { symbol: 'XOM', name: 'Exxon Mobil', price: 108.25, change: -1.40, changePercent: -1.28, sector: 'Energy', marketCap: '$450B' },
-  // Industrial
+  // Industrial / Defense
   { symbol: 'BA', name: 'Boeing Co.', price: 178.90, change: 3.45, changePercent: 1.97, sector: 'Industrial', marketCap: '$110B' },
+  { symbol: 'CAT', name: 'Caterpillar Inc.', price: 384.50, change: 2.70, changePercent: 0.71, sector: 'Industrial', marketCap: '$186B' },
+  { symbol: 'LMT', name: 'Lockheed Martin', price: 544.20, change: -3.15, changePercent: -0.58, sector: 'Industrial', marketCap: '$128B' },
+  // Telecom
+  { symbol: 'T', name: 'AT&T Inc.', price: 25.90, change: 0.18, changePercent: 0.70, sector: 'Telecom', marketCap: '$186B' },
   // Communication
   { symbol: 'NFLX', name: 'Netflix Inc.', price: 945.20, change: 12.30, changePercent: 1.32, sector: 'Entertainment', marketCap: '$410B' },
   { symbol: 'SPOT', name: 'Spotify', price: 612.40, change: -5.80, changePercent: -0.94, sector: 'Entertainment', marketCap: '$120B' },
   // Growth
   { symbol: 'AMD', name: 'Advanced Micro Devices', price: 168.50, change: 6.20, changePercent: 3.82, sector: 'Tech', marketCap: '$272B' },
   { symbol: 'CRM', name: 'Salesforce Inc.', price: 312.80, change: 4.50, changePercent: 1.46, sector: 'Tech', marketCap: '$300B' },
+  { symbol: 'ORCL', name: 'Oracle Corp.', price: 194.75, change: 2.85, changePercent: 1.48, sector: 'Tech', marketCap: '$545B' },
 ];
 
 const MOCK_CRYPTO = [
