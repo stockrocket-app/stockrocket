@@ -1615,7 +1615,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
   const holding = portfolio?.holdings?.find(h => h.symbol === symbol);
   const [tradeType, setTradeType] = useState('BUY');
   const [shares, setShares] = useState('');
-  const { data: chartData, loading: chartLoading } = useChartData(asset?.symbol, 90);
+  const { data: chartData, loading: chartLoading, retry: retryChart } = useChartData(asset?.symbol, 90);
   const total = asset ? parseFloat(shares || 0) * asset.price : 0;
 
   const executeTrade = async () => {
@@ -1681,7 +1681,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
         {/* Chart + Stats */}
         <div>
           <div className="card" style={{ marginBottom: 24 }}>
-            <NebulaChart data={chartData} height={280} loading={chartLoading} />
+            <NebulaChart data={chartData} height={280} loading={chartLoading} onRetry={retryChart} />
           </div>
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
             <div className="stat-card"><p className="stat-label">Market Cap</p><p className="stat-value" style={{ fontSize: 20 }}>{asset.marketCap || 'N/A'}</p></div>
@@ -1759,6 +1759,8 @@ function generateChartData() {
 // NebulaChart component will render a "LIVE CHART CONNECTING" placeholder.
 function useChartData(symbol, days = 30) {
   const [state, setState] = useState({ data: [], loading: true, error: null, source: null });
+  const [nonce, setNonce] = useState(0);
+  const retry = useCallback(() => setNonce(n => n + 1), []);
   useEffect(() => {
     if (!symbol) { setState({ data: [], loading: false, error: null, source: null }); return; }
     let cancelled = false;
@@ -1768,20 +1770,20 @@ function useChartData(symbol, days = 30) {
         if (CRYPTO_SYMBOLS.has(symbol)) {
           const id = COINGECKO_IDS[symbol];
           const points = await LiveData.fetchCryptoCandles(id, days);
-          if (!cancelled) setState({ data: points, loading: false, error: null, source: 'coingecko' });
+          if (!cancelled) setState({ data: points, loading: false, error: points.length ? null : 'unavailable', source: 'coingecko' });
         } else {
-          // Finnhub candle resolution: D=daily (fine for 30/90 day views)
+          // Multi-source via /api/history (Yahoo primary, Stooq fallback)
           const resolution = days <= 7 ? '60' : 'D';
           const points = await LiveData.fetchStockCandles(symbol, resolution, days);
-          if (!cancelled) setState({ data: points, loading: false, error: points.length ? null : 'unavailable', source: 'finnhub' });
+          if (!cancelled) setState({ data: points, loading: false, error: points.length ? null : 'unavailable', source: 'history-api' });
         }
       } catch (e) {
         if (!cancelled) setState({ data: [], loading: false, error: String(e.message || e), source: null });
       }
     })();
     return () => { cancelled = true; };
-  }, [symbol, days]);
-  return state;
+  }, [symbol, days, nonce]);
+  return { ...state, retry };
 }
 
 // Portfolio-level chart: synthesize from real holdings' historical data.
@@ -1848,14 +1850,20 @@ function Icon({ name, size, className, style }) {
 }
 
 // ==================== SVG CHART ====================
-function NebulaChart({ data, height = 200, loading = false, label = null }) {
+function NebulaChart({ data, height = 200, loading = false, label = null, onRetry = null }) {
   if (!data || data.length < 2) {
     const placeholderLabel = label || (loading ? 'LOADING CHART' : 'CHART UNAVAILABLE');
     return (
-      <div className="chart-container" style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-container-low)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--outline-variant)' }}>
+      <div className="chart-container" style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-container-low)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--outline-variant)', padding: 16 }}>
         <div style={{ textAlign: 'center', color: 'var(--on-surface-variant)', fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.1em' }}>
-          <div style={{ marginBottom: 6, opacity: 0.6 }}>◦ ◦ ◦</div>
-          {placeholderLabel}
+          <div style={{ marginBottom: 6, opacity: 0.6, fontSize: loading ? 18 : 14, animation: loading ? 'chartLoadingPulse 1.4s ease-in-out infinite' : 'none' }}>◦ ◦ ◦</div>
+          <style>{`@keyframes chartLoadingPulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.9; } }`}</style>
+          <div style={{ marginBottom: onRetry && !loading ? 12 : 0 }}>{placeholderLabel}</div>
+          {onRetry && !loading && (
+            <button className="btn btn-secondary btn-sm" style={{ fontSize: 10, letterSpacing: '0.08em', padding: '6px 14px' }} onClick={onRetry}>
+              <Icon name="refresh" size={12} /> Retry
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1895,6 +1903,120 @@ function Sparkline({ data, color = '#00FFA3', width = 80, height = 32 }) {
   const min = Math.min(...data), max = Math.max(...data), range = max - min || 1;
   const points = data.map((v, i) => `${(i / (data.length - 1)) * width},${height - ((v - min) / range) * (height - 4) - 2}`).join(' ');
   return <svg width={width} height={height}><polyline fill="none" stroke={color} strokeWidth="1.5" points={points} /></svg>;
+}
+
+// Shared module-level sparkline cache. 7-day daily closes per symbol. TTL matches
+// the /api/history edge cache (15 min) so a page with 20 rows doesn't fan out
+// 20 requests on every render. Cache survives re-renders but not page reloads.
+const __sparkCache = new Map();
+const __SPARK_TTL = 15 * 60 * 1000;
+const __sparkInflight = new Map(); // symbol -> Promise (dedupe concurrent requests)
+
+function useSparklineData(symbol) {
+  const [prices, setPrices] = useState(() => __sparkCache.get(symbol)?.prices || null);
+  useEffect(() => {
+    if (!symbol) { setPrices(null); return; }
+    const cached = __sparkCache.get(symbol);
+    if (cached && (Date.now() - cached.ts) < __SPARK_TTL) { setPrices(cached.prices); return; }
+
+    let cancelled = false;
+    const existing = __sparkInflight.get(symbol);
+    const promise = existing || (async () => {
+      try {
+        let arr;
+        if (CRYPTO_SYMBOLS.has(symbol)) {
+          const id = COINGECKO_IDS[symbol];
+          const pts = await LiveData.fetchCryptoCandles(id, 7);
+          arr = pts.map(p => p.price);
+        } else {
+          const pts = await LiveData.fetchStockCandles(symbol, 'D', 7);
+          arr = pts.map(p => p.price);
+        }
+        __sparkCache.set(symbol, { prices: arr, ts: Date.now() });
+        return arr;
+      } catch {
+        __sparkCache.set(symbol, { prices: [], ts: Date.now() });
+        return [];
+      } finally {
+        __sparkInflight.delete(symbol);
+      }
+    })();
+    if (!existing) __sparkInflight.set(symbol, promise);
+
+    promise.then(arr => { if (!cancelled) setPrices(arr); });
+    return () => { cancelled = true; };
+  }, [symbol]);
+  return prices;
+}
+
+// AllocationDonut: SVG donut chart for portfolio allocation. Each slice is one
+// sector/symbol. Uses the stroke-dasharray trick on a single circle per slice.
+// data: [{ label, value, color }]. Total must be > 0.
+function AllocationDonut({ data, size = 180, thickness = 24, centerLabel = null, centerValue = null }) {
+  const total = (data || []).reduce((s, d) => s + (d.value || 0), 0);
+  if (!data || !data.length || total <= 0) {
+    return (
+      <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--on-surface-variant)', fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.1em', border: '1px dashed var(--outline-variant)', borderRadius: '50%' }}>
+          NO POSITIONS
+      </div>
+    );
+  }
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  const slices = data.map((d, i) => {
+    const pct = (d.value || 0) / total;
+    const slice = (
+      <circle
+        key={d.label + i}
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={d.color}
+        strokeWidth={thickness}
+        strokeDasharray={`${pct * c} ${c - pct * c}`}
+        strokeDashoffset={-offset}
+      />
+    );
+    offset += pct * c;
+    return slice;
+  });
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--surface-container-high)" strokeWidth={thickness} />
+        {slices}
+      </svg>
+      {(centerLabel || centerValue) && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          {centerLabel && <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.1em', color: 'var(--on-surface-variant)', marginBottom: 4 }}>{centerLabel}</div>}
+          {centerValue && <div style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 700 }}>{centerValue}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Colour palette for donut slices (cycles if more sectors than colours).
+const DONUT_PALETTE = [
+  '#00FFA3', '#72DCFF', '#FF9B5F', '#B79BFF',
+  '#FFD166', '#FF716C', '#4BCFFA', '#EBC3FF',
+  '#8AE68A', '#FFB4A2',
+];
+
+// RowSparkline: tiny sparkline with built-in loading state, meant for inline use
+// in stock rows. Returns a fixed-width block so row layout doesn't jump.
+function RowSparkline({ symbol, isUp = true, width = 60, height = 24 }) {
+  const prices = useSparklineData(symbol);
+  const color = isUp ? '#00FFA3' : '#ff716c';
+  if (!prices) {
+    return <div style={{ width, height, opacity: 0.3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>···</div>;
+  }
+  if (prices.length < 2) {
+    return <div style={{ width, height, opacity: 0.2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--on-surface-variant)' }}>--</div>;
+  }
+  return <Sparkline data={prices} color={color} width={width} height={height} />;
 }
 
 // ==================== LOGIN PAGE ====================
@@ -2076,6 +2198,25 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
   const periodDays = { '1D': 1, '1W': 7, '1M': 30, '1Y': 365 };
   const { data: chartData, loading: chartLoading } = usePortfolioChart(portfolio, periodDays[chartPeriod] || 30);
   const topMovers = [...stocks].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 5);
+
+  // Allocation donut data: group holdings by sector (stocks) or 'Crypto', plus cash.
+  const allocationData = (() => {
+    const bySector = new Map();
+    for (const h of holdings) {
+      const stockInfo = stocks.find(s => s.symbol === h.symbol);
+      const isCrypto = (crypto || []).some(c => c.symbol === h.symbol);
+      const key = stockInfo?.sector || (isCrypto ? 'Crypto' : 'Other');
+      bySector.set(key, (bySector.get(key) || 0) + (h.value || 0));
+    }
+    const entries = [...bySector.entries()].sort((a, b) => b[1] - a[1]);
+    if (portfolio.cash > 0) entries.push(['Cash', portfolio.cash]);
+    return entries.map(([label, value], i) => ({
+      label,
+      value,
+      color: label === 'Cash' ? 'var(--surface-variant)' : DONUT_PALETTE[i % DONUT_PALETTE.length],
+    }));
+  })();
+  const recentTrades = [...(portfolio.trades || [])].slice(-6).reverse();
   const randomInsight = TRADER_INSIGHTS.length > 0 ? TRADER_INSIGHTS[Math.floor(Date.now() / 86400000) % TRADER_INSIGHTS.length] : 'Markets reward patience.';
   const { whole, decimal } = formatCurrencySplit(totalValue);
   const market = useMarketCountdown();
@@ -2189,6 +2330,70 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
               </tbody>
             </table>
           </section>
+        )}
+
+        {/* Allocation + Recent Trades */}
+        {(holdings.length > 0 || recentTrades.length > 0) && (
+          <>
+            <section className="bento-col-4 card" style={{ padding: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <h3 className="section-title">Allocation <span className="dot"></span></h3>
+                <span className="label-system" style={{ fontSize: 10 }}>{allocationData.length} slice{allocationData.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+                <AllocationDonut
+                  data={allocationData}
+                  size={160}
+                  thickness={22}
+                  centerLabel="TOTAL"
+                  centerValue={formatCurrency(totalValue)}
+                />
+                <div style={{ flex: 1, minWidth: 140, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {allocationData.slice(0, 6).map(d => {
+                    const pct = totalValue > 0 ? (d.value / totalValue) * 100 : 0;
+                    return (
+                      <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 2, background: d.color, flexShrink: 0 }}></span>
+                        <span style={{ flex: 1, fontFamily: 'var(--font-label)', letterSpacing: '0.05em' }}>{d.label}</span>
+                        <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{pct.toFixed(1)}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <section className="bento-col-8 card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 className="section-title">Recent Trades <span className="dot"></span></h3>
+                <span className="label-system">{recentTrades.length ? `Last ${recentTrades.length}` : 'No trades yet'}</span>
+              </div>
+              {recentTrades.length === 0 ? (
+                <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--on-surface-variant)', fontSize: 13 }}>
+                  Your executed trades will show up here. Head to the <span style={{ color: 'var(--primary-fixed)' }}>Trade Terminal</span> to place your first order.
+                </div>
+              ) : (
+                <table className="data-table">
+                  <thead><tr><th>When</th><th>Type</th><th>Asset</th><th>Shares</th><th>Price</th><th>Total</th></tr></thead>
+                  <tbody>
+                    {recentTrades.map((t, i) => (
+                      <tr key={t.id || `${t.symbol}-${i}`} style={{ cursor: setStockDetail ? 'pointer' : 'default' }} onClick={() => setStockDetail && setStockDetail(t.symbol)}>
+                        <td style={{ fontFamily: 'var(--font-headline)', fontSize: 12 }}>
+                          <div>{t.date}</div>
+                          <div className="text-muted" style={{ fontSize: 11 }}>{t.time}</div>
+                        </td>
+                        <td><span className={`badge ${t.type === 'BUY' ? 'badge-primary' : 'badge-error'}`}>{t.type}</span></td>
+                        <td><div className="stock-symbol-text" style={{ color: 'var(--primary-fixed)' }}>{t.symbol}</div><div className="stock-name-text">{t.name}</div></td>
+                        <td style={{ fontFamily: 'var(--font-headline)' }}>{t.shares}</td>
+                        <td style={{ fontFamily: 'var(--font-headline)' }}>{formatCurrency(t.price)}</td>
+                        <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(t.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </>
         )}
 
         {/* Movers */}
@@ -2514,7 +2719,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
   const filtered = searchTerm ? allAssets.filter(a => a.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || a.name.toLowerCase().includes(searchTerm.toLowerCase())) : allAssets;
   const execPrice = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : (selectedAsset?.price || 0);
   const total = selectedAsset ? parseFloat(shares || 0) * execPrice : 0;
-  const { data: chartData, loading: chartLoading } = useChartData(selectedAsset?.symbol, 30);
+  const { data: chartData, loading: chartLoading, retry: retryChart } = useChartData(selectedAsset?.symbol, 30);
 
   // Quick-buy preset amounts
   const quickAmounts = [1, 5, 10, 25];
@@ -2649,6 +2854,9 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
                       <div className="stock-symbol-text">{a.symbol} {owned && <span style={{ fontSize: 10, color: 'var(--secondary)' }}>({owned.shares} owned)</span>}</div>
                       <div className="stock-name-text">{a.name}</div>
                     </div>
+                    <div style={{ marginRight: 12, display: 'flex', alignItems: 'center' }}>
+                      <RowSparkline symbol={a.symbol} isUp={a.change >= 0} width={60} height={24} />
+                    </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(a.price)}</div>
                       <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, color: a.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{a.change >= 0 ? '+' : ''}{a.changePercent.toFixed(2)}%</div>
@@ -2670,7 +2878,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
                   <span className={`badge ${selectedAsset.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{selectedAsset.change >= 0 ? '+' : ''}{selectedAsset.changePercent.toFixed(2)}%</span>
                 </div>
               </div>
-              <NebulaChart data={chartData} height={180} loading={chartLoading} />
+              <NebulaChart data={chartData} height={180} loading={chartLoading} onRetry={retryChart} />
               {existing && (
                 <div style={{ marginTop: 16, padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
@@ -2841,8 +3049,27 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
 // ==================== MARKETS ====================
 function MarketsPage({ stocks, setStockDetail }) {
   const [filter, setFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortKey, setSortKey] = useState('symbol');
+  const [sortDir, setSortDir] = useState('asc');
   const sectors = ['all', ...new Set(stocks.map(s => s.sector))];
-  const filtered = filter === 'all' ? stocks : stocks.filter(s => s.sector === filter);
+  const q = searchTerm.trim().toLowerCase();
+  const filtered = stocks
+    .filter(s => filter === 'all' || s.sector === filter)
+    .filter(s => !q || s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const get = k => k === 'symbol' ? a.symbol.localeCompare(b.symbol)
+                   : k === 'name' ? a.name.localeCompare(b.name)
+                   : k === 'sector' ? a.sector.localeCompare(b.sector)
+                   : (a[k] || 0) - (b[k] || 0);
+    return get(sortKey) * dir;
+  });
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'symbol' || key === 'name' || key === 'sector' ? 'asc' : 'desc'); }
+  };
+  const sortIcon = (key) => sortKey !== key ? '' : (sortDir === 'asc' ? ' ▲' : ' ▼');
   const gainers = [...stocks].filter(s => s.change > 0).sort((a, b) => b.changePercent - a.changePercent);
   const losers = [...stocks].filter(s => s.change < 0).sort((a, b) => a.changePercent - b.changePercent);
 
@@ -2860,19 +3087,36 @@ function MarketsPage({ stocks, setStockDetail }) {
       <div className="two-col" style={{ marginBottom: 32 }}>
         <div className="card">
           <h3 className="section-title text-primary" style={{ marginBottom: 16 }}><Icon name="trending_up" size={20} /> Top_Gainers</h3>
-          {gainers.slice(0, 5).map(s => <div key={s.symbol} className="stock-row" style={{ cursor: setStockDetail ? 'pointer' : 'default' }} onClick={() => setStockDetail && setStockDetail(s.symbol)}><div className="stock-icon-badge" style={{ background: 'rgba(0,255,163,0.15)', color: 'var(--primary-fixed)' }}>{s.symbol.slice(0, 2)}</div><div className="stock-info"><div className="stock-symbol-text">{s.symbol}</div><div className="stock-name-text">{s.name}</div></div><div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</div><span className="badge badge-primary">+{s.changePercent.toFixed(2)}%</span></div></div>)}
+          {gainers.slice(0, 5).map(s => <div key={s.symbol} className="stock-row" style={{ cursor: setStockDetail ? 'pointer' : 'default' }} onClick={() => setStockDetail && setStockDetail(s.symbol)}><div className="stock-icon-badge" style={{ background: 'rgba(0,255,163,0.15)', color: 'var(--primary-fixed)' }}>{s.symbol.slice(0, 2)}</div><div className="stock-info"><div className="stock-symbol-text">{s.symbol}</div><div className="stock-name-text">{s.name}</div></div><div style={{ marginRight: 12, display: 'flex', alignItems: 'center' }}><RowSparkline symbol={s.symbol} isUp={true} width={56} height={22} /></div><div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</div><span className="badge badge-primary">+{s.changePercent.toFixed(2)}%</span></div></div>)}
         </div>
         <div className="card">
           <h3 className="section-title text-error" style={{ marginBottom: 16 }}><Icon name="trending_down" size={20} /> Top_Losers</h3>
-          {losers.slice(0, 5).map(s => <div key={s.symbol} className="stock-row" style={{ cursor: setStockDetail ? 'pointer' : 'default' }} onClick={() => setStockDetail && setStockDetail(s.symbol)}><div className="stock-icon-badge" style={{ background: 'rgba(255,113,108,0.15)', color: 'var(--error)' }}>{s.symbol.slice(0, 2)}</div><div className="stock-info"><div className="stock-symbol-text">{s.symbol}</div><div className="stock-name-text">{s.name}</div></div><div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</div><span className="badge badge-error">{s.changePercent.toFixed(2)}%</span></div></div>)}
+          {losers.slice(0, 5).map(s => <div key={s.symbol} className="stock-row" style={{ cursor: setStockDetail ? 'pointer' : 'default' }} onClick={() => setStockDetail && setStockDetail(s.symbol)}><div className="stock-icon-badge" style={{ background: 'rgba(255,113,108,0.15)', color: 'var(--error)' }}>{s.symbol.slice(0, 2)}</div><div className="stock-info"><div className="stock-symbol-text">{s.symbol}</div><div className="stock-name-text">{s.name}</div></div><div style={{ marginRight: 12, display: 'flex', alignItems: 'center' }}><RowSparkline symbol={s.symbol} isUp={false} width={56} height={22} /></div><div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</div><span className="badge badge-error">{s.changePercent.toFixed(2)}%</span></div></div>)}
         </div>
       </div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: 24 }}><h3 className="label-system" style={{ fontSize: 14 }}>All_Instruments</h3></div>
-        <table className="data-table">
-          <thead><tr><th>Symbol</th><th>Name</th><th>Sector</th><th>Price</th><th>Change</th><th>% Change</th></tr></thead>
-          <tbody>{filtered.map(s => <tr key={s.symbol} style={{ cursor: setStockDetail ? 'pointer' : 'default' }} onClick={() => setStockDetail && setStockDetail(s.symbol)}><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{s.symbol}</td><td>{s.name}</td><td><span className="badge badge-neutral">{s.sector}</span></td><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{formatCurrency(s.price)}</td><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 600, color: s.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{s.change >= 0 ? '+' : ''}{formatCurrency(Math.abs(s.change))}</td><td><span className={`badge ${s.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{s.change >= 0 ? '+' : ''}{s.changePercent.toFixed(2)}%</span></td></tr>)}</tbody>
-        </table>
+        <div style={{ padding: '20px 24px 16px', display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <h3 className="label-system" style={{ fontSize: 14, margin: 0 }}>All_Instruments <span style={{ color: 'var(--on-surface-variant)', fontWeight: 400 }}>({sorted.length})</span></h3>
+          <div className="input-with-icon" style={{ maxWidth: 280, flex: '1 1 220px', marginBottom: 0 }}>
+            <Icon name="search" />
+            <input className="input-field" style={{ fontSize: 13 }} placeholder="Search symbol or name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          </div>
+        </div>
+        {sorted.length === 0 ? (
+          <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--on-surface-variant)', fontFamily: 'var(--font-label)', fontSize: 12, letterSpacing: '0.1em' }}>NO INSTRUMENTS MATCH YOUR FILTERS</div>
+        ) : (
+          <table className="data-table">
+            <thead><tr>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('symbol')}>Symbol{sortIcon('symbol')}</th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('name')}>Name{sortIcon('name')}</th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('sector')}>Sector{sortIcon('sector')}</th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('price')}>Price{sortIcon('price')}</th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('change')}>Change{sortIcon('change')}</th>
+              <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('changePercent')}>% Change{sortIcon('changePercent')}</th>
+            </tr></thead>
+            <tbody>{sorted.map(s => <tr key={s.symbol} style={{ cursor: setStockDetail ? 'pointer' : 'default' }} onClick={() => setStockDetail && setStockDetail(s.symbol)}><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{s.symbol}</td><td>{s.name}</td><td><span className="badge badge-neutral">{s.sector}</span></td><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{formatCurrency(s.price)}</td><td style={{ fontFamily: 'var(--font-headline)', fontWeight: 600, color: s.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{s.change >= 0 ? '+' : ''}{formatCurrency(Math.abs(s.change))}</td><td><span className={`badge ${s.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{s.change >= 0 ? '+' : ''}{s.changePercent.toFixed(2)}%</span></td></tr>)}</tbody>
+          </table>
+        )}
       </div>
     </div>
   );
