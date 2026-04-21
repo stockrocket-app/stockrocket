@@ -1049,20 +1049,18 @@ const LiveData = {
     } catch { return null; }
   },
 
-  // Fetch intraday candles (may be blocked on free tier -- caller handles empty)
+  // Fetch daily historical bars via our /api/history Edge Function (Stooq-backed).
+  // Finnhub /stock/candle went premium in mid-2024, so we route historicals
+  // through Stooq (free CSV, no auth). `resolution` is accepted for API
+  // compatibility with the old Finnhub path but currently ignored -- Stooq is
+  // daily-only. Caller handles empty array (NebulaChart shows a placeholder).
   async fetchStockCandles(symbol, resolution = 'D', daysBack = 30) {
     try {
-      const to = Math.floor(Date.now() / 1000);
-      const from = to - daysBack * 86400;
-      const data = await finnhub('candle', { symbol, resolution, from, to });
-      if (data && data.s === 'ok' && Array.isArray(data.c) && data.c.length > 1) {
-        return data.c.map((price, i) => ({
-          day: i + 1,
-          price,
-          timestamp: (data.t && data.t[i]) ? data.t[i] * 1000 : null,
-        }));
-      }
-      return [];
+      const res = await fetch(`${API_BASE}/api/history?symbol=${encodeURIComponent(symbol)}&days=${daysBack}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      if (!data?.ok || !Array.isArray(data.points) || data.points.length < 2) return [];
+      return data.points;
     } catch { return []; }
   },
 
