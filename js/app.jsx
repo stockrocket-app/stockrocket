@@ -36,12 +36,27 @@ const MOCK_STOCKS = [
   { symbol: 'KO', name: 'Coca-Cola Co.', price: 71.85, change: 0.45, changePercent: 0.63, sector: 'Consumer', marketCap: '$309B' },
   { symbol: 'PEP', name: 'PepsiCo Inc.', price: 157.90, change: -0.80, changePercent: -0.50, sector: 'Consumer', marketCap: '$216B' },
   { symbol: 'DIS', name: 'Walt Disney Co.', price: 112.80, change: 2.15, changePercent: 1.94, sector: 'Entertainment', marketCap: '$206B' },
+  // Retail -- big box
+  { symbol: 'TGT', name: 'Target Corp.', price: 148.35, change: 2.05, changePercent: 1.40, sector: 'Retail', marketCap: '$68B' },
+  // Fast food / QSR
+  { symbol: 'CMG', name: 'Chipotle Mexican Grill', price: 62.40, change: 0.85, changePercent: 1.38, sector: 'Consumer', marketCap: '$84B' },
+  { symbol: 'YUM', name: 'Yum! Brands', price: 138.75, change: 0.60, changePercent: 0.43, sector: 'Consumer', marketCap: '$39B' },
+  { symbol: 'QSR', name: 'Restaurant Brands Intl.', price: 72.15, change: -0.35, changePercent: -0.48, sector: 'Consumer', marketCap: '$32B' },
+  { symbol: 'WEN', name: 'Wendy\u0027s Co.', price: 18.40, change: 0.12, changePercent: 0.66, sector: 'Consumer', marketCap: '$3.8B' },
+  { symbol: 'DPZ', name: 'Domino\u0027s Pizza', price: 478.20, change: 3.90, changePercent: 0.82, sector: 'Consumer', marketCap: '$16.5B' },
   // Energy
   { symbol: 'XOM', name: 'Exxon Mobil', price: 108.25, change: -1.40, changePercent: -1.28, sector: 'Energy', marketCap: '$450B' },
-  // Industrial / Defense
+  { symbol: 'CVX', name: 'Chevron Corp.', price: 164.80, change: 1.75, changePercent: 1.07, sector: 'Energy', marketCap: '$298B' },
+  { symbol: 'COP', name: 'ConocoPhillips', price: 122.40, change: 2.10, changePercent: 1.75, sector: 'Energy', marketCap: '$142B' },
+  // Industrial / Defense -- Middle East tailwind
   { symbol: 'BA', name: 'Boeing Co.', price: 178.90, change: 3.45, changePercent: 1.97, sector: 'Industrial', marketCap: '$110B' },
   { symbol: 'CAT', name: 'Caterpillar Inc.', price: 384.50, change: 2.70, changePercent: 0.71, sector: 'Industrial', marketCap: '$186B' },
   { symbol: 'LMT', name: 'Lockheed Martin', price: 544.20, change: -3.15, changePercent: -0.58, sector: 'Industrial', marketCap: '$128B' },
+  { symbol: 'RTX', name: 'RTX Corp.', price: 145.60, change: 2.30, changePercent: 1.61, sector: 'Defense', marketCap: '$196B' },
+  { symbol: 'NOC', name: 'Northrop Grumman', price: 531.20, change: 4.85, changePercent: 0.92, sector: 'Defense', marketCap: '$78B' },
+  { symbol: 'GD', name: 'General Dynamics', price: 305.40, change: 2.40, changePercent: 0.79, sector: 'Defense', marketCap: '$83B' },
+  { symbol: 'LHX', name: 'L3Harris Technologies', price: 241.80, change: 1.95, changePercent: 0.81, sector: 'Defense', marketCap: '$46B' },
+  { symbol: 'HII', name: 'Huntington Ingalls', price: 285.60, change: 3.10, changePercent: 1.10, sector: 'Defense', marketCap: '$11B' },
   // Telecom
   { symbol: 'T', name: 'AT&T Inc.', price: 25.90, change: 0.18, changePercent: 0.70, sector: 'Telecom', marketCap: '$186B' },
   // Communication
@@ -51,6 +66,16 @@ const MOCK_STOCKS = [
   { symbol: 'AMD', name: 'Advanced Micro Devices', price: 168.50, change: 6.20, changePercent: 3.82, sector: 'Tech', marketCap: '$272B' },
   { symbol: 'CRM', name: 'Salesforce Inc.', price: 312.80, change: 4.50, changePercent: 1.46, sector: 'Tech', marketCap: '$300B' },
   { symbol: 'ORCL', name: 'Oracle Corp.', price: 194.75, change: 2.85, changePercent: 1.48, sector: 'Tech', marketCap: '$545B' },
+  // AI infrastructure + platform plays
+  { symbol: 'PLTR', name: 'Palantir Technologies', price: 42.85, change: 1.60, changePercent: 3.88, sector: 'AI', marketCap: '$94B' },
+  { symbol: 'SMCI', name: 'Super Micro Computer', price: 55.20, change: 2.40, changePercent: 4.55, sector: 'AI', marketCap: '$32B' },
+  { symbol: 'AVGO', name: 'Broadcom Inc.', price: 195.30, change: 3.85, changePercent: 2.01, sector: 'AI', marketCap: '$908B' },
+  { symbol: 'TSM', name: 'Taiwan Semiconductor', price: 214.75, change: 4.20, changePercent: 2.00, sector: 'AI', marketCap: '$1.11T' },
+  { symbol: 'SNOW', name: 'Snowflake Inc.', price: 178.40, change: 3.20, changePercent: 1.83, sector: 'AI', marketCap: '$59B' },
+  { symbol: 'ANET', name: 'Arista Networks', price: 389.50, change: 5.60, changePercent: 1.46, sector: 'AI', marketCap: '$122B' },
+  { symbol: 'VRT', name: 'Vertiv Holdings', price: 118.75, change: 3.45, changePercent: 2.99, sector: 'AI', marketCap: '$45B' },
+  { symbol: 'ARM', name: 'Arm Holdings', price: 142.30, change: 2.85, changePercent: 2.04, sector: 'AI', marketCap: '$148B' },
+  { symbol: 'PANW', name: 'Palo Alto Networks', price: 372.60, change: 4.10, changePercent: 1.11, sector: 'Tech', marketCap: '$121B' },
 ];
 
 const MOCK_CRYPTO = [

@@ -270,12 +270,27 @@ const MOCK_STOCKS = [
   { symbol: 'KO', name: 'Coca-Cola Co.', price: 71.85, change: 0.45, changePercent: 0.63, sector: 'Consumer', marketCap: '$309B' },
   { symbol: 'PEP', name: 'PepsiCo Inc.', price: 157.90, change: -0.80, changePercent: -0.50, sector: 'Consumer', marketCap: '$216B' },
   { symbol: 'DIS', name: 'Walt Disney Co.', price: 112.80, change: 2.15, changePercent: 1.94, sector: 'Entertainment', marketCap: '$206B' },
+  // Retail -- big box
+  { symbol: 'TGT', name: 'Target Corp.', price: 148.35, change: 2.05, changePercent: 1.40, sector: 'Retail', marketCap: '$68B' },
+  // Fast food / QSR
+  { symbol: 'CMG', name: 'Chipotle Mexican Grill', price: 62.40, change: 0.85, changePercent: 1.38, sector: 'Consumer', marketCap: '$84B' },
+  { symbol: 'YUM', name: 'Yum! Brands', price: 138.75, change: 0.60, changePercent: 0.43, sector: 'Consumer', marketCap: '$39B' },
+  { symbol: 'QSR', name: 'Restaurant Brands Intl.', price: 72.15, change: -0.35, changePercent: -0.48, sector: 'Consumer', marketCap: '$32B' },
+  { symbol: 'WEN', name: 'Wendy\u0027s Co.', price: 18.40, change: 0.12, changePercent: 0.66, sector: 'Consumer', marketCap: '$3.8B' },
+  { symbol: 'DPZ', name: 'Domino\u0027s Pizza', price: 478.20, change: 3.90, changePercent: 0.82, sector: 'Consumer', marketCap: '$16.5B' },
   // Energy
   { symbol: 'XOM', name: 'Exxon Mobil', price: 108.25, change: -1.40, changePercent: -1.28, sector: 'Energy', marketCap: '$450B' },
-  // Industrial / Defense
+  { symbol: 'CVX', name: 'Chevron Corp.', price: 164.80, change: 1.75, changePercent: 1.07, sector: 'Energy', marketCap: '$298B' },
+  { symbol: 'COP', name: 'ConocoPhillips', price: 122.40, change: 2.10, changePercent: 1.75, sector: 'Energy', marketCap: '$142B' },
+  // Industrial / Defense -- Middle East tailwind
   { symbol: 'BA', name: 'Boeing Co.', price: 178.90, change: 3.45, changePercent: 1.97, sector: 'Industrial', marketCap: '$110B' },
   { symbol: 'CAT', name: 'Caterpillar Inc.', price: 384.50, change: 2.70, changePercent: 0.71, sector: 'Industrial', marketCap: '$186B' },
   { symbol: 'LMT', name: 'Lockheed Martin', price: 544.20, change: -3.15, changePercent: -0.58, sector: 'Industrial', marketCap: '$128B' },
+  { symbol: 'RTX', name: 'RTX Corp.', price: 145.60, change: 2.30, changePercent: 1.61, sector: 'Defense', marketCap: '$196B' },
+  { symbol: 'NOC', name: 'Northrop Grumman', price: 531.20, change: 4.85, changePercent: 0.92, sector: 'Defense', marketCap: '$78B' },
+  { symbol: 'GD', name: 'General Dynamics', price: 305.40, change: 2.40, changePercent: 0.79, sector: 'Defense', marketCap: '$83B' },
+  { symbol: 'LHX', name: 'L3Harris Technologies', price: 241.80, change: 1.95, changePercent: 0.81, sector: 'Defense', marketCap: '$46B' },
+  { symbol: 'HII', name: 'Huntington Ingalls', price: 285.60, change: 3.10, changePercent: 1.10, sector: 'Defense', marketCap: '$11B' },
   // Telecom
   { symbol: 'T', name: 'AT&T Inc.', price: 25.90, change: 0.18, changePercent: 0.70, sector: 'Telecom', marketCap: '$186B' },
   // Communication
@@ -285,6 +300,16 @@ const MOCK_STOCKS = [
   { symbol: 'AMD', name: 'Advanced Micro Devices', price: 168.50, change: 6.20, changePercent: 3.82, sector: 'Tech', marketCap: '$272B' },
   { symbol: 'CRM', name: 'Salesforce Inc.', price: 312.80, change: 4.50, changePercent: 1.46, sector: 'Tech', marketCap: '$300B' },
   { symbol: 'ORCL', name: 'Oracle Corp.', price: 194.75, change: 2.85, changePercent: 1.48, sector: 'Tech', marketCap: '$545B' },
+  // AI infrastructure + platform plays
+  { symbol: 'PLTR', name: 'Palantir Technologies', price: 42.85, change: 1.60, changePercent: 3.88, sector: 'AI', marketCap: '$94B' },
+  { symbol: 'SMCI', name: 'Super Micro Computer', price: 55.20, change: 2.40, changePercent: 4.55, sector: 'AI', marketCap: '$32B' },
+  { symbol: 'AVGO', name: 'Broadcom Inc.', price: 195.30, change: 3.85, changePercent: 2.01, sector: 'AI', marketCap: '$908B' },
+  { symbol: 'TSM', name: 'Taiwan Semiconductor', price: 214.75, change: 4.20, changePercent: 2.00, sector: 'AI', marketCap: '$1.11T' },
+  { symbol: 'SNOW', name: 'Snowflake Inc.', price: 178.40, change: 3.20, changePercent: 1.83, sector: 'AI', marketCap: '$59B' },
+  { symbol: 'ANET', name: 'Arista Networks', price: 389.50, change: 5.60, changePercent: 1.46, sector: 'AI', marketCap: '$122B' },
+  { symbol: 'VRT', name: 'Vertiv Holdings', price: 118.75, change: 3.45, changePercent: 2.99, sector: 'AI', marketCap: '$45B' },
+  { symbol: 'ARM', name: 'Arm Holdings', price: 142.30, change: 2.85, changePercent: 2.04, sector: 'AI', marketCap: '$148B' },
+  { symbol: 'PANW', name: 'Palo Alto Networks', price: 372.60, change: 4.10, changePercent: 1.11, sector: 'Tech', marketCap: '$121B' },
 ];
 
 // CRYPTO DIRECTORY -- metadata only, NEVER prices.
@@ -550,6 +575,13 @@ const CUSTOM_REACTION_EMOJIS = [
   { id: 'fire', label: 'Fire', url: 'content/gifs/Custom Emojis/Fire.gif' },
   { id: 'boss', label: 'Boss Mode', url: 'content/gifs/Custom Emojis/Boss Mode.gif' },
   { id: 'party', label: 'Party', url: 'content/gifs/Custom Emojis/Party.gif' },
+  { id: 'dance', label: 'Dance', url: 'content/gifs/Custom Emojis/Dance.gif' },
+  { id: 'letsgo', label: "Let's Go", url: "content/gifs/Custom Emojis/Let's go.gif" },
+  { id: 'slowsteady', label: 'Slow and Steady', url: 'content/gifs/Custom Emojis/Slow and Steady.gif' },
+  { id: 'yesindeed', label: 'Yes Indeed', url: 'content/gifs/Custom Emojis/yes indeed.gif' },
+  { id: 'heart', label: 'Heart', url: 'content/gifs/Custom Emojis/Heart.png' },
+  { id: 'mindblown', label: 'Mind Blown', url: 'content/gifs/Custom Emojis/Mind Blown.png' },
+  { id: 'robot', label: 'Robot', url: 'content/gifs/Custom Emojis/Robot.png' },
 ];
 
 // Helper: render a reaction (either Unicode emoji or custom GIF)
@@ -1611,24 +1643,48 @@ function QuickTradeBtn({ symbol, setActivePage }) {
 // ==================== STOCK DETAIL PAGE ====================
 function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setNotification, onBack, user, code }) {
   const allAssets = [...(stocks || []), ...(crypto || [])];
-  const asset = allAssets.find(a => a.symbol === symbol);
+  const liveAsset = allAssets.find(a => a.symbol === symbol);
   const holding = portfolio?.holdings?.find(h => h.symbol === symbol);
+  // Resolve an asset to render. Prefer live; if absent but the user still owns
+  // the symbol, synthesize a display-only record from the holding so they can
+  // still see the position (and sell it once the live feed returns).
+  // IMPORTANT: we deliberately do NOT put a "price" on the synthesized record
+  // so that the trade panel can't compute totals or submit. Per PRICE_INVARIANTS,
+  // trades must never use a fallback/seed price -- the 2026-04-18 BTC incident
+  // was caused by exactly that pattern.
+  const isStaleFeed = !liveAsset && !!holding;
+  const asset = liveAsset || (holding ? {
+    symbol: holding.symbol,
+    name: holding.name || holding.symbol,
+    price: null,
+    change: 0,
+    changePercent: 0,
+    sector: holding.sector || null,
+    marketCap: null,
+    type: holding.type || null,
+  } : null);
   const [tradeType, setTradeType] = useState('BUY');
   const [shares, setShares] = useState('');
   const { data: chartData, loading: chartLoading, retry: retryChart } = useChartData(asset?.symbol, 90);
-  const total = asset ? parseFloat(shares || 0) * asset.price : 0;
+  const tradeablePrice = liveAsset ? Number(liveAsset.price) : NaN;
+  const canTrade = !isStaleFeed && Number.isFinite(tradeablePrice) && tradeablePrice > 0;
+  const total = canTrade ? parseFloat(shares || 0) * tradeablePrice : 0;
 
   const executeTrade = async () => {
     if (!asset || !shares || parseFloat(shares) <= 0) return;
+    if (!canTrade) {
+      setNotification({ type: 'error', message: 'Live price unavailable -- cannot execute trade. Try again when the feed returns.' });
+      return;
+    }
     const qty = parseFloat(shares);
     // Client-side pre-check (server re-validates authoritatively)
-    if (tradeType === 'BUY' && qty * asset.price > portfolio.cash + 0.005) {
+    if (tradeType === 'BUY' && qty * tradeablePrice > portfolio.cash + 0.005) {
       setNotification({ type: 'error', message: 'Not enough cash' }); return;
     }
     const assetType = asset.type || (crypto?.some(c => c.symbol === asset.symbol) ? 'crypto' : 'stock');
     const result = await executeServerTrade({
       code, type: tradeType, symbol: asset.symbol, name: asset.name,
-      assetType, shares: qty, price: asset.price,
+      assetType, shares: qty, price: tradeablePrice,
     });
     if (!result.ok) {
       setNotification({ type: 'error', message: errorMessageForTrade(result.error, result.detail) });
@@ -1643,7 +1699,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
       trades: [...(prev.trades || []), newTrade],
     }));
     // Use the SERVER's execution price in the toast -- that's the price actually paid.
-    const execPx = Number(result.trade?.price) || asset.price;
+    const execPx = Number(result.trade?.price) || tradeablePrice;
     const ex = result.execution || {};
     const gain = (tradeType === 'SELL' && isFinite(ex.realized_gain))
       ? ` • Realized ${ex.realized_gain >= 0 ? '+' : ''}${formatCurrency(ex.realized_gain)} (${ex.realized_gain_pct >= 0 ? '+' : ''}${(ex.realized_gain_pct || 0).toFixed(2)}%)`
@@ -1654,7 +1710,16 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
     postTradeAlert({ code, type: tradeType, symbol: asset.symbol, shares: qty, price: execPx });
   };
 
-  if (!asset) return <div className="empty-state"><Icon name="error" /><h3>Asset not found</h3><button className="btn btn-secondary" onClick={onBack}>Go Back</button></div>;
+  if (!asset) return (
+    <div className="empty-state">
+      <Icon name="error" />
+      <h3>Asset not found</h3>
+      <p className="text-muted" style={{ marginBottom: 16, fontSize: 13 }}>
+        {symbol ? <>We couldn't find <strong>{symbol}</strong> in the current market feed or your portfolio.</> : 'No symbol was provided.'}
+      </p>
+      <button className="btn btn-secondary" onClick={onBack}>Go Back</button>
+    </div>
+  );
 
   return (
     <div>
@@ -1670,12 +1735,27 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900 }}>{formatCurrency(asset.price)}</div>
-          <span className={`badge ${asset.change >= 0 ? 'badge-primary' : 'badge-error'}`} style={{ fontSize: 13, padding: '6px 16px' }}>
-            {asset.change >= 0 ? '+' : ''}{asset.changePercent.toFixed(2)}% today
-          </span>
+          {isStaleFeed ? (
+            <>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900, color: 'var(--on-surface-variant)' }}>--</div>
+              <span className="badge badge-neutral" style={{ fontSize: 12, padding: '6px 14px' }}>FEED UNAVAILABLE</span>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900 }}>{formatCurrency(asset.price)}</div>
+              <span className={`badge ${asset.change >= 0 ? 'badge-primary' : 'badge-error'}`} style={{ fontSize: 13, padding: '6px 16px' }}>
+                {asset.change >= 0 ? '+' : ''}{asset.changePercent.toFixed(2)}% today
+              </span>
+            </>
+          )}
         </div>
       </div>
+      {isStaleFeed && (
+        <div className="card" style={{ padding: '12px 16px', marginBottom: 24, background: 'rgba(255,155,95,0.08)', border: '1px solid rgba(255,155,95,0.25)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Icon name="warning" size={16} />
+          <span style={{ fontSize: 13 }}>Live market data is unavailable for <strong>{asset.symbol}</strong>. You can view your position, but trading is paused until the feed returns.</span>
+        </div>
+      )}
 
       <div className="two-col">
         {/* Chart + Stats */}
@@ -1736,9 +1816,20 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
               <span className="text-muted" style={{ fontFamily: 'var(--font-headline)', fontSize: 13 }}>{formatCurrency(portfolio?.cash || 0)}</span>
             </div>
           </div>
-          <button className="btn btn-primary" style={{ width: '100%', padding: 14, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff' } : {}) }} onClick={executeTrade}>
+          <button
+            className="btn btn-primary"
+            disabled={!canTrade}
+            style={{
+              width: '100%',
+              padding: 14,
+              opacity: canTrade ? 1 : 0.5,
+              cursor: canTrade ? 'pointer' : 'not-allowed',
+              ...(canTrade && tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff' } : {}),
+            }}
+            onClick={executeTrade}
+          >
             <Icon name={tradeType === 'BUY' ? 'rocket_launch' : 'sell'} size={18} />
-            {tradeType === 'BUY' ? 'Buy' : 'Sell'} {asset.symbol}
+            {canTrade ? `${tradeType === 'BUY' ? 'Buy' : 'Sell'} ${asset.symbol}` : 'Trading paused -- feed unavailable'}
           </button>
         </div>
       </div>
@@ -3532,6 +3623,13 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
       { id: 'e5', tag: 'emoji', label: 'Fire', url: 'content/gifs/Custom Emojis/Fire.gif' },
       { id: 'e6', tag: 'emoji', label: 'Boss Mode', url: 'content/gifs/Custom Emojis/Boss Mode.gif' },
       { id: 'e7', tag: 'emoji', label: 'Party', url: 'content/gifs/Custom Emojis/Party.gif' },
+      { id: 'e8', tag: 'emoji', label: 'Dance', url: 'content/gifs/Custom Emojis/Dance.gif' },
+      { id: 'e9', tag: 'emoji', label: "Let's Go", url: "content/gifs/Custom Emojis/Let's go.gif" },
+      { id: 'e10', tag: 'emoji', label: 'Slow and Steady', url: 'content/gifs/Custom Emojis/Slow and Steady.gif' },
+      { id: 'e11', tag: 'emoji', label: 'Yes Indeed', url: 'content/gifs/Custom Emojis/yes indeed.gif' },
+      { id: 'e12', tag: 'emoji', label: 'Heart', url: 'content/gifs/Custom Emojis/Heart.png' },
+      { id: 'e13', tag: 'emoji', label: 'Mind Blown', url: 'content/gifs/Custom Emojis/Mind Blown.png' },
+      { id: 'e14', tag: 'emoji', label: 'Robot', url: 'content/gifs/Custom Emojis/Robot.png' },
     ],
     'GIFs': [
       { id: 'g1', tag: 'gif', label: 'Stonks', url: 'content/gifs/Gifs/Stonks.gif' },
@@ -3543,6 +3641,17 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
       { id: 'g7', tag: 'gif', label: 'To The Moon', url: 'content/gifs/Gifs/To The Moon.gif' },
       { id: 'g8', tag: 'gif', label: 'Unstoppable', url: 'content/gifs/Gifs/Unstoppable.gif' },
       { id: 'g9', tag: 'gif', label: 'Big Win', url: 'content/gifs/Gifs/Big Win.gif' },
+      { id: 'g10', tag: 'gif', label: 'Bitcoin S1', url: 'content/gifs/Gifs/Bitcoin S1.gif' },
+      { id: 'g11', tag: 'gif', label: 'DIP', url: 'content/gifs/Gifs/DIP.gif' },
+      { id: 'g12', tag: 'gif', label: 'Going Up', url: 'content/gifs/Gifs/goo up.gif' },
+      { id: 'g13', tag: 'gif', label: 'iTrendz Trading', url: 'content/gifs/Gifs/itrendz-itrendz-trading.gif' },
+      { id: 'g14', tag: 'gif', label: 'Crypto Meme', url: 'content/gifs/Gifs/meme-crypto.gif' },
+      { id: 'g15', tag: 'gif', label: 'Numbers', url: 'content/gifs/Gifs/numbers.gif' },
+      { id: 'g16', tag: 'gif', label: 'Savings', url: 'content/gifs/Gifs/Savings.gif' },
+      { id: 'g17', tag: 'gif', label: 'Sell It', url: 'content/gifs/Gifs/Sell it.gif' },
+      { id: 'g18', tag: 'gif', label: 'Stock Market', url: 'content/gifs/Gifs/stock-market.gif' },
+      { id: 'g19', tag: 'gif', label: 'Buy Money Meme', url: 'content/gifs/Gifs/stock-market-buy-money-funny-meme-0jl2wq4upqk9vcav.gif' },
+      { id: 'g20', tag: 'gif', label: 'Stock Class', url: 'content/gifs/Gifs/stock-market-class-doug-maclean-g35ypw0vmvnqo4c8.gif' },
     ],
   });
 
