@@ -38,9 +38,9 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-21.1';
-const APP_BUILT_AT = '2026-04-21T19:30:00Z';
-const APP_BUILD_NOTES = 'Admin Debug Panel + hard refresh, +22 stocks (defense/AI/retail/QSR/energy), Asset-not-found fix, +11 gifs, +7 reaction emojis';
+const APP_VERSION = '2026-04-21.2';
+const APP_BUILT_AT = '2026-04-21T23:55:00Z';
+const APP_BUILD_NOTES = 'Private chat rooms: The Bulls (Ella, PCM, Taylor) + The Bears (Ella, Lawson). Lawson admin in both. Trade Alerts still global. + Admin Debug Panel, +22 stocks, Asset-not-found fix, +11 gifs, +7 reaction emojis';
 
 // Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
 // Fire-and-forget: if the network fails, the trade still completes locally.
@@ -562,11 +562,34 @@ function CharacterAvatar({ name, size = 44, style = {} }) {
 }
 
 // Channel config. `channel` maps to the DB column in stockrocket_messages.
+// Group Chat is no longer a single shared room -- it's split into private rooms
+// defined in GROUP_ROOMS below, each persisted as channel='group' with the room
+// id stored in thread_for. Trade Alerts stays global.
 const CHANNELS = [
-  { id: 'general', channel: 'group',   name: 'Group Chat',    icon: 'forum',          type: 'group' },
   { id: 'trades',  channel: 'alerts',  name: 'Trade Alerts',  icon: 'swap_vert',      type: 'feed'  },
   { id: 'milburn', channel: 'milburn', name: 'Ask Milburn',   icon: 'support_agent',  type: 'dm'    },
 ];
+
+// Private group rooms. MIRROR of the GROUP_ROOMS map in /api/messages.js --
+// keep these in sync or the server will 403 on valid client requests.
+// Membership is matched case-insensitively against the caller's display label
+// (access-code label). Admins are implicitly members of every room.
+const GROUP_ROOMS = [
+  { id: 'bulls', name: 'The Bulls', icon: 'trending_up', members: ['Ella', 'PCM', 'Taylor'] },
+  { id: 'bears', name: 'The Bears', icon: 'trending_down', members: ['Ella', 'Lawson'] },
+];
+function isGroupRoomMember(room, displayLabel, isAdmin) {
+  if (isAdmin) return true;
+  const n = (displayLabel || '').trim().toLowerCase();
+  if (!n) return false;
+  return (room.members || []).some(m => m.trim().toLowerCase() === n);
+}
+function groupRoomsFor(displayLabel, isAdmin) {
+  return GROUP_ROOMS.filter(r => isGroupRoomMember(r, displayLabel, isAdmin));
+}
+function findGroupRoom(id) {
+  return GROUP_ROOMS.find(r => r.id === id) || null;
+}
 
 const QUICK_EMOJIS = ['🚀', '🔥', '💎', '📈', '📉', '🐻', '🐂', '💰', '⚡', '👀', '🎯', '💪'];
 
@@ -3424,7 +3447,15 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
 
 // ==================== CHAT ====================
 function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange }) {
-  const [activeRoom, setActiveRoom] = useState(initialRoom || 'general');
+  // Default room: an allowed group room for this caller (usually The Bulls /
+  // The Bears). Admin sees every room; a user with no group-room membership
+  // falls back to Trade Alerts so the page isn't empty.
+  const [activeRoom, setActiveRoom] = useState(() => {
+    if (initialRoom) return initialRoom;
+    const rooms = groupRoomsFor(displayName || user, isAdmin);
+    if (rooms.length > 0) return rooms[0].id;
+    return 'trades';
+  });
   // Keep the App-level watcher in sync so chat-alert banners can tell whether
   // the user is already looking at the room a new message arrived in.
   useEffect(() => { if (onRoomChange) onRoomChange(activeRoom); }, [activeRoom, onRoomChange]);
@@ -3503,11 +3534,23 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
     return () => { mounted = false; clearInterval(iv); };
   }, [isAdmin, code]);
 
-  // Build the channel list -- admin gets per-user DM channels, users get a single Ask Milburn
+  // Build the channel list. Private group rooms (Bulls / Bears) come first,
+  // filtered to the rooms the caller belongs to. Admin sees every room.
+  // Trade Alerts is always visible. Admin gets per-user DM channels; users get
+  // a single Ask Milburn.
   const labelForCode = (c) => familyUsers.find(u => u.code === c)?.label || c;
+  const myDisplayLabel = displayName || user || '';
   const channels = (() => {
+    const groupChannels = groupRoomsFor(myDisplayLabel, isAdmin).map(r => ({
+      id: r.id,              // e.g. 'bulls' / 'bears' -- also the room id sent to API
+      channel: 'group',
+      room: r.id,
+      name: r.name,
+      icon: r.icon || 'forum',
+      type: 'group',
+    }));
     const base = [
-      { id: 'general', channel: 'group',  name: 'Group Chat',    icon: 'forum',        type: 'group' },
+      ...groupChannels,
       { id: 'trades',  channel: 'alerts', name: 'Trade Alerts',  icon: 'swap_vert',    type: 'feed'  },
     ];
     if (isAdmin) {
@@ -3526,9 +3569,13 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
   })();
   const findChannel = (id) => channels.find(r => r.id === id);
 
-  // If admin's activeRoom is stale (e.g. a dm:code that no longer exists), snap back to general
+  // If activeRoom is stale (e.g. a dm:code that no longer exists, or an old
+  // 'general' value), snap to the first allowed room.
   useEffect(() => {
-    if (!findChannel(activeRoom)) setActiveRoom('general');
+    if (!findChannel(activeRoom)) {
+      const firstAllowed = channels[0]?.id || 'trades';
+      setActiveRoom(firstAllowed);
+    }
   }, [activeRoom, channels.length]);
 
   const isDmRoom = activeRoom.startsWith('dm:');
@@ -3564,6 +3611,11 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
           const threadFor = ch.threadFor || code;
           qs += `&thread_for=${encodeURIComponent(threadFor)}`;
         }
+        if (ch.channel === 'group') {
+          // Group is now private-room-only. Send the room id (bulls/bears etc).
+          const roomId = ch.room || ch.id;
+          qs += `&room=${encodeURIComponent(roomId)}`;
+        }
         // Group + alerts also carry the reads map so we can render per-user
         // read receipts below each message.
         if (ch.channel === 'group' || ch.channel === 'alerts') qs += '&with_reads=1';
@@ -3586,14 +3638,17 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
     // next poll, updating the tiny-avatar row under recent messages.
     const markSeen = async () => {
       try {
-        // All three channels (group, alerts, milburn) track last_seen_at so the
+        // All channels (group rooms, alerts, milburn) track last_seen_at so the
         // persistent unread banner clears when the user has actually opened the
         // channel -- including trade alerts, which otherwise pile up forever
-        // because the feed auto-posts on every trade.
+        // because the feed auto-posts on every trade. Group rooms key their
+        // read state per room server-side (channel="group:<room>").
+        const body = { action: 'mark_seen', channel: ch.channel };
+        if (ch.channel === 'group') body.room = ch.room || ch.id;
         await fetch(`${API_BASE}/api/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
-          body: JSON.stringify({ action: 'mark_seen', channel: ch.channel }),
+          body: JSON.stringify(body),
         });
       } catch {}
     };
@@ -3688,6 +3743,7 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
     }
     const payload = { channel: ch.channel, content };
     if (ch.channel === 'milburn') payload.thread_for = ch.threadFor || code;
+    if (ch.channel === 'group')  payload.room = ch.room || ch.id;
 
     const optimisticId = 'tmp-' + Date.now();
     setMessages(p => [...p, {
@@ -3819,6 +3875,10 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
       // Admin per-user DMs carry threadFor; users post into their own thread
       payload.thread_for = ch.threadFor || code;
     }
+    if (ch.channel === 'group') {
+      // Private group rooms (Bulls / Bears) -- server enforces membership
+      payload.room = ch.room || ch.id;
+    }
     // Optimistic append -- the next poll will reconcile
     const optimisticId = 'tmp-' + Date.now();
     setMessages(p => [...p, {
@@ -3899,7 +3959,10 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
           <div className="chat-rooms-list">
             {channels.map(r => {
               const isDm = r.type === 'dm';
-              const preview = r.id === 'general' ? 'Group chat'
+              const isGroupRoom = r.channel === 'group';
+              const preview = isGroupRoom && r.id === 'bulls' ? 'Ella, PCM, Taylor'
+                : isGroupRoom && r.id === 'bears' ? 'Ella, Lawson'
+                : isGroupRoom ? 'Private room'
                 : r.id === 'trades' ? 'Live trade feed'
                 : isAdmin && isDm ? 'Private DM'
                 : 'Your DM with Milburn';
@@ -3961,9 +4024,13 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
                   {room?.type === 'dm' ? <span style={{ fontSize: 20 }}>{isAdmin && isDmRoom ? '💬' : '🎩'}</span> : <Icon name={room?.icon || 'forum'} size={20} className="text-primary" />}
                 </div>
                 <div>
-                  <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15 }}>{room?.name || 'Group Chat'}</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15 }}>{room?.name || 'Chat'}</div>
                   <div className="text-muted" style={{ fontSize: 11 }}>
-                    {activeRoom === 'general' && 'Group chat'}
+                    {room?.channel === 'group' && (
+                      (room.id === 'bulls' ? 'Private room \u00B7 Ella, PCM, Taylor' :
+                       room.id === 'bears' ? 'Private room \u00B7 Ella, Lawson' :
+                       'Private room')
+                    )}
                     {activeRoom === 'trades' && 'Trades post here automatically'}
                     {activeRoom === 'milburn' && !isAdmin && 'Private DM with Milburn Pennybags'}
                     {isDmRoom && isAdmin && 'Private DM \u00B7 ' + labelForCode(currentDmCode)}
@@ -3977,26 +4044,35 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
             </div>
           </div>
 
-          {/* Members strip -- only in Group Chat. Driven by the live access-code
-              roster via useChatMembers, so any user RSJ adds in the admin panel
-              automatically shows up here. */}
-          {activeRoom === 'general' && (
-            <div style={{ padding: '8px 24px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(73,72,71,0.05)', flexWrap: 'wrap' }}>
-              {chatMemberList.map((member) => {
-                const decoration = getSquadMember(member.label);
-                return (
-                  <div key={member.id || member.label} title={member.is_admin ? `${member.label} (admin)` : member.label} style={{ position: 'relative', flexShrink: 0 }}>
-                    <CharacterAvatar name={member.label} size={46} style={{ border: member.label === currentUser ? `2px solid ${decoration.color}` : '2px solid transparent' }} />
-                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#00ffa3', border: '2px solid var(--bg)' }}></div>
-                    {member.is_admin && (
-                      <div style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: '50%', background: 'var(--primary-fixed, #00ffa3)', color: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, border: '2px solid var(--bg)' }}>★</div>
-                    )}
-                  </div>
-                );
-              })}
-              <span className="text-muted" style={{ fontSize: 10, marginLeft: 4 }}>{chatMemberList.length} online</span>
-            </div>
-          )}
+          {/* Members strip -- only in private group rooms. Filters the live
+              roster down to that room's whitelist (case-insensitive label
+              match). Admin (Lawson) shows everywhere via the room config. */}
+          {(() => {
+            if (room?.channel !== 'group') return null;
+            const groupCfg = findGroupRoom(room.id);
+            if (!groupCfg) return null;
+            const allowed = groupCfg.members.map(n => n.toLowerCase());
+            const roomMembers = chatMemberList.filter(m =>
+              allowed.includes((m.label || '').toLowerCase()) || m.is_admin
+            );
+            return (
+              <div style={{ padding: '8px 24px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(73,72,71,0.05)', flexWrap: 'wrap' }}>
+                {roomMembers.map((member) => {
+                  const decoration = getSquadMember(member.label);
+                  return (
+                    <div key={member.id || member.label} title={member.is_admin ? `${member.label} (admin)` : member.label} style={{ position: 'relative', flexShrink: 0 }}>
+                      <CharacterAvatar name={member.label} size={46} style={{ border: member.label === currentUser ? `2px solid ${decoration.color}` : '2px solid transparent' }} />
+                      <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#00ffa3', border: '2px solid var(--bg)' }}></div>
+                      {member.is_admin && (
+                        <div style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: '50%', background: 'var(--primary-fixed, #00ffa3)', color: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, border: '2px solid var(--bg)' }}>★</div>
+                      )}
+                    </div>
+                  );
+                })}
+                <span className="text-muted" style={{ fontSize: 10, marginLeft: 4 }}>{roomMembers.length} in room</span>
+              </div>
+            );
+          })()}
           </div>
 
           {/* Trade Alerts Feed -- live from stockrocket_messages, channel='alerts' */}
@@ -4110,8 +4186,8 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
             </div>
           )}
 
-          {/* Group Chat Messages */}
-          {activeRoom === 'general' && (
+          {/* Group Chat Messages -- private rooms (Bulls / Bears) */}
+          {room?.channel === 'group' && (
           <div className="chat-messages" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} style={isDragOver ? { outline: '2px dashed var(--primary-fixed)', outlineOffset: -4, background: 'rgba(0,255,163,0.03)' } : {}}>
             {isDragOver && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(14,14,14,0.8)', borderRadius: 'var(--radius-xl)' }}>
@@ -7183,7 +7259,9 @@ function UnreadHeaderBanner({ summary, activePage, currentChatRoom, isAdmin, onO
   // would be hostile.
   const isWatching = (() => {
     if (activePage !== 'chat') return false;
-    if (latest.channel === 'group' && currentChatRoom === 'general') return true;
+    // Group rooms now ride per-room ids (bulls / bears). The banner suppresses
+    // only when the user is sitting in the same room the unread came from.
+    if (latest.channel === 'group' && latest.room && currentChatRoom === latest.room) return true;
     if (latest.channel === 'alerts' && currentChatRoom === 'trades') return true;
     if (latest.channel === 'milburn') {
       // Admins only suppress when on the exact dm:{thread_for} room so a
@@ -7197,8 +7275,13 @@ function UnreadHeaderBanner({ summary, activePage, currentChatRoom, isAdmin, onO
 
   const preview = (latest.preview || '').trim();
   const isGif = isImageContent(preview);
+  const groupRoomLabel = latest.channel === 'group'
+    ? (latest.room === 'bulls' ? 'The Bulls'
+        : latest.room === 'bears' ? 'The Bears'
+        : 'Group chat')
+    : null;
   const roomLabel =
-    latest.channel === 'group' ? 'Group chat'
+    latest.channel === 'group' ? groupRoomLabel
     : latest.channel === 'alerts' ? 'Trade alerts'
     : latest.channel === 'milburn' ? (isAdmin ? 'Ask Milburn inbox' : 'Milburn DM')
     : 'Chat';
@@ -7351,50 +7434,60 @@ function useUnreadSummary({ code, activePage, currentChatRoom }) {
   return summary;
 }
 
-function useChatAlerts({ code, isAdmin, activePage, currentChatRoom, setAlert }) {
+function useChatAlerts({ code, isAdmin, displayLabel, activePage, currentChatRoom, setAlert }) {
   useEffect(() => {
     if (!code) return;
     let mounted = true;
+    // Group rooms are private + per-room. Compute the allowed set from the
+    // user's display label (admin sees all rooms).
+    const myRooms = groupRoomsFor(displayLabel || '', isAdmin);
     // On first mount for this session, seed seen timestamps with "now" so we
-    // don't immediately blast the user with every historical message.
+    // don't immediately blast the user with every historical message. Per-room
+    // group seen timestamps are keyed `group:<room>`.
     const seenOnMount = readChatAlertSeen();
     if (seenOnMount.bootstrap_at == null) {
-      writeChatAlertSeen({ ...seenOnMount, bootstrap_at: Date.now(), group: Date.now(), milburn: Date.now() });
+      const bootstrapPatch = { bootstrap_at: Date.now(), milburn: Date.now() };
+      for (const r of myRooms) bootstrapPatch[`group:${r.id}`] = Date.now();
+      writeChatAlertSeen({ ...seenOnMount, ...bootstrapPatch });
     }
 
     const poll = async () => {
       try {
-        // -------- Group channel --------
-        const groupRes = await fetch(`${API_BASE}/api/messages?channel=group`, { headers: { 'X-User-Code': code } });
-        const groupData = await groupRes.json();
-        if (!mounted || !groupData.ok) { /* still try milburn */ }
-        const groupMessages = (groupData && groupData.ok) ? (groupData.messages || []) : [];
-        const seen = readChatAlertSeen();
-        const groupSeen = Number(seen.group || 0);
-        const isWatchingGroup = activePage === 'chat' && currentChatRoom === 'general';
+        // -------- Group channel (per private room) --------
+        for (const r of myRooms) {
+          const seenKey = `group:${r.id}`;
+          const groupRes = await fetch(`${API_BASE}/api/messages?channel=group&room=${encodeURIComponent(r.id)}`, { headers: { 'X-User-Code': code } });
+          const groupData = await groupRes.json();
+          if (!mounted) return;
+          if (!groupData || !groupData.ok) continue;
+          const groupMessages = groupData.messages || [];
+          const seen = readChatAlertSeen();
+          const groupSeen = Number(seen[seenKey] || 0);
+          const isWatchingThisRoom = activePage === 'chat' && currentChatRoom === r.id;
 
-        let newestGroup = null;
-        let latestGroupAt = groupSeen;
-        for (const m of groupMessages) {
-          const at = new Date(m.created_at).getTime();
-          if (at > latestGroupAt) latestGroupAt = at;
-          if (m.author_code !== code && at > groupSeen) {
-            if (!newestGroup || at > new Date(newestGroup.created_at).getTime()) newestGroup = m;
+          let newestGroup = null;
+          let latestGroupAt = groupSeen;
+          for (const m of groupMessages) {
+            const at = new Date(m.created_at).getTime();
+            if (at > latestGroupAt) latestGroupAt = at;
+            if (m.author_code !== code && at > groupSeen) {
+              if (!newestGroup || at > new Date(newestGroup.created_at).getTime()) newestGroup = m;
+            }
           }
-        }
-        if (isWatchingGroup && latestGroupAt > groupSeen) {
-          const s = readChatAlertSeen();
-          writeChatAlertSeen({ ...s, group: latestGroupAt });
-        } else if (newestGroup && mounted) {
-          setAlert({
-            channel: 'group',
-            room: 'general',
-            roomLabel: 'Group chat',
-            user: newestGroup.author_name || 'Someone',
-            message: (newestGroup.content || '').slice(0, 140),
-            isGif: isImageContent(newestGroup.content),
-            created_at: newestGroup.created_at,
-          });
+          if (isWatchingThisRoom && latestGroupAt > groupSeen) {
+            const s = readChatAlertSeen();
+            writeChatAlertSeen({ ...s, [seenKey]: latestGroupAt });
+          } else if (newestGroup && mounted) {
+            setAlert(prev => prev || {
+              channel: 'group',
+              room: r.id,
+              roomLabel: r.name,
+              user: newestGroup.author_name || 'Someone',
+              message: (newestGroup.content || '').slice(0, 140),
+              isGif: isImageContent(newestGroup.content),
+              created_at: newestGroup.created_at,
+            });
+          }
         }
 
         // -------- Milburn DMs --------
@@ -7452,7 +7545,7 @@ function useChatAlerts({ code, isAdmin, activePage, currentChatRoom, setAlert })
     poll();
     const iv = setInterval(poll, 10000);
     return () => { mounted = false; clearInterval(iv); };
-  }, [code, isAdmin, activePage, currentChatRoom]);
+  }, [code, isAdmin, displayLabel, activePage, currentChatRoom]);
 }
 
 // ==================== MAIN APP ====================
@@ -7481,7 +7574,9 @@ function App() {
   // room the user isn't currently watching. `currentChatRoom` is kept in sync
   // by ChatPage via its onRoomChange callback.
   const [chatAlert, setChatAlert] = useState(null);
-  const [currentChatRoom, setCurrentChatRoom] = useState('general');
+  // Default to 'trades' (alerts feed) -- ChatPage will snap to the user's
+  // first allowed group room on mount via its lazy initializer.
+  const [currentChatRoom, setCurrentChatRoom] = useState('trades');
   const [pendingChatRoom, setPendingChatRoom] = useState(null);
 
   // Live data hook -- fetches from CoinGecko + Finnhub proxy
@@ -7581,6 +7676,7 @@ function App() {
   useChatAlerts({
     code: accessCode,
     isAdmin,
+    displayLabel: displayName || user,
     activePage,
     currentChatRoom,
     setAlert: setChatAlert,
@@ -7596,14 +7692,15 @@ function App() {
   const handleOpenUnreadBanner = () => {
     const latest = unreadSummary && unreadSummary.latest_unread;
     if (!latest) return;
-    // Map channel -> room id. Admin Milburn routes to the specific
-    // dm:{thread_for} so the admin lands directly in the thread that
-    // has the unread message. Non-admins have a single Ask Milburn DM.
-    let room = 'general';
-    if (latest.channel === 'group') room = 'general';
+    // Map channel -> room id. Group rooms now ride per-room ids
+    // (latest.room is 'bulls' or 'bears'). Admin Milburn routes to the
+    // specific dm:{thread_for} so the admin lands directly in the
+    // thread that has the unread message.
+    let room = 'trades';
+    if (latest.channel === 'group') room = latest.room || 'bulls';
     else if (latest.channel === 'alerts') room = 'trades';
     else if (latest.channel === 'milburn') {
-      room = isAdmin ? (latest.thread_for ? 'dm:' + latest.thread_for : 'general') : 'milburn';
+      room = isAdmin ? (latest.thread_for ? 'dm:' + latest.thread_for : 'trades') : 'milburn';
     }
     setPendingChatRoom(room);
     setActivePage('chat');
@@ -7614,7 +7711,10 @@ function App() {
     // Mark the target room's "seen" timestamp as now so we don't re-alert.
     const seen = readChatAlertSeen();
     const now = Date.now();
-    if (chatAlert.channel === 'group') writeChatAlertSeen({ ...seen, group: now });
+    if (chatAlert.channel === 'group') {
+      // Per-room key: group:bulls / group:bears
+      writeChatAlertSeen({ ...seen, [`group:${chatAlert.room}`]: now });
+    }
     if (chatAlert.channel === 'milburn') writeChatAlertSeen({ ...seen, milburn: now });
     setPendingChatRoom(chatAlert.room);
     setActivePage('chat');

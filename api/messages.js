@@ -2,29 +2,60 @@
 // --------------------------------------------------------
 // Chat + trade alerts + "Ask Milburn" DM threads.
 //
-//   GET  /api/messages?channel=group                   -> last 100 group messages
-//   GET  /api/messages?channel=group&with_reads=1      -> messages + reads map
-//   GET  /api/messages?channel=alerts                  -> last 100 trade alerts
-//   GET  /api/messages?channel=milburn&thread_for=CODE -> one user's Milburn DM thread
-//   GET  /api/messages?channel=milburn&admin=1         -> admin: all Milburn threads grouped
-//   GET  /api/messages?unread=1                        -> unread counts for this user across all channels
+//   GET  /api/messages?channel=group&room=bulls              -> last 100 messages in a group room
+//   GET  /api/messages?channel=group&room=bulls&with_reads=1 -> messages + reads map
+//   GET  /api/messages?channel=alerts                        -> last 100 trade alerts
+//   GET  /api/messages?channel=milburn&thread_for=CODE       -> one user's Milburn DM thread
+//   GET  /api/messages?channel=milburn&admin=1               -> admin: all Milburn threads grouped
+//   GET  /api/messages?unread=1                              -> unread counts for this user across all channels
 //
-//   POST /api/messages  body:{channel, thread_for?, content}
+//   POST /api/messages  body:{channel, room?, thread_for?, content}
 //       - Auth by X-User-Code header (any active access code).
-//       - 'group'   : anyone writes
+//       - 'group'   : `room` is REQUIRED. Caller must be a member of the room
+//                     (see GROUP_ROOMS below) OR be admin. Persists as
+//                     channel='group', thread_for=<room>.
 //       - 'alerts'  : anyone writes (client posts on trade execution)
 //       - 'milburn' : thread_for must equal author's code, OR author is admin
 //       - Author display name sourced from access_codes.label (fallback: code).
 //
-//   POST /api/messages  body:{action:'mark_seen', channel}
+//   POST /api/messages  body:{action:'mark_seen', channel, room?}
 //       - Upserts last_seen_at=now() for this user + channel.
-//       - Drives per-user read receipts + the persistent "new messages" banner.
+//       - For channel='group', room is required and the stored channel key is
+//         "group:<room>" so per-room read state is tracked without a schema
+//         change (stockrocket_chat_reads is still keyed by (user_label, channel)).
+//
+// Group rooms:
+//   The membership map (GROUP_ROOMS) maps room id -> allowed labels/codes.
+//   Add/remove names here to change who can read/write each private room.
+//   Admins are implicitly members of every room.
 //
 // Env vars required (set in Vercel project settings):
 //   SUPABASE_URL
 //   SUPABASE_SERVICE_KEY
 
 export const config = { runtime: 'edge' };
+
+// Private group rooms and their membership. Keys are room ids used in URLs and
+// stored in stockrocket_messages.thread_for when channel='group'. Values are
+// case-insensitive access-code labels. An admin can always read/write any room.
+// Edit this map to add/remove members; no schema change required.
+const GROUP_ROOMS = {
+  bulls: { name: 'The Bulls', members: ['Ella', 'PCM', 'Taylor'] },
+  bears: { name: 'The Bears', members: ['Ella', 'Lawson'] },
+};
+
+function canAccessRoom(me, roomId) {
+  const room = GROUP_ROOMS[roomId];
+  if (!room) return false;
+  if (me.is_admin) return true;
+  const label = (me.label || me.code || '').trim().toLowerCase();
+  return room.members.some(m => m.trim().toLowerCase() === label);
+}
+
+function listRoomsFor(me) {
+  // Rooms this caller is allowed to read. Admins get everything.
+  return Object.keys(GROUP_ROOMS).filter(id => canAccessRoom(me, id));
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -92,15 +123,38 @@ export default async function handler(req) {
       return json({ ok: true, messages: data || [] });
     }
 
-    // Group or alerts: public feed
+    // Group: private room, gated. Room id lives in thread_for so we can route
+    // multiple rooms through the same channel without a schema migration.
+    if (channel === 'group') {
+      const room = (url.searchParams.get('room') || '').trim();
+      if (!room || !GROUP_ROOMS[room]) return json({ error: 'invalid_room' }, 400);
+      if (!canAccessRoom(me, room)) return json({ error: 'forbidden' }, 403);
+      const { data } = await db.select(
+        'stockrocket_messages',
+        `channel=eq.group&thread_for=eq.${encodeURIComponent(room)}&order=created_at.desc&limit=100`
+      );
+      const messages = (data || []).reverse();
+
+      if (url.searchParams.get('with_reads') === '1') {
+        const readsKey = `group:${room}`;
+        const { data: readRows } = await db.select(
+          'stockrocket_chat_reads',
+          `channel=eq.${encodeURIComponent(readsKey)}`
+        );
+        const reads = {};
+        for (const r of readRows || []) reads[r.user_label] = r.last_seen_at;
+        return json({ ok: true, messages, reads, room });
+      }
+      return json({ ok: true, messages, room });
+    }
+
+    // Alerts: public feed (everyone reads)
     const { data } = await db.select(
       'stockrocket_messages',
       `channel=eq.${channel}&order=created_at.desc&limit=100`
     );
     const messages = (data || []).reverse();
 
-    // Optional: include everyone's last_seen_at for this channel so the client
-    // can render per-message read receipts. Cheap -- one small table, indexed.
     if (url.searchParams.get('with_reads') === '1') {
       const { data: readRows } = await db.select(
         'stockrocket_chat_reads',
@@ -122,19 +176,28 @@ export default async function handler(req) {
     // Read receipt: upsert last_seen_at for this user + channel.
     // Cheap, idempotent, driven by the client when the user is actively
     // viewing a channel. A single row per (user_label, channel) ever exists.
+    // For group rooms the channel key is "group:<room>" so each private room
+    // tracks its own read state.
     if (body.action === 'mark_seen') {
       const channel = body.channel;
       if (!['group', 'alerts', 'milburn'].includes(channel)) {
         return json({ error: 'invalid_channel' }, 400);
       }
+      let channelKey = channel;
+      if (channel === 'group') {
+        const room = (body.room || '').toString().trim();
+        if (!room || !GROUP_ROOMS[room]) return json({ error: 'invalid_room' }, 400);
+        if (!canAccessRoom(me, room)) return json({ error: 'forbidden' }, 403);
+        channelKey = `group:${room}`;
+      }
       const label = me.label || me.code;
       const { error } = await db.upsert(
         'stockrocket_chat_reads',
-        { user_label: label, channel, last_seen_at: new Date().toISOString() },
+        { user_label: label, channel: channelKey, last_seen_at: new Date().toISOString() },
         'user_label,channel'
       );
       if (error) return json({ error: 'mark_seen_failed', detail: error }, 500);
-      return json({ ok: true, user_label: label, channel });
+      return json({ ok: true, user_label: label, channel: channelKey });
     }
 
     const channel = body.channel;
@@ -152,6 +215,14 @@ export default async function handler(req) {
       if (threadFor !== me.code && !me.is_admin) {
         return json({ error: 'forbidden' }, 403);
       }
+    } else if (channel === 'group') {
+      // Group is now private-room-only. The client MUST send a valid room id
+      // and the caller must be a member. Room id lives in thread_for so we
+      // can filter by it on GETs without a schema change.
+      const room = (body.room || '').toString().trim();
+      if (!room || !GROUP_ROOMS[room]) return json({ error: 'invalid_room' }, 400);
+      if (!canAccessRoom(me, room)) return json({ error: 'forbidden' }, 403);
+      threadFor = room;
     }
 
     const authorName = me.label || me.code;
@@ -183,30 +254,57 @@ async function handleUnreadSummary(db, me) {
   const seenByChannel = {};
   for (const r of readRows || []) seenByChannel[r.channel] = r.last_seen_at;
 
-  // Channels tracked for the summary. Trade alerts are still counted so the
-  // sidebar and per-channel callouts can light up, but they are INTENTIONALLY
-  // excluded from `total` / `latest_unread` below -- the persistent top-nav
-  // banner should only nag the user for real conversations (group + milburn),
-  // not the trade-alerts feed (which auto-posts on every execution and is
-  // noisy by design). RSJ asked for this: "getting too loud with the trade
-  // alert -- just do the messages."
-  const channels = ['group', 'alerts'];
-  const NON_BANNER_CHANNELS = new Set(['alerts']);
-  // Milburn: a user only sees their own thread; an admin sees all threads.
+  // Trade alerts are counted per-channel so the sidebar callouts can light up,
+  // but are INTENTIONALLY excluded from `total` / `latest_unread` -- the
+  // persistent top-nav banner should only nag for real conversations
+  // (group rooms + milburn), not the trade-alerts feed which auto-posts on
+  // every execution.
+  //   RSJ: "getting too loud with the trade alert -- just do the messages."
   const out = { ok: true, channels: {}, total: 0, latest_unread: null };
 
-  for (const ch of channels) {
+  // Per-room group unread: only rooms the caller is a member of.
+  const myRooms = listRoomsFor(me);
+  for (const roomId of myRooms) {
     const { data } = await db.select(
       'stockrocket_messages',
-      `channel=eq.${ch}&order=created_at.desc&limit=100`
+      `channel=eq.group&thread_for=eq.${encodeURIComponent(roomId)}&order=created_at.desc&limit=100`
     );
-    const seenAt = seenByChannel[ch];
+    const channelKey = `group:${roomId}`;
+    const seenAt = seenByChannel[channelKey];
     const unread = (data || []).filter(m => {
-      if (m.author_name === myLabel) return false; // don't count your own
-      if (!seenAt) return true;                    // never visited -> all unread
+      if (m.author_name === myLabel) return false;
+      if (!seenAt) return true;
       return new Date(m.created_at) > new Date(seenAt);
     });
-    out.channels[ch] = {
+    out.channels[channelKey] = {
+      unread_count: unread.length,
+      latest: unread[0] ? {
+        id: unread[0].id,
+        author: unread[0].author_name,
+        created_at: unread[0].created_at,
+        preview: (unread[0].content || '').slice(0, 120),
+        room: roomId,
+      } : null,
+    };
+    out.total += unread.length;
+    if (unread[0] && (!out.latest_unread || unread[0].created_at > out.latest_unread.created_at)) {
+      out.latest_unread = { channel: 'group', room: roomId, ...out.channels[channelKey].latest };
+    }
+  }
+
+  // Trade alerts: sidebar callout only, not banner.
+  {
+    const { data } = await db.select(
+      'stockrocket_messages',
+      `channel=eq.alerts&order=created_at.desc&limit=100`
+    );
+    const seenAt = seenByChannel.alerts;
+    const unread = (data || []).filter(m => {
+      if (m.author_name === myLabel) return false;
+      if (!seenAt) return true;
+      return new Date(m.created_at) > new Date(seenAt);
+    });
+    out.channels.alerts = {
       unread_count: unread.length,
       latest: unread[0] ? {
         id: unread[0].id,
@@ -215,11 +313,6 @@ async function handleUnreadSummary(db, me) {
         preview: (unread[0].content || '').slice(0, 120),
       } : null,
     };
-    if (NON_BANNER_CHANNELS.has(ch)) continue; // feed channel -- don't drive the banner
-    out.total += unread.length;
-    if (unread[0] && (!out.latest_unread || unread[0].created_at > out.latest_unread.created_at)) {
-      out.latest_unread = { channel: ch, ...out.channels[ch].latest };
-    }
   }
 
   // Milburn unread: user sees own-thread replies from admin; admin sees
