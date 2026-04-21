@@ -36,7 +36,11 @@ const API_BASE = (() => {
     return qs.get('apiBase') || localStorage.getItem('stockrocket_api_base') || '';
   } catch { return ''; }
 })();
-const APP_VERSION = '1.0.0';
+// APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
+// a fresh bundle has actually landed vs a cached one. Bump on every deploy.
+const APP_VERSION = '2026-04-21.1';
+const APP_BUILT_AT = '2026-04-21T19:30:00Z';
+const APP_BUILD_NOTES = 'Admin Debug Panel + hard refresh, +22 stocks (defense/AI/retail/QSR/energy), Asset-not-found fix, +11 gifs, +7 reaction emojis';
 
 // Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
 // Fire-and-forget: if the network fails, the trade still completes locally.
@@ -6053,6 +6057,7 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
     { id: 'challenges', icon: 'emoji_events', label: 'Challenges' },
     { id: 'moderation', icon: 'shield', label: 'Moderation' },
     { id: 'roadmap', icon: 'rocket_launch', label: 'Roadmap' },
+    { id: 'debug', icon: 'bug_report', label: 'Debug' },
   ];
 
   return (
@@ -6441,6 +6446,371 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
           </div>
         </div>
       )}
+
+      {/* DEBUG TAB -- admin-only diagnostics + hard refresh */}
+      {activeTab === 'debug' && (
+        <AdminDebugPanel setNotification={setNotification} adminCode={adminCode} />
+      )}
+    </div>
+  );
+}
+
+// ==================== ADMIN DEBUG PANEL ====================
+// Admin-only diagnostics. Tells you whether a fresh bundle actually landed,
+// probes the price-history API, shows storage footprint, and offers a "hard
+// refresh" that unregisters service workers, purges CacheStorage, and reloads
+// with a cache-bust query. Gated by the AdminPage mount, which is gated by
+// isAdmin in the top-level renderPage dispatcher, so no extra auth here.
+function AdminDebugPanel({ setNotification, adminCode }) {
+  const [apiProbe, setApiProbe] = useState({ state: 'idle', source: null, latency: null, error: null, detail: null });
+  const [storage, setStorage] = useState({ total: 0, items: [], sparkCache: 0, sparkEntries: 0 });
+  const [swInfo, setSwInfo] = useState({ count: 0, scopes: [] });
+  const [cacheInfo, setCacheInfo] = useState({ count: 0, names: [] });
+  const [clearing, setClearing] = useState(false);
+
+  // One-time probe on mount so the panel is useful the moment it opens.
+  useEffect(() => {
+    runApiProbe();
+    measureStorage();
+    inspectServiceWorkers();
+    inspectCaches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function runApiProbe() {
+    setApiProbe({ state: 'loading', source: null, latency: null, error: null, detail: null });
+    const t0 = performance.now();
+    try {
+      const res = await fetch(`${API_BASE}/api/history?symbol=MSFT&days=5`, { cache: 'no-store' });
+      const latency = Math.round(performance.now() - t0);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || j.ok === false) {
+        setApiProbe({ state: 'error', source: null, latency, error: j.error || `HTTP ${res.status}`, detail: null });
+        return;
+      }
+      setApiProbe({
+        state: 'ok',
+        source: j.source || j.provider || 'unknown',
+        latency,
+        error: null,
+        detail: { points: (j.points || j.data || []).length, symbol: j.symbol || 'MSFT' },
+      });
+    } catch (e) {
+      setApiProbe({ state: 'error', source: null, latency: Math.round(performance.now() - t0), error: String(e.message || e), detail: null });
+    }
+  }
+
+  function measureStorage() {
+    try {
+      let total = 0;
+      const items = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const val = localStorage.getItem(key) || '';
+        const bytes = (key.length + val.length) * 2; // UTF-16 approx
+        total += bytes;
+        items.push({ key, bytes });
+      }
+      items.sort((a, b) => b.bytes - a.bytes);
+      // sparkline in-memory cache lives at window.__sparkCache (Map)
+      let sparkCache = 0;
+      let sparkEntries = 0;
+      try {
+        const sc = (typeof window !== 'undefined' && window.__sparkCache) || null;
+        if (sc && typeof sc.forEach === 'function') {
+          sc.forEach((v) => {
+            sparkEntries += 1;
+            sparkCache += JSON.stringify(v || {}).length * 2;
+          });
+        }
+      } catch {}
+      setStorage({ total, items: items.slice(0, 12), sparkCache, sparkEntries });
+    } catch (e) {
+      setStorage({ total: 0, items: [], sparkCache: 0, sparkEntries: 0 });
+    }
+  }
+
+  async function inspectServiceWorkers() {
+    try {
+      if (!('serviceWorker' in navigator)) { setSwInfo({ count: 0, scopes: ['(unsupported)'] }); return; }
+      const regs = await navigator.serviceWorker.getRegistrations();
+      setSwInfo({ count: regs.length, scopes: regs.map(r => r.scope) });
+    } catch (e) {
+      setSwInfo({ count: 0, scopes: [`(error: ${e.message})`] });
+    }
+  }
+
+  async function inspectCaches() {
+    try {
+      if (!('caches' in window)) { setCacheInfo({ count: 0, names: ['(unsupported)'] }); return; }
+      const names = await caches.keys();
+      setCacheInfo({ count: names.length, names });
+    } catch (e) {
+      setCacheInfo({ count: 0, names: [`(error: ${e.message})`] });
+    }
+  }
+
+  // HARD REFRESH
+  // Tears down service workers + CacheStorage + the in-memory sparkline cache,
+  // then reloads with a ?v=<timestamp> bust param so any intermediary CDN cache
+  // gets bypassed too. Confirms first because this kicks the user out of the
+  // current session state.
+  async function hardRefresh() {
+    const ok = typeof window.confirm === 'function'
+      ? window.confirm('Hard refresh: unregister service workers, purge all caches, and reload with a cache-bust. Continue?')
+      : true;
+    if (!ok) return;
+    setClearing(true);
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister().catch(() => false)));
+      }
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n).catch(() => false)));
+      }
+      try { if (window.__sparkCache && typeof window.__sparkCache.clear === 'function') window.__sparkCache.clear(); } catch {}
+      // Build a cache-bust URL and reload. We keep existing search params and
+      // just stomp / add `v`.
+      const url = new URL(window.location.href);
+      url.searchParams.set('v', String(Date.now()));
+      // location.replace so the old entry doesn't sit in history.
+      window.location.replace(url.toString());
+    } catch (e) {
+      setClearing(false);
+      setNotification && setNotification({ type: 'error', message: `Hard refresh failed: ${e.message || e}` });
+    }
+  }
+
+  function clearSparkCacheOnly() {
+    try {
+      if (window.__sparkCache && typeof window.__sparkCache.clear === 'function') {
+        window.__sparkCache.clear();
+        setNotification && setNotification({ type: 'success', message: 'Sparkline cache cleared' });
+        measureStorage();
+      } else {
+        setNotification && setNotification({ type: 'info', message: 'No sparkline cache present' });
+      }
+    } catch (e) {
+      setNotification && setNotification({ type: 'error', message: String(e.message || e) });
+    }
+  }
+
+  function clearLocalStorageDangerous() {
+    const ok = typeof window.confirm === 'function'
+      ? window.confirm('DANGER: This will wipe localStorage for StockRocket. You will be logged out and your client-side portfolio cache, chat cache, etc. will be gone. Server data is safe. Continue?')
+      : false;
+    if (!ok) return;
+    try {
+      localStorage.clear();
+      setNotification && setNotification({ type: 'success', message: 'localStorage cleared. Reloading...' });
+      setTimeout(() => window.location.reload(), 400);
+    } catch (e) {
+      setNotification && setNotification({ type: 'error', message: String(e.message || e) });
+    }
+  }
+
+  const fmtBytes = (n) => {
+    if (!Number.isFinite(n)) return '--';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+  };
+
+  const env = {
+    env: APP_ENV,
+    host: location.hostname,
+    href: location.href,
+    ua: navigator.userAgent,
+    viewport: `${window.innerWidth} x ${window.innerHeight}`,
+    dpr: window.devicePixelRatio || 1,
+    online: navigator.onLine,
+    lang: navigator.language,
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <h3 className="section-title" style={{ margin: 0 }}><Icon name="bug_report" size={20} /> Debug_Panel</h3>
+        <span className="badge badge-error" style={{ fontSize: 10 }}>ADMIN ONLY</span>
+        <span className="text-muted" style={{ fontSize: 12 }}>
+          Tells you whether a fresh bundle landed, probes the price feed, and can hard-refresh the browser.
+        </span>
+      </div>
+
+      {/* VERSION + BUILD STAMP */}
+      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--primary-fixed)' }}>
+        <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
+          <Icon name="fingerprint" size={16} /> Build_Stamp
+        </h4>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <div>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>APP_VERSION</p>
+            <p style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 16, fontWeight: 700 }}>{APP_VERSION}</p>
+          </div>
+          <div>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>BUILT_AT</p>
+            <p style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 13 }}>{APP_BUILT_AT}</p>
+          </div>
+          <div>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>DOC_LOADED_AT</p>
+            <p style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 13 }}>{new Date(performance.timing ? performance.timing.domContentLoadedEventEnd || Date.now() : Date.now()).toISOString()}</p>
+          </div>
+        </div>
+        <div style={{ marginTop: 12, padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+          <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>NOTES</p>
+          <p style={{ fontSize: 13, color: 'var(--on-surface-variant)' }}>{APP_BUILD_NOTES}</p>
+        </div>
+      </div>
+
+      {/* HARD REFRESH */}
+      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--error)' }}>
+        <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+          <Icon name="refresh" size={16} /> Hard_Refresh
+        </h4>
+        <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+          Unregisters service workers, purges CacheStorage, clears the in-memory sparkline cache, and reloads with a cache-bust query.
+          Use this when a deploy "should" be live but you're still seeing the old UI.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={hardRefresh} disabled={clearing}>
+            <Icon name="refresh" size={14} /> {clearing ? 'Refreshing...' : 'Hard Refresh Now'}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => { inspectServiceWorkers(); inspectCaches(); measureStorage(); runApiProbe(); }}>
+            <Icon name="sync" size={14} /> Re-probe
+          </button>
+        </div>
+        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>SERVICE_WORKERS</p>
+            <p style={{ fontSize: 20, fontWeight: 700 }}>{swInfo.count}</p>
+            {swInfo.scopes.length > 0 && (
+              <p className="text-muted" style={{ fontSize: 11, wordBreak: 'break-all' }}>{swInfo.scopes.join(', ')}</p>
+            )}
+          </div>
+          <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>CACHE_STORAGE</p>
+            <p style={{ fontSize: 20, fontWeight: 700 }}>{cacheInfo.count}</p>
+            {cacheInfo.names.length > 0 && (
+              <p className="text-muted" style={{ fontSize: 11, wordBreak: 'break-all' }}>{cacheInfo.names.join(', ')}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* API HEALTH */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, margin: 0 }}>
+            <Icon name="network_check" size={16} /> API_Health
+          </h4>
+          <button className="btn btn-secondary btn-sm" onClick={runApiProbe} disabled={apiProbe.state === 'loading'}>
+            <Icon name="play_arrow" size={14} /> Re-probe
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+          <div>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>ENDPOINT</p>
+            <p style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12, wordBreak: 'break-all' }}>{API_BASE || '(same-origin)'}/api/history?symbol=MSFT&days=5</p>
+          </div>
+          <div>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>STATUS</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: apiProbe.state === 'ok' ? 'var(--primary-fixed)' : apiProbe.state === 'error' ? 'var(--error)' : 'var(--on-surface-variant)' }}>
+              {apiProbe.state === 'loading' ? 'Probing...' : apiProbe.state === 'ok' ? 'OK' : apiProbe.state === 'error' ? 'ERROR' : 'IDLE'}
+            </p>
+          </div>
+          <div>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>SOURCE</p>
+            <p style={{ fontSize: 14, fontWeight: 700 }}>{apiProbe.source || '--'}</p>
+          </div>
+          <div>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>LATENCY</p>
+            <p style={{ fontSize: 14, fontWeight: 700 }}>{apiProbe.latency != null ? `${apiProbe.latency} ms` : '--'}</p>
+          </div>
+        </div>
+        {apiProbe.error && (
+          <div style={{ marginTop: 12, padding: 12, background: 'color-mix(in srgb, var(--error) 15%, transparent)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--error)' }}>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--error)' }}>ERROR</p>
+            <p style={{ fontSize: 13 }}>{apiProbe.error}</p>
+          </div>
+        )}
+        {apiProbe.detail && (
+          <div style={{ marginTop: 12, padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>RESPONSE</p>
+            <p style={{ fontSize: 13 }}>Returned {apiProbe.detail.points} points for {apiProbe.detail.symbol}</p>
+          </div>
+        )}
+      </div>
+
+      {/* ENVIRONMENT */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
+          <Icon name="computer" size={16} /> Environment
+        </h4>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+          {Object.entries(env).map(([k, v]) => (
+            <div key={k} style={{ padding: 8, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-md)' }}>
+              <p className="label-system" style={{ fontSize: 9, marginBottom: 2, color: 'var(--primary-fixed)' }}>{k.toUpperCase()}</p>
+              <p style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12, wordBreak: 'break-all' }}>{String(v)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* STORAGE */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, margin: 0 }}>
+            <Icon name="save" size={16} /> Storage
+          </h4>
+          <button className="btn btn-secondary btn-sm" onClick={measureStorage}>
+            <Icon name="sync" size={14} /> Remeasure
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+          <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>localStorage</p>
+            <p style={{ fontSize: 20, fontWeight: 700 }}>{fmtBytes(storage.total)}</p>
+            <p className="text-muted" style={{ fontSize: 11 }}>{storage.items.length} keys shown</p>
+          </div>
+          <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 4, color: 'var(--primary-fixed)' }}>SPARKLINE_CACHE</p>
+            <p style={{ fontSize: 20, fontWeight: 700 }}>{fmtBytes(storage.sparkCache)}</p>
+            <p className="text-muted" style={{ fontSize: 11 }}>{storage.sparkEntries} entries</p>
+          </div>
+        </div>
+        {storage.items.length > 0 && (
+          <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
+            <p className="label-system" style={{ fontSize: 9, marginBottom: 8, color: 'var(--primary-fixed)' }}>TOP_KEYS</p>
+            {storage.items.map((item) => (
+              <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--outline-variant)' }}>
+                <span style={{ fontFamily: 'var(--font-mono, monospace)', wordBreak: 'break-all' }}>{item.key}</span>
+                <span className="text-muted" style={{ marginLeft: 12 }}>{fmtBytes(item.bytes)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* DANGER ZONE */}
+      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--error)' }}>
+        <h4 style={{ fontFamily: 'var(--font-headline)', fontSize: 14, fontWeight: 700, marginBottom: 8, color: 'var(--error)' }}>
+          <Icon name="warning" size={16} /> Danger_Zone
+        </h4>
+        <p className="text-muted" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+          These actions modify local state only. Server data (Supabase, Vercel KV, etc.) is untouched.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary btn-sm" onClick={clearSparkCacheOnly}>
+            <Icon name="cleaning_services" size={14} /> Clear sparkline cache
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={clearLocalStorageDangerous} style={{ borderColor: 'var(--error)', color: 'var(--error)' }}>
+            <Icon name="delete_forever" size={14} /> Wipe localStorage
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
