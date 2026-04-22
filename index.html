@@ -38,9 +38,9 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.3';
-const APP_BUILT_AT = '2026-04-22T01:15:00Z';
-const APP_BUILD_NOTES = 'InteractiveChart: time-range tabs (1D/1W/1M/3M/6M/1Y), hover crosshair + price tooltip, Y-axis gridlines + price labels, X-axis date/time labels, start-price reference line, avg-cost dotted line for held positions, range-change summary, high/low markers. /api/history now serves intraday 5m/1h bars via &interval. Crypto rows on Crypto page + Portfolio donut now open StockDetailPage (was inline-only). Plus prior cache-bust for GIFs.';
+const APP_VERSION = '2026-04-22.4';
+const APP_BUILT_AT = '2026-04-22T02:10:00Z';
+const APP_BUILD_NOTES = 'Dashboard flash-of-inflated-value fix: localStorage cached portfolio holdings no longer leak stale currentPrice into first paint. On restore we neutralize derived fields to avgCost so Total Net Liquidity shows a correct baseline until live prices land. Also dropped prevPx fallback in DashboardPage render-time math. Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
 
 // Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
 // Fire-and-forget: if the network fails, the trade still completes locally.
@@ -2642,10 +2642,13 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
   const holdings = portfolio.holdings.map(h => {
     const live = allAssets.find(a => a.symbol === h.symbol);
     const livePx = Number(live?.price);
-    const prevPx = Number(h.currentPrice);
     const avgPx  = Number(h.avgCost);
+    // 2026-04-22 -- removed prevPx (h.currentPrice) from fallback. When live
+    // feed is cold, prevPx carries last-session's stale price and inflates the
+    // Total Net Liquidity tile. Fall back to avgCost instead -- shows 0% P/L
+    // during the ~1s hydration window, which is honest (user's P/L is only
+    // knowable once live prices land).
     const currentPrice = (Number.isFinite(livePx) && livePx > 0) ? livePx
-                       : (Number.isFinite(prevPx) && prevPx > 0) ? prevPx
                        : (Number.isFinite(avgPx)  && avgPx  > 0) ? avgPx
                        : 0;
     const value = h.shares * currentPrice;
@@ -7964,10 +7967,37 @@ function App() {
     holdings: [],
     trades: [],
   };
+  // SANITIZE CACHED PORTFOLIO ON RESTORE -- 2026-04-22
+  // Bug fix: localStorage cached holdings include derived fields (currentPrice,
+  // value, gain, returnPercent) from the LAST session. On fresh mount, live
+  // prices have not arrived yet, but Dashboard/Portfolio render immediately
+  // from portfolio.holdings and showed those stale prices -- e.g. BTC at the
+  // last-session $90k when today's price is $60k, giving a flash of wildly
+  // inflated Total Net Liquidity before the live feed corrected it.
+  // Fix: on restore, drop the derived fields and rebuild them from avgCost so
+  // the initial paint shows a neutral "+0%" placeholder. The useEffect below
+  // at line ~8004 repaints with real prices the moment isLive flips.
+  function neutralizeCachedPortfolio(p) {
+    if (!p || !Array.isArray(p.holdings)) return p;
+    return {
+      ...p,
+      holdings: p.holdings.map(h => {
+        const avgCost = Number(h.avgCost) || 0;
+        const shares  = Number(h.shares)  || 0;
+        return {
+          ...h,
+          currentPrice: avgCost,          // neutral baseline -- shows $0 P/L, not inflated stale
+          value: shares * avgCost,
+          gain: 0,
+          returnPercent: 0,
+        };
+      }),
+    };
+  }
   const [portfolio, setPortfolio] = useState(() => {
     try {
       const saved = localStorage.getItem('stockrocket_portfolio');
-      return saved ? JSON.parse(saved) : defaultPortfolio;
+      return saved ? neutralizeCachedPortfolio(JSON.parse(saved)) : defaultPortfolio;
     } catch { return defaultPortfolio; }
   });
   const [portfolioLoaded, setPortfolioLoaded] = useState(false);
