@@ -38,7 +38,7 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.5';
+const APP_VERSION = '2026-04-22.6';
 const APP_BUILT_AT = '2026-04-22T02:30:00Z';
 const APP_BUILD_NOTES = 'Leaderboard "same team" callout added above rankings -- reframes quick-gain instinct around strategy, skill-building, and learning together. Plus: dashboard flash-of-inflated-value fix (localStorage restore neutralizes derived fields; prevPx stale fallback removed from DashboardPage render). Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
 
@@ -1327,9 +1327,14 @@ function useLiveData() {
       if (quotes && quotes.some(q => q && q.price)) {
         const updated = MOCK_STOCKS.map((s, i) => {
           const q = quotes[i];
-          if (!q) return s;
+          // If this individual symbol's quote failed, mark it stale with
+          // null price so consumers (leaderboard, portfolio, watchlist) fall
+          // back to avgCost instead of leaking the MOCK_STOCKS seed price
+          // (e.g. NVDA seed $924.15). See PRICE_INVARIANTS.md.
+          if (!q) return { ...s, price: null, change: 0, changePercent: 0,
+                           high: null, low: null, open: null, prevClose: null, stale: true };
           return { ...s, price: q.price, change: q.change, changePercent: q.changePercent,
-                   high: q.high, low: q.low, open: q.open, prevClose: q.prevClose };
+                   high: q.high, low: q.low, open: q.open, prevClose: q.prevClose, stale: false };
         });
         setStocks(updated);
         setStocksLive(true);
@@ -1345,9 +1350,12 @@ function useLiveData() {
         if (quotes && quotes.some(q => q && q.price)) {
           const updated = MOCK_STOCKS.map((s, i) => {
             const q = quotes[i];
-            if (!q) return s;
+            // Same staleness fix as the market-open branch above -- a
+            // partial failure must not leak seed prices into consumers.
+            if (!q) return { ...s, price: null, change: 0, changePercent: 0,
+                             high: null, low: null, open: null, prevClose: null, stale: true };
             return { ...s, price: q.price, change: q.change, changePercent: q.changePercent,
-                     high: q.high, low: q.low, open: q.open, prevClose: q.prevClose };
+                     high: q.high, low: q.low, open: q.open, prevClose: q.prevClose, stale: false };
           });
           setStocks(updated);
           setStocksLive(true);
@@ -1488,7 +1496,7 @@ function AchievementToast({ achievement }) {
 // Sort: traders with at least 1 trade rank first by totalValue desc.
 // Users with 0 trades are pushed to the bottom (alphabetical) and show
 // the "Learning" strategy tag via the SQUAD_MEMBERS fallback.
-function useLeaderboard(myCode, stocks, crypto) {
+function useLeaderboard(myCode, stocks, crypto, stocksLive = false, cryptoLive = false) {
   const [rawPlayers, setRawPlayers] = useState([]);
 
   useEffect(() => {
@@ -1510,14 +1518,25 @@ function useLeaderboard(myCode, stocks, crypto) {
   }, [myCode]);
 
   // Live price index -- rebuilt on every stocks/crypto change.
-  // Values may be null when the feed is stale (crypto defence after 2026-04-18 incident).
-  // Consumers MUST fall back to avgCost when a symbol's live price is null/missing;
-  // valuing shares at $0 would make users holding stale-feed assets look like huge
-  // losers even though their money is still there. Trading is blocked elsewhere
-  // (executeServerTrade + UI Buy button) when price is null -- valuation uses cost
-  // basis, which is an honest floor ("what they paid", no phantom gains/losses).
-  const allAssets = [...(stocks || []), ...(crypto || [])];
-  const priceBy = new Map(allAssets.map(a => [a.symbol, a.price]));
+  // 2026-04-22 BUG FIX: gate price usage on stocksLive / cryptoLive. Before, the
+  // leaderboard accepted seed prices from MOCK_STOCKS (NVDA=$924 static) as if
+  // they were live, because they're finite positives. Holdings bought at NVDA
+  // $206 got valued at the $924 seed price -> +348% return per holding and
+  // $287k totals. Now: when a feed isn't live yet, we treat every symbol's
+  // price as unknown and fall back to avgCost (honest "what they paid" floor).
+  // Values may also be null when the feed is stale (crypto defence after
+  // 2026-04-18 incident). Consumers MUST fall back to avgCost in both cases;
+  // valuing shares at $0 would make users holding stale-feed assets look like
+  // huge losers even though their money is still there. Trading is blocked
+  // elsewhere (executeServerTrade + UI Buy button) when price is null --
+  // valuation uses cost basis, no phantom gains/losses.
+  const priceBy = new Map();
+  if (stocksLive) {
+    for (const s of (stocks || [])) priceBy.set(s.symbol, s.price);
+  }
+  if (cryptoLive) {
+    for (const c of (crypto || [])) priceBy.set(c.symbol, c.price);
+  }
 
   // Hydrate each player's holdings and compute derived fields
   const hydrated = rawPlayers.map(p => {
@@ -8103,7 +8122,7 @@ function App() {
 
   // Achievements + Leaderboard
   const { unlocked: achievementsUnlocked, newAchievement, total: achievementsTotal } = useAchievements(portfolio);
-  const leaderboard = useLeaderboard(accessCode, stocks, crypto);
+  const leaderboard = useLeaderboard(accessCode, stocks, crypto, stocksLive, cryptoLive);
 
   // Chat alerts -- polls group + milburn, surfaces top banner when a new
   // message hits a room the user isn't currently watching.
