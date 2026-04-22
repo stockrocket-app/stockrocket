@@ -38,7 +38,7 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.6';
+const APP_VERSION = '2026-04-22.7';
 const APP_BUILT_AT = '2026-04-22T02:30:00Z';
 const APP_BUILD_NOTES = 'Leaderboard "same team" callout added above rankings -- reframes quick-gain instinct around strategy, skill-building, and learning together. Plus: dashboard flash-of-inflated-value fix (localStorage restore neutralizes derived fields; prevPx stale fallback removed from DashboardPage render). Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
 
@@ -2919,18 +2919,29 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
             <table className="data-table">
               <thead><tr><th>Instrument</th><th>Last Price</th><th>Market Cap</th><th>Sentiment Signal</th><th>Action</th></tr></thead>
               <tbody>
-                {[...MOCK_CRYPTO.slice(0, 3), ...stocks.slice(0, 2)].map(s => {
-                  const sentiment = s.changePercent > 2 ? 'Strong_Buy' : s.changePercent > 0 ? 'Stable' : s.changePercent > -2 ? 'Hold' : 'Caution';
-                  const cls = s.changePercent > 2 ? 'badge-primary' : s.changePercent > 0 ? 'badge-secondary' : s.changePercent > -2 ? 'badge-neutral' : 'badge-error';
+                {[
+                  // Read from LIVE crypto state, not raw MOCK_CRYPTO. MOCK_CRYPTO
+                  // seeds with price:null by design (see 2026-04-18 BTC incident
+                  // + PRICE_INVARIANTS.md), so the old code always painted $0.00
+                  // for BTC/ETH/SOL until we stopped using it here. The live
+                  // `crypto` prop gets real prices from LiveData.fetchCrypto.
+                  ...(crypto || []).slice(0, 3).map(c => ({ ...c, _kind: 'crypto' })),
+                  ...(stocks || []).slice(0, 2).map(s => ({ ...s, _kind: 'stock' })),
+                ].map(s => {
+                  const px = Number(s.price);
+                  const hasPrice = Number.isFinite(px) && px > 0;
+                  const pct = Number(s.changePercent) || 0;
+                  const sentiment = pct > 2 ? 'Strong_Buy' : pct > 0 ? 'Stable' : pct > -2 ? 'Hold' : 'Caution';
+                  const cls = pct > 2 ? 'badge-primary' : pct > 0 ? 'badge-secondary' : pct > -2 ? 'badge-neutral' : 'badge-error';
                   return (
                     <tr key={s.symbol}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div className="stock-icon-badge" style={{ background: 'rgba(114,220,255,0.15)', color: 'var(--tertiary)' }}>{s.symbol.slice(0, 2)}</div>
-                          <div><div className="stock-symbol-text">{s.name}</div><div className="stock-name-text">{'marketCap' in s && s.price > 1000 ? 'Crypto_Asset' : 'Equity_Asset'}</div></div>
+                          <div><div className="stock-symbol-text">{s.name}</div><div className="stock-name-text">{s._kind === 'crypto' ? 'Crypto_Asset' : 'Equity_Asset'}</div></div>
                         </div>
                       </td>
-                      <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(s.price)}</td>
+                      <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{hasPrice ? formatCurrency(px) : '--'}</td>
                       <td className="text-muted">{s.marketCap || 'N/A'}</td>
                       <td><span className={`badge ${cls}`}><span className="badge-dot glow"></span> {sentiment}</span></td>
                       <td><button className="btn btn-ghost btn-sm">Execute</button></td>
