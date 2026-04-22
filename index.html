@@ -38,9 +38,9 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.1';
-const APP_BUILT_AT = '2026-04-22T00:05:00Z';
-const APP_BUILD_NOTES = 'GIF picker: graceful fallback when a thumbnail URL fails (service-worker / cache staleness no longer shows browser broken-icons). Private chat rooms: The Bulls (Ella, PCM, Taylor) + The Bears (Ella, Lawson). Lawson admin in both. Trade Alerts still global. + Admin Debug Panel, +22 stocks, Asset-not-found fix, +11 gifs, +7 reaction emojis';
+const APP_VERSION = '2026-04-22.2';
+const APP_BUILT_AT = '2026-04-22T00:30:00Z';
+const APP_BUILD_NOTES = 'Broken GIF fix: cache-bust ?v=2 on all picker URLs (Vercel was caching 404s as immutable for a year -- any browser that saw a 404 during case-mismatch / mid-deploy held it forever). Fixed e2 Yes.gif case mismatch (disk is Yes.gif, code had yes.gif). Tightened vercel.json immutable rule to /content/ only. Also: GIF picker graceful fallback, private chat rooms (Bulls + Bears), Admin Debug Panel, +22 stocks, +11 gifs, +7 reaction emojis.';
 
 // Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
 // Fire-and-forget: if the network fails, the trade still completes locally.
@@ -593,22 +593,37 @@ function findGroupRoom(id) {
 
 const QUICK_EMOJIS = ['🚀', '🔥', '💎', '📈', '📉', '🐻', '🐂', '💰', '⚡', '👀', '🎯', '💪'];
 
+// Cache-bust version for GIF/image assets. Vercel serves image 404s with
+// `Cache-Control: immutable, max-age=31536000` (see vercel.json), so any browser
+// that ever requested one of these URLs before the file existed (or under a
+// case mismatch) will hold that 404 for a year. Appending ?v=<N> gives us a
+// fresh URL the browser has never seen, dodging the poisoned cache entry.
+// Bump this whenever you add new GIFs or rename an existing one.
+const GIF_CACHE_VERSION = '2';
+function gifBust(url) {
+  if (!url || typeof url !== 'string') return url;
+  if (url.startsWith('data:')) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'v=' + GIF_CACHE_VERSION;
+}
+
 // Custom emoji GIFs for reactions
+// NOTE: File names are case-sensitive on Vercel (Linux). macOS dev filesystem
+// is case-insensitive so mismatches only surface in production.
 const CUSTOM_REACTION_EMOJIS = [
-  { id: '100', label: '100', url: 'content/gifs/Custom Emojis/100.gif' },
-  { id: 'yes', label: 'Yes', url: 'content/gifs/Custom Emojis/yes.gif' },
-  { id: 'ohyes', label: 'Oh Yes', url: 'content/gifs/Custom Emojis/Oh Yes.gif' },
-  { id: 'cash', label: 'Cash', url: 'content/gifs/Custom Emojis/Cash.gif' },
-  { id: 'fire', label: 'Fire', url: 'content/gifs/Custom Emojis/Fire.gif' },
-  { id: 'boss', label: 'Boss Mode', url: 'content/gifs/Custom Emojis/Boss Mode.gif' },
-  { id: 'party', label: 'Party', url: 'content/gifs/Custom Emojis/Party.gif' },
-  { id: 'dance', label: 'Dance', url: 'content/gifs/Custom Emojis/Dance.gif' },
-  { id: 'letsgo', label: "Let's Go", url: "content/gifs/Custom Emojis/Let's go.gif" },
-  { id: 'slowsteady', label: 'Slow and Steady', url: 'content/gifs/Custom Emojis/Slow and Steady.gif' },
-  { id: 'yesindeed', label: 'Yes Indeed', url: 'content/gifs/Custom Emojis/yes indeed.gif' },
-  { id: 'heart', label: 'Heart', url: 'content/gifs/Custom Emojis/Heart.png' },
-  { id: 'mindblown', label: 'Mind Blown', url: 'content/gifs/Custom Emojis/Mind Blown.png' },
-  { id: 'robot', label: 'Robot', url: 'content/gifs/Custom Emojis/Robot.png' },
+  { id: '100', label: '100', url: gifBust('content/gifs/Custom Emojis/100.gif') },
+  { id: 'yes', label: 'Yes', url: gifBust('content/gifs/Custom Emojis/Yes.gif') },
+  { id: 'ohyes', label: 'Oh Yes', url: gifBust('content/gifs/Custom Emojis/Oh Yes.gif') },
+  { id: 'cash', label: 'Cash', url: gifBust('content/gifs/Custom Emojis/Cash.gif') },
+  { id: 'fire', label: 'Fire', url: gifBust('content/gifs/Custom Emojis/Fire.gif') },
+  { id: 'boss', label: 'Boss Mode', url: gifBust('content/gifs/Custom Emojis/Boss Mode.gif') },
+  { id: 'party', label: 'Party', url: gifBust('content/gifs/Custom Emojis/Party.gif') },
+  { id: 'dance', label: 'Dance', url: gifBust('content/gifs/Custom Emojis/Dance.gif') },
+  { id: 'letsgo', label: "Let's Go", url: gifBust("content/gifs/Custom Emojis/Let's go.gif") },
+  { id: 'slowsteady', label: 'Slow and Steady', url: gifBust('content/gifs/Custom Emojis/Slow and Steady.gif') },
+  { id: 'yesindeed', label: 'Yes Indeed', url: gifBust('content/gifs/Custom Emojis/yes indeed.gif') },
+  { id: 'heart', label: 'Heart', url: gifBust('content/gifs/Custom Emojis/Heart.png') },
+  { id: 'mindblown', label: 'Mind Blown', url: gifBust('content/gifs/Custom Emojis/Mind Blown.png') },
+  { id: 'robot', label: 'Robot', url: gifBust('content/gifs/Custom Emojis/Robot.png') },
 ];
 
 // Helper: render a reaction (either Unicode emoji or custom GIF)
@@ -3684,44 +3699,50 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
   // Curated GIF library -- admin-managed, kid-safe
   // These are stored locally or in Supabase Storage. Admin can add/remove via Admin panel.
   // For now, categories with placeholder data URLs. Replace with real GIF paths from your library.
+  // NOTE: all GIF/image URLs pass through gifBust() to append ?v=<VERSION>.
+  // Why: vercel.json stamps image-extension URLs with `immutable` Cache-Control,
+  // and that header applies to 404s too. Once a browser has cached a 404 for
+  // one of these files (mid-deploy, case mismatch, etc.) it holds that 404 for
+  // a year. Cache-busting gives us a fresh URL the browser has never seen.
+  // Also: filenames are case-sensitive on Vercel (Linux). Match disk exactly.
   const [gifLibrary] = useState({
     'Custom Emojis': [
-      { id: 'e1', tag: 'emoji', label: '100', url: 'content/gifs/Custom Emojis/100.gif' },
-      { id: 'e2', tag: 'emoji', label: 'Yes', url: 'content/gifs/Custom Emojis/yes.gif' },
-      { id: 'e3', tag: 'emoji', label: 'Oh Yes', url: 'content/gifs/Custom Emojis/Oh Yes.gif' },
-      { id: 'e4', tag: 'emoji', label: 'Cash', url: 'content/gifs/Custom Emojis/Cash.gif' },
-      { id: 'e5', tag: 'emoji', label: 'Fire', url: 'content/gifs/Custom Emojis/Fire.gif' },
-      { id: 'e6', tag: 'emoji', label: 'Boss Mode', url: 'content/gifs/Custom Emojis/Boss Mode.gif' },
-      { id: 'e7', tag: 'emoji', label: 'Party', url: 'content/gifs/Custom Emojis/Party.gif' },
-      { id: 'e8', tag: 'emoji', label: 'Dance', url: 'content/gifs/Custom Emojis/Dance.gif' },
-      { id: 'e9', tag: 'emoji', label: "Let's Go", url: "content/gifs/Custom Emojis/Let's go.gif" },
-      { id: 'e10', tag: 'emoji', label: 'Slow and Steady', url: 'content/gifs/Custom Emojis/Slow and Steady.gif' },
-      { id: 'e11', tag: 'emoji', label: 'Yes Indeed', url: 'content/gifs/Custom Emojis/yes indeed.gif' },
-      { id: 'e12', tag: 'emoji', label: 'Heart', url: 'content/gifs/Custom Emojis/Heart.png' },
-      { id: 'e13', tag: 'emoji', label: 'Mind Blown', url: 'content/gifs/Custom Emojis/Mind Blown.png' },
-      { id: 'e14', tag: 'emoji', label: 'Robot', url: 'content/gifs/Custom Emojis/Robot.png' },
+      { id: 'e1', tag: 'emoji', label: '100', url: gifBust('content/gifs/Custom Emojis/100.gif') },
+      { id: 'e2', tag: 'emoji', label: 'Yes', url: gifBust('content/gifs/Custom Emojis/Yes.gif') },
+      { id: 'e3', tag: 'emoji', label: 'Oh Yes', url: gifBust('content/gifs/Custom Emojis/Oh Yes.gif') },
+      { id: 'e4', tag: 'emoji', label: 'Cash', url: gifBust('content/gifs/Custom Emojis/Cash.gif') },
+      { id: 'e5', tag: 'emoji', label: 'Fire', url: gifBust('content/gifs/Custom Emojis/Fire.gif') },
+      { id: 'e6', tag: 'emoji', label: 'Boss Mode', url: gifBust('content/gifs/Custom Emojis/Boss Mode.gif') },
+      { id: 'e7', tag: 'emoji', label: 'Party', url: gifBust('content/gifs/Custom Emojis/Party.gif') },
+      { id: 'e8', tag: 'emoji', label: 'Dance', url: gifBust('content/gifs/Custom Emojis/Dance.gif') },
+      { id: 'e9', tag: 'emoji', label: "Let's Go", url: gifBust("content/gifs/Custom Emojis/Let's go.gif") },
+      { id: 'e10', tag: 'emoji', label: 'Slow and Steady', url: gifBust('content/gifs/Custom Emojis/Slow and Steady.gif') },
+      { id: 'e11', tag: 'emoji', label: 'Yes Indeed', url: gifBust('content/gifs/Custom Emojis/yes indeed.gif') },
+      { id: 'e12', tag: 'emoji', label: 'Heart', url: gifBust('content/gifs/Custom Emojis/Heart.png') },
+      { id: 'e13', tag: 'emoji', label: 'Mind Blown', url: gifBust('content/gifs/Custom Emojis/Mind Blown.png') },
+      { id: 'e14', tag: 'emoji', label: 'Robot', url: gifBust('content/gifs/Custom Emojis/Robot.png') },
     ],
     'GIFs': [
-      { id: 'g1', tag: 'gif', label: 'Stonks', url: 'content/gifs/Gifs/Stonks.gif' },
-      { id: 'g2', tag: 'gif', label: 'Bitcoin', url: 'content/gifs/Gifs/Bitcoin.gif' },
-      { id: 'g3', tag: 'gif', label: 'Money Bed', url: 'content/gifs/Gifs/Money Bed.gif' },
-      { id: 'g4', tag: 'gif', label: 'Money Printer', url: 'content/gifs/Gifs/Money Printer.gif' },
-      { id: 'g5', tag: 'gif', label: 'Boom', url: 'content/gifs/Gifs/Boom.gif' },
-      { id: 'g6', tag: 'gif', label: 'Day Trader', url: 'content/gifs/Gifs/Day Trader.gif' },
-      { id: 'g7', tag: 'gif', label: 'To The Moon', url: 'content/gifs/Gifs/To The Moon.gif' },
-      { id: 'g8', tag: 'gif', label: 'Unstoppable', url: 'content/gifs/Gifs/Unstoppable.gif' },
-      { id: 'g9', tag: 'gif', label: 'Big Win', url: 'content/gifs/Gifs/Big Win.gif' },
-      { id: 'g10', tag: 'gif', label: 'Bitcoin S1', url: 'content/gifs/Gifs/Bitcoin S1.gif' },
-      { id: 'g11', tag: 'gif', label: 'DIP', url: 'content/gifs/Gifs/DIP.gif' },
-      { id: 'g12', tag: 'gif', label: 'Going Up', url: 'content/gifs/Gifs/goo up.gif' },
-      { id: 'g13', tag: 'gif', label: 'iTrendz Trading', url: 'content/gifs/Gifs/itrendz-itrendz-trading.gif' },
-      { id: 'g14', tag: 'gif', label: 'Crypto Meme', url: 'content/gifs/Gifs/meme-crypto.gif' },
-      { id: 'g15', tag: 'gif', label: 'Numbers', url: 'content/gifs/Gifs/numbers.gif' },
-      { id: 'g16', tag: 'gif', label: 'Savings', url: 'content/gifs/Gifs/Savings.gif' },
-      { id: 'g17', tag: 'gif', label: 'Sell It', url: 'content/gifs/Gifs/Sell it.gif' },
-      { id: 'g18', tag: 'gif', label: 'Stock Market', url: 'content/gifs/Gifs/stock-market.gif' },
-      { id: 'g19', tag: 'gif', label: 'Buy Money Meme', url: 'content/gifs/Gifs/stock-market-buy-money-funny-meme-0jl2wq4upqk9vcav.gif' },
-      { id: 'g20', tag: 'gif', label: 'Stock Class', url: 'content/gifs/Gifs/stock-market-class-doug-maclean-g35ypw0vmvnqo4c8.gif' },
+      { id: 'g1', tag: 'gif', label: 'Stonks', url: gifBust('content/gifs/Gifs/Stonks.gif') },
+      { id: 'g2', tag: 'gif', label: 'Bitcoin', url: gifBust('content/gifs/Gifs/Bitcoin.gif') },
+      { id: 'g3', tag: 'gif', label: 'Money Bed', url: gifBust('content/gifs/Gifs/Money Bed.gif') },
+      { id: 'g4', tag: 'gif', label: 'Money Printer', url: gifBust('content/gifs/Gifs/Money Printer.gif') },
+      { id: 'g5', tag: 'gif', label: 'Boom', url: gifBust('content/gifs/Gifs/Boom.gif') },
+      { id: 'g6', tag: 'gif', label: 'Day Trader', url: gifBust('content/gifs/Gifs/Day Trader.gif') },
+      { id: 'g7', tag: 'gif', label: 'To The Moon', url: gifBust('content/gifs/Gifs/To The Moon.gif') },
+      { id: 'g8', tag: 'gif', label: 'Unstoppable', url: gifBust('content/gifs/Gifs/Unstoppable.gif') },
+      { id: 'g9', tag: 'gif', label: 'Big Win', url: gifBust('content/gifs/Gifs/Big Win.gif') },
+      { id: 'g10', tag: 'gif', label: 'Bitcoin S1', url: gifBust('content/gifs/Gifs/Bitcoin S1.gif') },
+      { id: 'g11', tag: 'gif', label: 'DIP', url: gifBust('content/gifs/Gifs/DIP.gif') },
+      { id: 'g12', tag: 'gif', label: 'Going Up', url: gifBust('content/gifs/Gifs/goo up.gif') },
+      { id: 'g13', tag: 'gif', label: 'iTrendz Trading', url: gifBust('content/gifs/Gifs/itrendz-itrendz-trading.gif') },
+      { id: 'g14', tag: 'gif', label: 'Crypto Meme', url: gifBust('content/gifs/Gifs/meme-crypto.gif') },
+      { id: 'g15', tag: 'gif', label: 'Numbers', url: gifBust('content/gifs/Gifs/numbers.gif') },
+      { id: 'g16', tag: 'gif', label: 'Savings', url: gifBust('content/gifs/Gifs/Savings.gif') },
+      { id: 'g17', tag: 'gif', label: 'Sell It', url: gifBust('content/gifs/Gifs/Sell it.gif') },
+      { id: 'g18', tag: 'gif', label: 'Stock Market', url: gifBust('content/gifs/Gifs/stock-market.gif') },
+      { id: 'g19', tag: 'gif', label: 'Buy Money Meme', url: gifBust('content/gifs/Gifs/stock-market-buy-money-funny-meme-0jl2wq4upqk9vcav.gif') },
+      { id: 'g20', tag: 'gif', label: 'Stock Class', url: gifBust('content/gifs/Gifs/stock-market-class-doug-maclean-g35ypw0vmvnqo4c8.gif') },
     ],
   });
 
