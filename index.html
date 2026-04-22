@@ -38,9 +38,9 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-21.2';
-const APP_BUILT_AT = '2026-04-21T23:55:00Z';
-const APP_BUILD_NOTES = 'Private chat rooms: The Bulls (Ella, PCM, Taylor) + The Bears (Ella, Lawson). Lawson admin in both. Trade Alerts still global. + Admin Debug Panel, +22 stocks, Asset-not-found fix, +11 gifs, +7 reaction emojis';
+const APP_VERSION = '2026-04-22.1';
+const APP_BUILT_AT = '2026-04-22T00:05:00Z';
+const APP_BUILD_NOTES = 'GIF picker: graceful fallback when a thumbnail URL fails (service-worker / cache staleness no longer shows browser broken-icons). Private chat rooms: The Bulls (Ella, PCM, Taylor) + The Bears (Ella, Lawson). Lawson admin in both. Trade Alerts still global. + Admin Debug Panel, +22 stocks, Asset-not-found fix, +11 gifs, +7 reaction emojis';
 
 // Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
 // Fire-and-forget: if the network fails, the trade still completes locally.
@@ -3474,6 +3474,17 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
   const [gifSearch, setGifSearch] = useState('');
   const [gifResults, setGifResults] = useState([]);
   const [gifLoading, setGifLoading] = useState(false);
+  // Track picker thumbnails that failed to load (stale SW cache, network blip)
+  // so we can render a clean placeholder instead of the browser's broken-icon.
+  const [brokenGifs, setBrokenGifs] = useState(() => new Set());
+  const markGifBroken = React.useCallback((id) => {
+    setBrokenGifs(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
@@ -4362,7 +4373,13 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
                         style={{ padding: 4, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(73,72,71,0.1)', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', overflow: 'hidden', width: g.tag === 'emoji' ? 44 : 120 }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(0,255,163,0.3)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(73,72,71,0.1)'; e.currentTarget.style.transform = 'scale(1)'; }}>
-                        <img src={g.url} alt={g.label} style={{ width: '100%', height: g.tag === 'emoji' ? 36 : 68, objectFit: g.tag === 'emoji' ? 'contain' : 'cover', display: 'block', borderRadius: 4 }} />
+                        {brokenGifs.has(g.id) ? (
+                          <div style={{ width: '100%', height: g.tag === 'emoji' ? 36 : 68, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,255,163,0.06)', borderRadius: 4, color: 'var(--on-surface-variant)' }}>
+                            <Icon name="gif_box" size={g.tag === 'emoji' ? 18 : 28} />
+                          </div>
+                        ) : (
+                          <img src={g.url} alt={g.label} onError={() => markGifBroken(g.id)} style={{ width: '100%', height: g.tag === 'emoji' ? 36 : 68, objectFit: g.tag === 'emoji' ? 'contain' : 'cover', display: 'block', borderRadius: 4 }} />
+                        )}
                         <div style={{ fontSize: 8, fontFamily: 'var(--font-headline)', fontWeight: 600, color: 'var(--on-surface-variant)', marginTop: 2 }}>{g.label}</div>
                       </button>
                     ))}
@@ -4382,7 +4399,13 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
                           style={{ padding: 4, background: 'var(--surface-container-highest)', borderRadius: category === 'Custom Emojis' ? 'var(--radius-md)' : 'var(--radius-lg)', border: '1px solid rgba(73,72,71,0.1)', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', overflow: 'hidden', width: category === 'Custom Emojis' ? 44 : 120 }}
                           onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(0,255,163,0.3)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
                           onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(73,72,71,0.1)'; e.currentTarget.style.transform = 'scale(1)'; }}>
-                          <img src={g.url} alt={g.label} style={{ width: '100%', height: category === 'Custom Emojis' ? 36 : 68, objectFit: category === 'Custom Emojis' ? 'contain' : 'cover', display: 'block', borderRadius: 4 }} />
+                          {brokenGifs.has(g.id) ? (
+                            <div style={{ width: '100%', height: category === 'Custom Emojis' ? 36 : 68, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,255,163,0.06)', borderRadius: 4, color: 'var(--on-surface-variant)' }}>
+                              <Icon name="gif_box" size={category === 'Custom Emojis' ? 18 : 28} />
+                            </div>
+                          ) : (
+                            <img src={g.url} alt={g.label} onError={() => markGifBroken(g.id)} style={{ width: '100%', height: category === 'Custom Emojis' ? 36 : 68, objectFit: category === 'Custom Emojis' ? 'contain' : 'cover', display: 'block', borderRadius: 4 }} />
+                          )}
                           {category !== 'Custom Emojis' && <div style={{ fontSize: 8, fontFamily: 'var(--font-headline)', fontWeight: 600, color: 'var(--on-surface-variant)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.label}</div>}
                         </button>
                       ))}
