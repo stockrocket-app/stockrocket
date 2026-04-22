@@ -38,9 +38,9 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.2';
-const APP_BUILT_AT = '2026-04-22T00:30:00Z';
-const APP_BUILD_NOTES = 'Broken GIF fix: cache-bust ?v=2 on all picker URLs (Vercel was caching 404s as immutable for a year -- any browser that saw a 404 during case-mismatch / mid-deploy held it forever). Fixed e2 Yes.gif case mismatch (disk is Yes.gif, code had yes.gif). Tightened vercel.json immutable rule to /content/ only. Also: GIF picker graceful fallback, private chat rooms (Bulls + Bears), Admin Debug Panel, +22 stocks, +11 gifs, +7 reaction emojis.';
+const APP_VERSION = '2026-04-22.3';
+const APP_BUILT_AT = '2026-04-22T01:15:00Z';
+const APP_BUILD_NOTES = 'InteractiveChart: time-range tabs (1D/1W/1M/3M/6M/1Y), hover crosshair + price tooltip, Y-axis gridlines + price labels, X-axis date/time labels, start-price reference line, avg-cost dotted line for held positions, range-change summary, high/low markers. /api/history now serves intraday 5m/1h bars via &interval. Crypto rows on Crypto page + Portfolio donut now open StockDetailPage (was inline-only). Plus prior cache-bust for GIFs.';
 
 // Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
 // Fire-and-forget: if the network fails, the trade still completes locally.
@@ -1123,14 +1123,18 @@ const LiveData = {
     } catch { return null; }
   },
 
-  // Fetch daily historical bars via our /api/history Edge Function (Stooq-backed).
-  // Finnhub /stock/candle went premium in mid-2024, so we route historicals
-  // through Stooq (free CSV, no auth). `resolution` is accepted for API
-  // compatibility with the old Finnhub path but currently ignored -- Stooq is
-  // daily-only. Caller handles empty array (NebulaChart shows a placeholder).
+  // Fetch historical bars via our /api/history Edge Function (Yahoo primary,
+  // Stooq fallback for daily). `resolution` accepts 'D' (daily) or an intraday
+  // interval like '5m' / '15m' / '1h' -- passed through as &interval. When
+  // daysBack<=1 and no explicit resolution is given, the server defaults to
+  // 5-minute bars for a smooth intraday view. Caller handles empty array.
   async fetchStockCandles(symbol, resolution = 'D', daysBack = 30) {
     try {
-      const res = await fetch(`${API_BASE}/api/history?symbol=${encodeURIComponent(symbol)}&days=${daysBack}`);
+      const qs = new URLSearchParams({ symbol, days: String(daysBack) });
+      // 'D' means daily on this endpoint; any other value is passed as an
+      // intraday interval. Validation happens server-side.
+      if (resolution && resolution !== 'D') qs.set('interval', resolution);
+      const res = await fetch(`${API_BASE}/api/history?${qs.toString()}`);
       if (!res.ok) return [];
       const data = await res.json();
       if (!data?.ok || !Array.isArray(data.points) || data.points.length < 2) return [];
@@ -1707,7 +1711,9 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
   } : null);
   const [tradeType, setTradeType] = useState('BUY');
   const [shares, setShares] = useState('');
-  const { data: chartData, loading: chartLoading, retry: retryChart } = useChartData(asset?.symbol, 90);
+  const [chartRange, setChartRange] = useState(DEFAULT_RANGE_KEY);
+  const { data: chartData, loading: chartLoading, retry: retryChart, source: chartSource } = useChartData(asset?.symbol, chartRange);
+  const isCryptoAsset = !!asset && CRYPTO_SYMBOLS.has(asset.symbol);
   const tradeablePrice = liveAsset ? Number(liveAsset.price) : NaN;
   const canTrade = !isStaleFeed && Number.isFinite(tradeablePrice) && tradeablePrice > 0;
   const total = canTrade ? parseFloat(shares || 0) * tradeablePrice : 0;
@@ -1803,7 +1809,18 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
         {/* Chart + Stats */}
         <div>
           <div className="card" style={{ marginBottom: 24 }}>
-            <NebulaChart data={chartData} height={280} loading={chartLoading} onRetry={retryChart} />
+            <InteractiveChart
+              data={chartData}
+              height={320}
+              loading={chartLoading}
+              onRetry={retryChart}
+              rangeKey={chartRange}
+              onRangeChange={setChartRange}
+              isCrypto={isCryptoAsset}
+              avgCost={holding?.avgCost}
+              symbol={asset.symbol}
+              dataSource={chartSource}
+            />
           </div>
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
             <div className="stat-card"><p className="stat-label">Market Cap</p><p className="stat-value" style={{ fontSize: 20 }}>{asset.marketCap || 'N/A'}</p></div>
@@ -1886,14 +1903,38 @@ function generateChartData() {
   return [];
 }
 
-// Real historical chart hook. Returns { data, loading, error, source }.
-// Works for both stocks (via our Finnhub proxy) and crypto (via CoinGecko).
+// Chart range catalog -- a single source of truth for time-window options.
+// Each range knows its days, its stock interval, and a human label.
+// Order here is the order the tabs render in the UI.
+const CHART_RANGES = [
+  { key: '1D', label: '1D',  days: 1,   stockInterval: '5m' },
+  { key: '1W', label: '1W',  days: 7,   stockInterval: '1h' },
+  { key: '1M', label: '1M',  days: 30,  stockInterval: 'D'  },
+  { key: '3M', label: '3M',  days: 90,  stockInterval: 'D'  },
+  { key: '6M', label: '6M',  days: 180, stockInterval: 'D'  },
+  { key: '1Y', label: '1Y',  days: 365, stockInterval: 'D'  },
+];
+const DEFAULT_RANGE_KEY = '1M';
+function rangeFor(key) {
+  return CHART_RANGES.find(r => r.key === key) || CHART_RANGES.find(r => r.key === DEFAULT_RANGE_KEY);
+}
+
+// Real historical chart hook. Returns { data, loading, error, source, retry }.
+// Works for both stocks (via /api/history -> Yahoo/Stooq) and crypto (via CoinGecko).
+// Accepts either a range key ('1D'/'1M'/etc.) or a raw numeric day count.
+// Passing a number stays backward-compatible with the older usePortfolioChart
+// callers that still ask for raw days.
 // Gracefully returns an empty array if the source is unavailable -- the
-// NebulaChart component will render a "LIVE CHART CONNECTING" placeholder.
-function useChartData(symbol, days = 30) {
+// chart component falls back to a "LIVE CHART CONNECTING" placeholder.
+function useChartData(symbol, rangeOrDays = DEFAULT_RANGE_KEY) {
   const [state, setState] = useState({ data: [], loading: true, error: null, source: null });
   const [nonce, setNonce] = useState(0);
   const retry = useCallback(() => setNonce(n => n + 1), []);
+  // Normalize: range key -> {days, stockInterval}, number -> daily.
+  const spec = typeof rangeOrDays === 'number'
+    ? { days: rangeOrDays, stockInterval: rangeOrDays <= 1 ? '5m' : (rangeOrDays <= 7 ? '1h' : 'D') }
+    : rangeFor(rangeOrDays);
+
   useEffect(() => {
     if (!symbol) { setState({ data: [], loading: false, error: null, source: null }); return; }
     let cancelled = false;
@@ -1901,13 +1942,13 @@ function useChartData(symbol, days = 30) {
       setState(s => ({ ...s, loading: true, error: null }));
       try {
         if (CRYPTO_SYMBOLS.has(symbol)) {
+          // CoinGecko's market_chart endpoint returns hourly for days<=1 and
+          // 4-hourly for days<=90 automatically -- no extra flag needed.
           const id = COINGECKO_IDS[symbol];
-          const points = await LiveData.fetchCryptoCandles(id, days);
+          const points = await LiveData.fetchCryptoCandles(id, spec.days);
           if (!cancelled) setState({ data: points, loading: false, error: points.length ? null : 'unavailable', source: 'coingecko' });
         } else {
-          // Multi-source via /api/history (Yahoo primary, Stooq fallback)
-          const resolution = days <= 7 ? '60' : 'D';
-          const points = await LiveData.fetchStockCandles(symbol, resolution, days);
+          const points = await LiveData.fetchStockCandles(symbol, spec.stockInterval, spec.days);
           if (!cancelled) setState({ data: points, loading: false, error: points.length ? null : 'unavailable', source: 'history-api' });
         }
       } catch (e) {
@@ -1915,7 +1956,7 @@ function useChartData(symbol, days = 30) {
       }
     })();
     return () => { cancelled = true; };
-  }, [symbol, days, nonce]);
+  }, [symbol, spec.days, spec.stockInterval, nonce]);
   return { ...state, retry };
 }
 
@@ -2027,6 +2068,293 @@ function NebulaChart({ data, height = 200, loading = false, label = null, onRetr
         <circle cx={lastX} cy={lastY} r="5" fill={color} />
         <circle cx={lastX} cy={lastY} r="12" fill={color} fillOpacity="0.2" />
       </svg>
+    </div>
+  );
+}
+
+// ==================== INTERACTIVE CHART ====================
+// The real workhorse: time-range tabs, price/date axes, hover crosshair with
+// tooltip, start-of-range reference line, optional avg-cost line, range summary
+// footer. Used on StockDetailPage for both stocks and crypto.
+//
+// Why a new component instead of extending NebulaChart?
+//   NebulaChart is the "decorative" chart (dashboard, portfolio overview). It
+//   stretches to fit any width via preserveAspectRatio=none -- which destroys
+//   the aspect ratio of any text labels. InteractiveChart draws in absolute
+//   SVG pixels so axes/tooltips stay legible. The two coexist on purpose.
+function InteractiveChart({
+  data,
+  loading = false,
+  height = 320,
+  onRetry = null,
+  rangeKey = DEFAULT_RANGE_KEY,
+  onRangeChange = null,
+  isCrypto = false,
+  avgCost = null,
+  symbol = '',
+  dataSource = null,
+}) {
+  const svgRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
+
+  // Tab strip renders whether or not we have data -- users can switch ranges
+  // even while a fetch is in flight.
+  const tabs = (
+    <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+      {CHART_RANGES.map(r => {
+        const active = r.key === rangeKey;
+        return (
+          <button
+            key={r.key}
+            className={`btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '6px 14px',
+              fontSize: 12,
+              letterSpacing: '0.08em',
+              fontFamily: 'var(--font-label)',
+              minWidth: 44,
+              ...(active ? { background: 'rgba(0,255,163,0.18)', color: 'var(--primary-fixed)', border: '1px solid rgba(0,255,163,0.4)' } : {}),
+            }}
+            onClick={() => onRangeChange && onRangeChange(r.key)}
+          >
+            {r.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  // Loading / empty placeholder
+  if (!data || data.length < 2) {
+    const placeholderLabel = loading ? 'LOADING CHART' : 'CHART UNAVAILABLE';
+    return (
+      <div>
+        {tabs}
+        <div className="chart-container" style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-container-low)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--outline-variant)', padding: 16 }}>
+          <div style={{ textAlign: 'center', color: 'var(--on-surface-variant)', fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.1em' }}>
+            <div style={{ marginBottom: 6, opacity: 0.6, fontSize: loading ? 18 : 14, animation: loading ? 'chartLoadingPulse 1.4s ease-in-out infinite' : 'none' }}>◦ ◦ ◦</div>
+            <style>{`@keyframes chartLoadingPulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.9; } }`}</style>
+            <div style={{ marginBottom: onRetry && !loading ? 12 : 0 }}>{placeholderLabel}</div>
+            {onRetry && !loading && (
+              <button className="btn btn-secondary btn-sm" style={{ fontSize: 10, letterSpacing: '0.08em', padding: '6px 14px' }} onClick={onRetry}>
+                <Icon name="refresh" size={12} /> Retry
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ----- Geometry -----
+  // Fixed pixel SVG so axis text stays sharp regardless of container width.
+  const W = 820;
+  const H = height;
+  const padL = 56;   // price-axis labels on the left
+  const padR = 16;   // small breathing room on the right
+  const padT = 16;   // headroom for the hover price bubble
+  const padB = 28;   // date labels along the bottom
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const prices = data.map(d => d.price);
+  const priceMin = Math.min(...prices);
+  const priceMax = Math.max(...prices);
+  // Pad 2% so the polyline doesn't touch the top/bottom edges, and widen
+  // the range when the axis would otherwise be ~flat (e.g. 1-day quiet day).
+  const priceSpan = Math.max(priceMax - priceMin, priceMin * 0.002, 0.0001);
+  const yMin = priceMin - priceSpan * 0.08;
+  const yMax = priceMax + priceSpan * 0.08;
+  const yRange = yMax - yMin || 1;
+
+  const xFor = (i) => padL + (i / (data.length - 1)) * innerW;
+  const yFor = (p) => padT + (1 - (p - yMin) / yRange) * innerH;
+
+  const pts = data.map((d, i) => `${xFor(i)},${yFor(d.price)}`);
+  const areaPath = `M${xFor(0)},${padT + innerH} L${pts.join(' L')} L${xFor(data.length - 1)},${padT + innerH} Z`;
+
+  const firstPrice = data[0].price;
+  const lastPrice = data[data.length - 1].price;
+  const isUp = lastPrice >= firstPrice;
+  const color = isUp ? '#00FFA3' : '#ff716c';
+  const changeAbs = lastPrice - firstPrice;
+  const changePct = (changeAbs / firstPrice) * 100;
+
+  // Y-axis ticks: 5 evenly spaced price levels
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => {
+    const price = yMin + yRange * (1 - t); // top-down
+    return { y: padT + innerH * t, price };
+  });
+
+  // X-axis ticks: 4 evenly spaced date/time labels. Format depends on span.
+  const hasTimestamps = Number.isFinite(data[0]?.timestamp);
+  const spanMs = hasTimestamps ? (data[data.length - 1].timestamp - data[0].timestamp) : 0;
+  const intraday = hasTimestamps && spanMs > 0 && spanMs <= 1.2 * 24 * 60 * 60 * 1000;
+  const formatX = (d) => {
+    if (!d?.timestamp) return '';
+    const dt = new Date(d.timestamp);
+    if (intraday) {
+      return dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+    // 1W to 1Y: show a short date
+    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+  const xTickIdx = [0, Math.floor(data.length / 3), Math.floor(2 * data.length / 3), data.length - 1];
+  const xTicks = xTickIdx.map(i => ({ x: xFor(i), label: formatX(data[i]) }));
+
+  // Tooltip formatting
+  const formatTooltipX = (d) => {
+    if (!d?.timestamp) return `Point ${d?.day ?? ''}`;
+    const dt = new Date(d.timestamp);
+    if (intraday) {
+      return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const onMove = (e) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    // Map client X -> viewBox X, then snap to nearest data index.
+    const clientX = (e.clientX ?? (e.touches && e.touches[0]?.clientX)) - rect.left;
+    const vbX = (clientX / rect.width) * W;
+    const rel = (vbX - padL) / innerW;
+    if (rel < -0.02 || rel > 1.02) { setHoverIdx(null); return; }
+    const idx = Math.round(Math.max(0, Math.min(1, rel)) * (data.length - 1));
+    setHoverIdx(idx);
+  };
+  const onLeave = () => setHoverIdx(null);
+
+  // Current hover data
+  const hov = (hoverIdx != null) ? data[hoverIdx] : null;
+  const hovX = hov ? xFor(hoverIdx) : null;
+  const hovY = hov ? yFor(hov.price) : null;
+  const hovChangePct = hov ? ((hov.price - firstPrice) / firstPrice) * 100 : 0;
+
+  // Avg-cost line (only if within visible range -- if the user's cost basis
+  // is way off the current price range, drawing it would compress the chart)
+  const showAvgCost = Number.isFinite(avgCost) && avgCost > 0 && avgCost >= yMin && avgCost <= yMax;
+  const avgCostY = showAvgCost ? yFor(avgCost) : null;
+
+  // Start-price reference (dashed)
+  const startY = yFor(firstPrice);
+
+  // Currency formatting that adapts to price magnitude (crypto can be fractional)
+  const fmt = (v) => {
+    const abs = Math.abs(v);
+    if (!isFinite(v)) return '—';
+    const dec = abs >= 100 ? 2 : abs >= 1 ? 2 : abs >= 0.01 ? 4 : 6;
+    return '$' + v.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  };
+
+  return (
+    <div>
+      {tabs}
+      <div
+        className="chart-container"
+        style={{ height, position: 'relative', userSelect: 'none' }}
+      >
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          style={{ width: '100%', height: '100%', display: 'block', cursor: 'crosshair' }}
+          onMouseMove={onMove}
+          onMouseLeave={onLeave}
+          onTouchStart={onMove}
+          onTouchMove={onMove}
+          onTouchEnd={onLeave}
+        >
+          <defs>
+            <linearGradient id={`ichart-grad-${isUp ? 'up' : 'dn'}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+              <stop offset="100%" stopColor={color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {/* Gridlines + Y-axis labels */}
+          {yTicks.map((t, i) => (
+            <g key={`y-${i}`}>
+              <line x1={padL} x2={W - padR} y1={t.y} y2={t.y} stroke="var(--outline-variant)" strokeOpacity="0.25" strokeWidth="1" />
+              <text x={padL - 8} y={t.y + 4} textAnchor="end" fontSize="10" fontFamily="var(--font-label)" fill="var(--on-surface-variant)" opacity="0.85">{fmt(t.price)}</text>
+            </g>
+          ))}
+          {/* X-axis date labels */}
+          {xTicks.map((t, i) => (
+            <text key={`x-${i}`} x={t.x} y={H - 8} textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'} fontSize="10" fontFamily="var(--font-label)" fill="var(--on-surface-variant)" opacity="0.85">{t.label}</text>
+          ))}
+          {/* Start-price reference line */}
+          <line x1={padL} x2={W - padR} y1={startY} y2={startY} stroke="var(--on-surface-variant)" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="2 4" />
+          {/* Avg-cost line (optional) */}
+          {showAvgCost && (
+            <g>
+              <line x1={padL} x2={W - padR} y1={avgCostY} y2={avgCostY} stroke="#f2b135" strokeOpacity="0.8" strokeWidth="1.5" strokeDasharray="4 4" />
+              <rect x={W - padR - 80} y={avgCostY - 18} width="80" height="16" rx="4" fill="rgba(242,177,53,0.15)" />
+              <text x={W - padR - 8} y={avgCostY - 6} textAnchor="end" fontSize="10" fontFamily="var(--font-label)" fill="#f2b135">AVG COST {fmt(avgCost)}</text>
+            </g>
+          )}
+          {/* Area + line */}
+          <path d={areaPath} fill={`url(#ichart-grad-${isUp ? 'up' : 'dn'})`} />
+          <polyline fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={pts.join(' ')} />
+          {/* End-point marker */}
+          <circle cx={xFor(data.length - 1)} cy={yFor(lastPrice)} r="4" fill={color} />
+          <circle cx={xFor(data.length - 1)} cy={yFor(lastPrice)} r="10" fill={color} fillOpacity="0.18" />
+          {/* Hover crosshair + floating label */}
+          {hov && (
+            <g>
+              <line x1={hovX} x2={hovX} y1={padT} y2={padT + innerH} stroke={color} strokeOpacity="0.6" strokeWidth="1" strokeDasharray="2 3" />
+              <circle cx={hovX} cy={hovY} r="5" fill={color} stroke="var(--surface-container)" strokeWidth="2" />
+            </g>
+          )}
+        </svg>
+        {/* Tooltip overlay (HTML, not SVG, so it respects var(--font) + readable at any chart width) */}
+        {hov && (() => {
+          // Position the tooltip so it doesn't clip the right edge.
+          const tipLeftPct = Math.max(4, Math.min(78, (hovX / W) * 100));
+          return (
+            <div
+              style={{
+                position: 'absolute',
+                top: 8,
+                left: `${tipLeftPct}%`,
+                pointerEvents: 'none',
+                padding: '8px 12px',
+                background: 'var(--surface-container-highest)',
+                border: `1px solid ${color}`,
+                borderRadius: 8,
+                fontSize: 12,
+                fontFamily: 'var(--font-body)',
+                color: 'var(--on-surface)',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                zIndex: 2,
+              }}
+            >
+              <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.08em', color: 'var(--on-surface-variant)', marginBottom: 2 }}>{formatTooltipX(hov)}</div>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 16, fontWeight: 700 }}>{fmt(hov.price)}</div>
+              <div style={{ color, fontSize: 11, fontWeight: 600 }}>{hovChangePct >= 0 ? '+' : ''}{hovChangePct.toFixed(2)}% from start</div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Range summary footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span className="label-system" style={{ letterSpacing: '0.1em' }}>{rangeKey} CHANGE</span>
+          <span style={{ fontFamily: 'var(--font-headline)', fontSize: 18, fontWeight: 700, color }}>
+            {changeAbs >= 0 ? '+' : ''}{fmt(changeAbs)}
+          </span>
+          <span className={`badge ${isUp ? 'badge-primary' : 'badge-error'}`} style={{ fontSize: 11, padding: '4px 10px' }}>
+            {changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--on-surface-variant)', fontFamily: 'var(--font-label)', letterSpacing: '0.08em' }}>
+          <span>LOW {fmt(priceMin)}</span>
+          <span>HIGH {fmt(priceMax)}</span>
+          {dataSource && <span style={{ opacity: 0.6 }}>{dataSource.toUpperCase()}</span>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2701,7 +3029,7 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
           {allSlices.map(s => (
             <div
               key={s.key}
-              onClick={() => !s.isCash && setStockDetail && setStockDetail(stocks.find(st => st.symbol === s.key) || { symbol: s.key, name: s.name })}
+              onClick={() => !s.isCash && setStockDetail && setStockDetail(s.key)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -3256,7 +3584,7 @@ function MarketsPage({ stocks, setStockDetail }) {
 }
 
 // ==================== CRYPTO ====================
-function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, user, code }) {
+function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, user, code, setStockDetail }) {
   const [selectedCrypto, setSelectedCrypto] = useState(null);
   const [tradeType, setTradeType] = useState('BUY');
   const [amount, setAmount] = useState('');
@@ -3352,7 +3680,9 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
             <thead><tr><th>#</th><th>Asset</th><th>Price</th><th>24h</th><th>Action</th></tr></thead>
             <tbody>{crypto.map((c, i) => {
               const owned = portfolio?.holdings?.find(h => h.symbol === c.symbol);
-              return <tr key={c.symbol} style={{ cursor: 'pointer', background: selectedCrypto === c.symbol ? 'rgba(0,255,163,0.05)' : 'transparent' }} onClick={() => setSelectedCrypto(c.symbol)}>
+              // Row click -> open full detail page (chart + trade). Trade button
+              // stays local for quick inline trade without leaving the page.
+              return <tr key={c.symbol} style={{ cursor: 'pointer', background: selectedCrypto === c.symbol ? 'rgba(0,255,163,0.05)' : 'transparent' }} onClick={() => setStockDetail ? setStockDetail(c.symbol) : setSelectedCrypto(c.symbol)}>
                 <td className="text-muted">{i + 1}</td>
                 <td><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div className="stock-icon-badge" style={{ background: 'rgba(114,220,255,0.15)', color: 'var(--tertiary)', borderRadius: '50%' }}>{c.symbol.slice(0, 2)}</div>
@@ -7849,7 +8179,7 @@ function App() {
       case 'portfolio': return <PortfolioPage portfolio={portfolio} user={user} stocks={stocks} setStockDetail={setStockDetail} />;
       case 'trade': return <TradePage stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
-      case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
+      case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} setStockDetail={setStockDetail} />;
       case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} code={accessCode} />;
       case 'chat': return <ChatPage user={user} displayName={displayName} code={accessCode} isAdmin={isAdmin} initialRoom={pendingChatRoom} onRoomChange={setCurrentChatRoom} />;
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;

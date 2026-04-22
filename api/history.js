@@ -34,9 +34,10 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-const MIN_DAYS = 5;
+const MIN_DAYS = 1;
 const MAX_DAYS = 365;
 const SYMBOL_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+const VALID_INTERVALS = new Set(['5m', '15m', '30m', '1h', '1d']);
 
 // Looks like a normal desktop browser -- Yahoo sometimes 429s bare curl-style UAs
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -52,34 +53,47 @@ export default async function handler(req) {
   const url = new URL(req.url);
   const rawSymbol = (url.searchParams.get('symbol') || '').trim().toUpperCase();
   const rawDays = parseInt(url.searchParams.get('days') || '30', 10);
+  const rawInterval = (url.searchParams.get('interval') || '').trim();
 
   if (!rawSymbol || !SYMBOL_RE.test(rawSymbol)) {
     return json({ ok: false, error: 'invalid_symbol', detail: 'symbol must match /^[A-Z][A-Z0-9.\\-]{0,9}$/' }, 400);
   }
   const days = clamp(isFinite(rawDays) ? rawDays : 30, MIN_DAYS, MAX_DAYS);
+  // For 1-day requests we default to 5-minute bars so the intraday view is smooth.
+  // Callers can override via ?interval=1h|15m|etc. Unknown values fall back to daily.
+  const interval = VALID_INTERVALS.has(rawInterval)
+    ? rawInterval
+    : (days <= 1 ? '5m' : '1d');
+  // Cache budget: intraday moves fast, keep it short. Daily bars can cache 15m.
+  const cacheSeconds = (interval === '1d') ? 900 : 60;
 
   const attempts = [];
 
   // ---- Source 1: Yahoo Finance ----
   try {
-    const yahoo = await tryYahoo(rawSymbol, days);
+    const yahoo = await tryYahoo(rawSymbol, days, interval);
     attempts.push({ source: 'yahoo', ok: yahoo.ok, detail: yahoo.detail || null, count: yahoo.points?.length || 0 });
     if (yahoo.ok && yahoo.points.length >= 2) {
-      return json({ ok: true, symbol: rawSymbol, days, source: 'yahoo', points: yahoo.points, attempts }, 200, edgeCache(900));
+      return json({ ok: true, symbol: rawSymbol, days, interval, source: 'yahoo', points: yahoo.points, attempts }, 200, edgeCache(cacheSeconds));
     }
   } catch (e) {
     attempts.push({ source: 'yahoo', ok: false, detail: String(e && e.message || e) });
   }
 
-  // ---- Source 2: Stooq fallback ----
-  try {
-    const stooq = await tryStooq(rawSymbol, days);
-    attempts.push({ source: 'stooq', ok: stooq.ok, detail: stooq.detail || null, count: stooq.points?.length || 0 });
-    if (stooq.ok && stooq.points.length >= 2) {
-      return json({ ok: true, symbol: rawSymbol, days, source: 'stooq', points: stooq.points, attempts }, 200, edgeCache(900));
+  // ---- Source 2: Stooq fallback (daily bars only) ----
+  // Stooq has no free intraday feed. For 1D requests, skip directly to the no_data
+  // branch rather than returning daily closes -- a 1D chart with a single daily
+  // close is worse than showing the "connecting" placeholder.
+  if (interval === '1d') {
+    try {
+      const stooq = await tryStooq(rawSymbol, days);
+      attempts.push({ source: 'stooq', ok: stooq.ok, detail: stooq.detail || null, count: stooq.points?.length || 0 });
+      if (stooq.ok && stooq.points.length >= 2) {
+        return json({ ok: true, symbol: rawSymbol, days, interval, source: 'stooq', points: stooq.points, attempts }, 200, edgeCache(cacheSeconds));
+      }
+    } catch (e) {
+      attempts.push({ source: 'stooq', ok: false, detail: String(e && e.message || e) });
     }
-  } catch (e) {
-    attempts.push({ source: 'stooq', ok: false, detail: String(e && e.message || e) });
   }
 
   // Both sources failed -- return a debuggable error
@@ -88,17 +102,27 @@ export default async function handler(req) {
 
 // ---------- Yahoo ----------
 
-async function tryYahoo(rawSymbol, days) {
+async function tryYahoo(rawSymbol, days, interval = '1d') {
   // Yahoo wants dashes instead of dots for class-B shares etc.
   const yTicker = rawSymbol.replace(/\./g, '-');
   // Pick the smallest range that covers the request; Yahoo returns more
   // points than asked, we trim client-side below.
-  const range = days <= 5 ? '5d'
-              : days <= 30 ? '1mo'
-              : days <= 90 ? '3mo'
-              : days <= 180 ? '6mo'
-              : '1y';
-  const upstream = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yTicker)}?range=${range}&interval=1d&includePrePost=false`;
+  // Intraday intervals need a short range -- 5m bars only go back ~60 days
+  // on Yahoo, and requesting a long range with a short interval yields empty.
+  let range;
+  if (interval === '1d') {
+    range = days <= 5 ? '5d'
+          : days <= 30 ? '1mo'
+          : days <= 90 ? '3mo'
+          : days <= 180 ? '6mo'
+          : '1y';
+  } else {
+    // intraday: clamp range to something Yahoo accepts for the interval
+    range = days <= 1 ? '1d'
+          : days <= 5 ? '5d'
+          : '1mo';
+  }
+  const upstream = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yTicker)}?range=${range}&interval=${interval}&includePrePost=false`;
 
   const res = await fetch(upstream, {
     headers: {
@@ -124,8 +148,11 @@ async function tryYahoo(rawSymbol, days) {
   }
   if (points.length < 2) return { ok: false, detail: 'all_null' };
 
-  // Trim to last `days` entries and renumber
-  const trimmed = points.slice(Math.max(0, points.length - days));
+  // Trim to last `days` entries and renumber -- daily only. For intraday,
+  // the range clamp above already constrains to the desired window.
+  const trimmed = (interval === '1d')
+    ? points.slice(Math.max(0, points.length - days))
+    : points;
   const out = trimmed.map((p, i) => ({ day: i + 1, price: p.price, timestamp: p.timestamp }));
   return { ok: true, points: out };
 }
