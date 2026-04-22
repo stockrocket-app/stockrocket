@@ -38,9 +38,9 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.4';
-const APP_BUILT_AT = '2026-04-22T02:10:00Z';
-const APP_BUILD_NOTES = 'Dashboard flash-of-inflated-value fix: localStorage cached portfolio holdings no longer leak stale currentPrice into first paint. On restore we neutralize derived fields to avgCost so Total Net Liquidity shows a correct baseline until live prices land. Also dropped prevPx fallback in DashboardPage render-time math. Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
+const APP_VERSION = '2026-04-22.5';
+const APP_BUILT_AT = '2026-04-22T02:30:00Z';
+const APP_BUILD_NOTES = 'Leaderboard "same team" callout added above rankings -- reframes quick-gain instinct around strategy, skill-building, and learning together. Plus: dashboard flash-of-inflated-value fix (localStorage restore neutralizes derived fields; prevPx stale fallback removed from DashboardPage render). Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
 
 // Post a trade alert into the 'alerts' channel so everyone sees it in Chat.
 // Fire-and-forget: if the network fails, the trade still completes locally.
@@ -7408,6 +7408,36 @@ function LeaderboardPage({ players, user, achievementsUnlocked, code }) {
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 8 }}>Leaderboard</h1>
         <p className="text-muted" style={{ fontSize: 16 }}>See how you stack up against the squad. Trade smart, climb the ranks.</p>
+      </div>
+
+      {/* Team framing callout -- quick gains are fun but the real point is building skills together */}
+      <div
+        className="card"
+        style={{
+          padding: '20px 24px',
+          marginBottom: 32,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 16,
+          background: 'linear-gradient(135deg, rgba(0,255,163,0.08), rgba(0,255,163,0.02))',
+          border: '1px solid rgba(0,255,163,0.22)',
+        }}
+      >
+        <div
+          className="stat-icon primary"
+          style={{ width: 44, height: 44, flexShrink: 0 }}
+          aria-hidden="true"
+        >
+          <Icon name="diversity_3" size={22} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 15, letterSpacing: '0.02em', marginBottom: 4, color: 'var(--primary-fixed)' }}>
+            We're all on the same team
+          </div>
+          <p className="text-muted" style={{ fontSize: 14, lineHeight: 1.55, margin: 0 }}>
+            Rankings are the fun part, but not the point. What matters more than a quick gain is understanding your strategy, building real skills, and getting familiar with how markets actually move. Trade out loud. Share what works. Learn from each other -- we rise together.
+          </p>
+        </div>
       </div>
 
       <LeaderboardSection players={players} user={user} />
