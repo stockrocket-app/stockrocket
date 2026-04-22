@@ -38,7 +38,7 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.7';
+const APP_VERSION = '2026-04-22.8';
 const APP_BUILT_AT = '2026-04-22T02:30:00Z';
 const APP_BUILD_NOTES = 'Leaderboard "same team" callout added above rankings -- reframes quick-gain instinct around strategy, skill-building, and learning together. Plus: dashboard flash-of-inflated-value fix (localStorage restore neutralizes derived fields; prevPx stale fallback removed from DashboardPage render). Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
 
@@ -1854,7 +1854,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
                   <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginTop: 4 }}>{holding.shares}</p>
                 </div>
                 <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
-                  <span className="label-system">Avg Cost</span>
+                  <span className="label-system">Cost</span>
                   <p style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginTop: 4 }}>{formatCurrency(holding.avgCost)}</p>
                 </div>
                 <div style={{ padding: 12, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)' }}>
@@ -2309,7 +2309,7 @@ function InteractiveChart({
             <g>
               <line x1={padL} x2={W - padR} y1={avgCostY} y2={avgCostY} stroke="#f2b135" strokeOpacity="0.8" strokeWidth="1.5" strokeDasharray="4 4" />
               <rect x={W - padR - 80} y={avgCostY - 18} width="80" height="16" rx="4" fill="rgba(242,177,53,0.15)" />
-              <text x={W - padR - 8} y={avgCostY - 6} textAnchor="end" fontSize="10" fontFamily="var(--font-label)" fill="#f2b135">AVG COST {fmt(avgCost)}</text>
+              <text x={W - padR - 8} y={avgCostY - 6} textAnchor="end" fontSize="10" fontFamily="var(--font-label)" fill="#f2b135">COST {fmt(avgCost)}</text>
             </g>
           )}
           {/* Area + line */}
@@ -2798,7 +2798,7 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
               <span className="label-system">{holdings.length} position{holdings.length !== 1 ? 's' : ''} -- {formatCurrency(totalInvested)} invested</span>
             </div>
             <table className="data-table">
-              <thead><tr><th>Asset</th><th>Shares</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>P/L</th></tr></thead>
+              <thead><tr><th>Asset</th><th>Shares</th><th>Cost</th><th>Price</th><th>Value</th><th>P/L</th></tr></thead>
               <tbody>
                 {holdings.map(h => (
                   <tr key={h.symbol} style={{ cursor: 'pointer' }} onClick={() => setStockDetail && setStockDetail(h.symbol)}>
@@ -3102,7 +3102,7 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
           <div className="empty-state"><Icon name="rocket_launch" /><h3>No holdings yet</h3><p>Head to the Trade page to make your first investment</p></div>
         ) : (
           <table className="data-table">
-            <thead><tr><th>Asset_Name</th><th>Shares</th><th>Avg Cost</th><th>Live</th><th>Total</th><th>P/L</th><th>Action</th></tr></thead>
+            <thead><tr><th>Asset_Name</th><th>Shares</th><th>Cost</th><th>Live</th><th>Total</th><th>P/L</th><th>Action</th></tr></thead>
             <tbody>
               {portfolio.holdings.map(h => (
                 <tr key={h.symbol}>
