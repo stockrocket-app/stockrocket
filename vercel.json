@@ -3,8 +3,7 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "crons": [
-    { "path": "/api/resolve-predictions", "schedule": "0 22 * * *" },
-    { "path": "/api/crypto/fill-order", "schedule": "*/5 * * * *" }
+    { "path": "/api/resolve-predictions", "schedule": "0 22 * * *" }
   ],
   "headers": [
     {
