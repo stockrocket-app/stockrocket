@@ -23,7 +23,7 @@
 // React Application
 // =============================================
 
-const { useState, useEffect, useCallback, useRef, createContext, useContext } = React;
+const { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } = React;
 
 // ==================== APP CONFIG ====================
 const APP_ENV = (location.hostname === 'localhost' || location.protocol === 'file:') ? 'development' : 'production';
@@ -38,7 +38,7 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-22.8';
+const APP_VERSION = '2026-04-23.1';
 const APP_BUILT_AT = '2026-04-22T02:30:00Z';
 const APP_BUILD_NOTES = 'Leaderboard "same team" callout added above rankings -- reframes quick-gain instinct around strategy, skill-building, and learning together. Plus: dashboard flash-of-inflated-value fix (localStorage restore neutralizes derived fields; prevPx stale fallback removed from DashboardPage render). Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
 
@@ -2636,6 +2636,9 @@ function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin,
           <div className="sidebar-section-label" style={{ color: 'var(--error)' }}>Admin</div>
           <button className={`sidebar-nav-item ${activePage === 'admin' ? 'active' : ''}`} onClick={() => handleNav('admin')} style={activePage === 'admin' ? { borderRightColor: 'var(--error)', background: 'rgba(255,113,108,0.1)', color: 'var(--error)' } : {}}>
             <Icon name="admin_panel_settings" /> Command Center
+          </button>
+          <button className={`sidebar-nav-item ${activePage === 'crypto-bot' ? 'active' : ''}`} onClick={() => handleNav('crypto-bot')} style={activePage === 'crypto-bot' ? { borderRightColor: 'var(--error)', background: 'rgba(255,113,108,0.1)', color: 'var(--error)' } : {}}>
+            <Icon name="smart_toy" /> Crypto Bot
           </button>
         </>}
       </nav>
@@ -7359,6 +7362,528 @@ function PredictionAccuracyBoard({ players, code }) {
   );
 }
 
+// ==================== CRYPTO BOT (Admin-Only) ====================
+// Paper limit-order engine for prediction testing. Writes fills into the
+// normal stockrocket_trades ledger for the target user (Milburn or Ella) so
+// impact flows through to their existing portfolio. Hidden from all non-admin
+// surfaces. See __system/brain/projects/stockrocket-crypto-bot/SPEC.md.
+function CryptoBotPage({ adminCode, crypto, setNotification, user }) {
+  const [orders, setOrders] = useState([]);
+  const [portfolios, setPortfolios] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [showPlace, setShowPlace] = useState(false);
+  const [fillStatus, setFillStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/crypto/orders?status=all&limit=200`, {
+        headers: { 'X-Admin-Code': adminCode },
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) setOrders(data.orders || []);
+    } catch {}
+  }, [adminCode]);
+
+  const loadPortfolios = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/trades?admin=1`, {
+        headers: { 'X-User-Code': adminCode },
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        // Only the two tracked accounts: RSJ-ADMIN (Milburn) + BigM0NEY$$ (Ella)
+        setPortfolios((data.portfolios || []).filter(p =>
+          p.user_code === 'RSJ-ADMIN' || p.user_code === 'BigM0NEY$$'
+        ));
+      }
+    } catch {}
+  }, [adminCode]);
+
+  // Initial load
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await Promise.all([loadOrders(), loadPortfolios()]);
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [loadOrders, loadPortfolios]);
+
+  // Fill check loop -- immediate + every 60s while page is mounted.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/crypto/fill-order`, {
+          method: 'POST',
+          headers: { 'X-Admin-Code': adminCode, 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && data.ok) {
+          setFillStatus({ ...data, at: Date.now() });
+          if ((data.filled || 0) > 0 || (data.expired || 0) > 0) {
+            await Promise.all([loadOrders(), loadPortfolios()]);
+          }
+        }
+      } catch {}
+    };
+    tick();
+    const iv = setInterval(tick, 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [adminCode, loadOrders, loadPortfolios]);
+
+  // Cancel a pending order
+  const cancelOrder = async (id) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/crypto/orders?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'X-Admin-Code': adminCode },
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setNotification && setNotification({ type: 'success', message: 'Order cancelled' });
+        await loadOrders();
+      } else {
+        setNotification && setNotification({ type: 'error', message: data.detail || data.error || 'Cancel failed' });
+      }
+    } catch (e) {
+      setNotification && setNotification({ type: 'error', message: String(e.message || e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Derive crypto holdings per user, cross-referenced with live prices
+  const livePriceFor = useCallback((sym) => {
+    const live = (crypto || []).find(c => c.symbol === sym);
+    const px = Number(live?.price);
+    return (Number.isFinite(px) && px > 0) ? { price: px, stale: !!live?.stale } : null;
+  }, [crypto]);
+
+  const userLabel = (code) => code === 'RSJ-ADMIN' ? 'Milburn' : code === 'BigM0NEY$$' ? 'Ella' : code;
+
+  const cryptoHoldings = useMemo(() => {
+    return portfolios.map(p => {
+      const hs = (p.holdings && typeof p.holdings === 'object') ? p.holdings : {};
+      const rows = Object.entries(hs)
+        .filter(([, h]) => h && h.assetType === 'crypto' && Number(h.shares) > 0)
+        .map(([sym, h]) => {
+          const live = livePriceFor(sym);
+          const cur = live ? live.price : Number(h.avgCost);
+          const value = Number(h.shares) * cur;
+          const pnl = (cur - Number(h.avgCost)) * Number(h.shares);
+          const pnlPct = Number(h.avgCost) > 0 ? ((cur - Number(h.avgCost)) / Number(h.avgCost)) * 100 : 0;
+          return {
+            symbol: sym, name: h.name || sym, shares: Number(h.shares), avgCost: Number(h.avgCost),
+            currentPrice: cur, value, pnl, pnlPct, priceStale: live ? live.stale : true,
+          };
+        })
+        .sort((a, b) => b.value - a.value);
+      return {
+        user_code: p.user_code,
+        label: userLabel(p.user_code),
+        cash: Number(p.cash) || 0,
+        rows,
+        totalValue: rows.reduce((s, r) => s + r.value, 0),
+        totalPnl: rows.reduce((s, r) => s + r.pnl, 0),
+      };
+    });
+  }, [portfolios, livePriceFor]);
+
+  const pending = orders.filter(o => o.status === 'pending');
+  const history = orders.filter(o => o.status !== 'pending');
+  const filteredHistory = filter === 'all' ? history : history.filter(o => o.status === filter);
+
+  const formatCash = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatQty = (n, dp = 8) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: dp });
+  const formatDate = (iso) => {
+    if (!iso) return '--';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+  const daysUntil = (iso) => {
+    const d = new Date(iso).getTime();
+    if (isNaN(d)) return null;
+    return Math.max(0, Math.ceil((d - Date.now()) / 86400000));
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        <h1 style={{ fontFamily: 'var(--font-headline)', fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, letterSpacing: '-0.03em' }}>
+          Crypto <span style={{ color: 'var(--error)' }}>Bot</span>
+        </h1>
+        <span className="badge badge-error" style={{ fontSize: 11 }}>👑 Admin Only</span>
+        <span style={{ flex: 1 }} />
+        <button className="btn btn-primary" onClick={() => setShowPlace(true)}>
+          <Icon name="add" size={16} /> Place Order
+        </button>
+      </div>
+      <p className="text-muted" style={{ fontSize: 14, marginBottom: 24 }}>
+        Paper limit orders against Milburn and Ella accounts. Every order logs thesis + source so prediction accuracy can be measured over time. Fills write through the same ledger as any paper trade.
+      </p>
+
+      {/* Fill status strip */}
+      {fillStatus && (
+        <div style={{ fontSize: 11, fontFamily: 'var(--font-label)', letterSpacing: '0.08em', color: 'var(--on-surface-variant)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary-fixed)', display: 'inline-block' }} />
+          LAST_SWEEP {new Date(fillStatus.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          <span>·</span>
+          <span>SCANNED {fillStatus.scanned || 0}</span>
+          <span>·</span>
+          <span style={{ color: (fillStatus.filled || 0) > 0 ? 'var(--success)' : 'var(--on-surface-variant)' }}>FILLED {fillStatus.filled || 0}</span>
+          <span>·</span>
+          <span style={{ color: (fillStatus.expired || 0) > 0 ? 'var(--error)' : 'var(--on-surface-variant)' }}>EXPIRED {fillStatus.expired || 0}</span>
+        </div>
+      )}
+
+      {/* Holdings */}
+      <div style={{ marginBottom: 40 }}>
+        <div style={{ fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 12 }}>HOLDINGS · LIVE</div>
+        {loading && <div className="text-muted" style={{ fontSize: 13 }}>Loading portfolios…</div>}
+        {!loading && cryptoHoldings.length === 0 && <div className="text-muted" style={{ fontSize: 13 }}>No crypto holdings on either account yet.</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+          {cryptoHoldings.map(u => (
+            <div key={u.user_code} style={{ background: 'var(--surface-container-high)', border: '1px solid var(--outline-variant)', padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.12em', color: 'var(--primary-fixed)' }}>{u.label.toUpperCase()}</span>
+                <span className="text-muted" style={{ fontSize: 11 }}>CASH {formatCash(u.cash)}</span>
+              </div>
+              {u.rows.length === 0 ? (
+                <div className="text-muted" style={{ fontSize: 12, fontStyle: 'italic' }}>No crypto holdings.</div>
+              ) : (
+                <div>
+                  {u.rows.map(r => (
+                    <div key={r.symbol} style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 2, columnGap: 8, fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--outline-variant)' }}>
+                      <span style={{ fontWeight: 700, fontFamily: 'var(--font-headline)', fontSize: 14 }}>{r.symbol}</span>
+                      <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>{formatQty(r.shares, 8)}</span>
+                      <span className="text-muted">avg {formatCash(r.avgCost)}</span>
+                      <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>{r.priceStale ? 'stale' : formatCash(r.currentPrice)}</span>
+                      <span className="text-muted">value</span>
+                      <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>{formatCash(r.value)}</span>
+                      <span className="text-muted">P/L</span>
+                      <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono, monospace)', color: r.pnl >= 0 ? 'var(--success)' : 'var(--error)', fontWeight: 700 }}>
+                        {r.pnl >= 0 ? '+' : ''}{formatCash(r.pnl)} ({r.pnlPct >= 0 ? '+' : ''}{r.pnlPct.toFixed(1)}%)
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, marginTop: 4, borderTop: '1px solid var(--outline)' }}>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-label)', letterSpacing: '0.1em' }}>TOTAL</span>
+                    <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono, monospace)', fontSize: 13 }}>
+                      {formatCash(u.totalValue)} · <span style={{ color: u.totalPnl >= 0 ? 'var(--success)' : 'var(--error)' }}>{u.totalPnl >= 0 ? '+' : ''}{formatCash(u.totalPnl)}</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Pending orders */}
+      <div style={{ marginBottom: 40 }}>
+        <div style={{ fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 12 }}>OPEN_ORDERS · {pending.length}</div>
+        {pending.length === 0 ? (
+          <div className="text-muted" style={{ fontSize: 13 }}>No pending orders. <button className="btn btn-ghost btn-sm" style={{ marginLeft: 4 }} onClick={() => setShowPlace(true)}>Place one</button></div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', minWidth: 800 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', fontFamily: 'var(--font-label)', letterSpacing: '0.08em', color: 'var(--on-surface-variant)', fontSize: 10 }}>
+                  <th style={{ padding: 8 }}>USER</th>
+                  <th style={{ padding: 8 }}>SYM</th>
+                  <th style={{ padding: 8 }}>SIDE</th>
+                  <th style={{ padding: 8, textAlign: 'right' }}>TRIGGER</th>
+                  <th style={{ padding: 8, textAlign: 'right' }}>QTY</th>
+                  <th style={{ padding: 8, textAlign: 'right' }}>VS_LIVE</th>
+                  <th style={{ padding: 8 }}>SOURCE</th>
+                  <th style={{ padding: 8, textAlign: 'right' }}>TTL</th>
+                  <th style={{ padding: 8 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pending.map(o => {
+                  const live = livePriceFor(o.symbol);
+                  const liveP = live ? live.price : null;
+                  const deltaPct = liveP ? ((Number(o.trigger_price) - liveP) / liveP) * 100 : null;
+                  const ttl = daysUntil(o.expire_at);
+                  return (
+                    <tr key={o.id} style={{ borderTop: '1px solid var(--outline-variant)' }}>
+                      <td style={{ padding: 8 }}>{userLabel(o.user_code)}</td>
+                      <td style={{ padding: 8, fontWeight: 700 }}>{o.symbol}</td>
+                      <td style={{ padding: 8, color: o.side === 'BUY' ? 'var(--success)' : 'var(--error)', fontWeight: 700 }}>{o.side}</td>
+                      <td style={{ padding: 8, textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>{formatCash(Number(o.trigger_price))}</td>
+                      <td style={{ padding: 8, textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>{formatQty(Number(o.qty))}</td>
+                      <td style={{ padding: 8, textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>
+                        {deltaPct === null ? '--' : (
+                          <span style={{ color: Math.abs(deltaPct) < 2 ? 'var(--primary-fixed)' : 'var(--on-surface-variant)' }}>
+                            {deltaPct >= 0 ? '+' : ''}{deltaPct.toFixed(1)}%
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: 8, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.thesis}>{o.source}</td>
+                      <td style={{ padding: 8, textAlign: 'right' }}>{ttl === null ? '--' : `${ttl}d`}</td>
+                      <td style={{ padding: 8 }}>
+                        <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => cancelOrder(o.id)} style={{ fontSize: 10 }}>Cancel</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Filled / cancelled / expired log */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.12em', color: 'var(--on-surface-variant)' }}>LOG · {filteredHistory.length}</span>
+          <span style={{ flex: 1 }} />
+          {['all', 'filled', 'cancelled', 'expired'].map(k => (
+            <button key={k} className={`btn btn-sm ${filter === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter(k)} style={{ fontSize: 10 }}>{k.toUpperCase()}</button>
+          ))}
+        </div>
+        {filteredHistory.length === 0 ? (
+          <div className="text-muted" style={{ fontSize: 13 }}>No {filter === 'all' ? '' : filter} orders yet.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', minWidth: 900 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', fontFamily: 'var(--font-label)', letterSpacing: '0.08em', color: 'var(--on-surface-variant)', fontSize: 10 }}>
+                  <th style={{ padding: 8 }}>CREATED</th>
+                  <th style={{ padding: 8 }}>STATUS</th>
+                  <th style={{ padding: 8 }}>USER</th>
+                  <th style={{ padding: 8 }}>SYM</th>
+                  <th style={{ padding: 8 }}>SIDE</th>
+                  <th style={{ padding: 8, textAlign: 'right' }}>TRIGGER</th>
+                  <th style={{ padding: 8, textAlign: 'right' }}>QTY</th>
+                  <th style={{ padding: 8 }}>SOURCE</th>
+                  <th style={{ padding: 8 }}>THESIS</th>
+                  <th style={{ padding: 8 }}>RESULT</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map(o => {
+                  const badgeColor = o.status === 'filled' ? 'var(--success)' : o.status === 'cancelled' ? 'var(--on-surface-variant)' : 'var(--error)';
+                  return (
+                    <tr key={o.id} style={{ borderTop: '1px solid var(--outline-variant)' }}>
+                      <td style={{ padding: 8, color: 'var(--on-surface-variant)' }}>{formatDate(o.created_at)}</td>
+                      <td style={{ padding: 8, color: badgeColor, fontWeight: 700, fontSize: 10, letterSpacing: '0.08em' }}>{o.status.toUpperCase()}</td>
+                      <td style={{ padding: 8 }}>{userLabel(o.user_code)}</td>
+                      <td style={{ padding: 8, fontWeight: 700 }}>{o.symbol}</td>
+                      <td style={{ padding: 8, color: o.side === 'BUY' ? 'var(--success)' : 'var(--error)' }}>{o.side}</td>
+                      <td style={{ padding: 8, textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>{formatCash(Number(o.trigger_price))}</td>
+                      <td style={{ padding: 8, textAlign: 'right', fontFamily: 'var(--font-mono, monospace)' }}>{formatQty(Number(o.qty))}</td>
+                      <td style={{ padding: 8, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.source}</td>
+                      <td style={{ padding: 8, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.thesis}>{o.thesis}</td>
+                      <td style={{ padding: 8, color: 'var(--on-surface-variant)', fontSize: 10 }}>
+                        {o.status === 'filled' && o.filled_at ? `@${formatCash(Number(o.filled_price))} on ${formatDate(o.filled_at)}`
+                          : o.status === 'expired' ? (o.expired_reason || 'expired')
+                          : o.status === 'cancelled' ? 'cancelled'
+                          : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showPlace && (
+        <CryptoBotPlaceOrderModal
+          adminCode={adminCode}
+          crypto={crypto}
+          onClose={() => setShowPlace(false)}
+          onPlaced={async () => { setShowPlace(false); await loadOrders(); setNotification && setNotification({ type: 'success', message: 'Order placed.' }); }}
+          setNotification={setNotification}
+        />
+      )}
+    </div>
+  );
+}
+
+function CryptoBotPlaceOrderModal({ adminCode, crypto, onClose, onPlaced, setNotification }) {
+  const [userCode, setUserCode] = useState('RSJ-ADMIN');
+  const [symbol, setSymbol] = useState('BTC');
+  const [side, setSide] = useState('SELL');
+  const [trigger, setTrigger] = useState('');
+  const [qty, setQty] = useState('');
+  const [thesis, setThesis] = useState('');
+  const [source, setSource] = useState('');
+  const [expectedDir, setExpectedDir] = useState('');
+  const [expectedBy, setExpectedBy] = useState('');
+  const [ttlDays, setTtlDays] = useState('30');
+  const [submitting, setSubmitting] = useState(false);
+
+  const live = (crypto || []).find(c => c.symbol === symbol);
+  const livePx = Number(live?.price);
+  const livePxValid = Number.isFinite(livePx) && livePx > 0;
+
+  const triggerNum = Number(trigger);
+  const qtyNum = Number(qty);
+  const totalEst = (Number.isFinite(triggerNum) && triggerNum > 0 && Number.isFinite(qtyNum) && qtyNum > 0) ? triggerNum * qtyNum : null;
+  const distancePct = (livePxValid && Number.isFinite(triggerNum) && triggerNum > 0) ? ((triggerNum - livePx) / livePx) * 100 : null;
+
+  const symbolName = { BTC: 'Bitcoin', ETH: 'Ethereum', ADA: 'Cardano', SOL: 'Solana', XRP: 'XRP' }[symbol] || symbol;
+
+  const canSubmit = !submitting &&
+    Number.isFinite(triggerNum) && triggerNum > 0 &&
+    Number.isFinite(qtyNum) && qtyNum > 0 &&
+    thesis.trim().length > 0 &&
+    source.trim().length > 0;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const body = {
+        user_code: userCode,
+        symbol,
+        name: symbolName,
+        side,
+        trigger_price: triggerNum,
+        qty: qtyNum,
+        thesis: thesis.trim(),
+        source: source.trim(),
+        expected_direction: expectedDir || null,
+        expected_by: expectedBy || null,
+        ttl_days: Math.max(1, Math.min(365, parseInt(ttlDays, 10) || 30)),
+      };
+      const res = await fetch(`${API_BASE}/api/crypto/orders`, {
+        method: 'POST',
+        headers: { 'X-Admin-Code': adminCode, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        onPlaced && onPlaced();
+      } else {
+        setNotification && setNotification({ type: 'error', message: data.detail || data.error || 'Place failed' });
+      }
+    } catch (e) {
+      setNotification && setNotification({ type: 'error', message: String(e.message || e) });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: 'var(--surface-container)', border: '1px solid var(--outline)', maxWidth: 560, width: '100%', maxHeight: '92vh', overflowY: 'auto', padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>Place Limit Order</h2>
+          <span style={{ flex: 1 }} />
+          <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ fontSize: 16, padding: '4px 10px' }}>×</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>ACCOUNT</div>
+            <select className="input-field" value={userCode} onChange={e => setUserCode(e.target.value)} style={{ width: '100%' }}>
+              <option value="RSJ-ADMIN">Milburn (RSJ-ADMIN)</option>
+              <option value="BigM0NEY$$">Ella (BigM0NEY$$)</option>
+            </select>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>SYMBOL</div>
+            <select className="input-field" value={symbol} onChange={e => setSymbol(e.target.value)} style={{ width: '100%' }}>
+              <option value="BTC">BTC · Bitcoin</option>
+              <option value="ETH">ETH · Ethereum</option>
+              <option value="ADA">ADA · Cardano</option>
+              <option value="SOL">SOL · Solana</option>
+              <option value="XRP">XRP · XRP</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>SIDE</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['BUY', 'SELL'].map(s => (
+                <button key={s} className="btn btn-sm" onClick={() => setSide(s)} style={{ flex: 1, background: side === s ? (s === 'BUY' ? 'var(--success)' : 'var(--error)') : 'transparent', color: side === s ? '#000' : 'var(--on-surface)', borderColor: side === s ? (s === 'BUY' ? 'var(--success)' : 'var(--error)') : 'var(--outline)' }}>{s}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>LIVE PRICE</div>
+            <div style={{ padding: '8px 12px', background: 'var(--surface-container-high)', border: '1px solid var(--outline-variant)', fontFamily: 'var(--font-mono, monospace)', fontSize: 14, fontWeight: 700 }}>
+              {livePxValid ? `$${livePx.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'stale'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>TRIGGER PRICE ($)</div>
+            <input className="input-field" type="number" min="0" step="0.00000001" value={trigger} onChange={e => setTrigger(e.target.value)} placeholder="e.g. 100000" style={{ width: '100%' }} />
+            {distancePct !== null && Number.isFinite(distancePct) && (
+              <div className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>
+                {distancePct >= 0 ? '+' : ''}{distancePct.toFixed(2)}% vs live
+              </div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>QUANTITY</div>
+            <input className="input-field" type="number" min="0" step="0.00000001" value={qty} onChange={e => setQty(e.target.value)} placeholder="e.g. 0.1" style={{ width: '100%' }} />
+            {totalEst !== null && (
+              <div className="text-muted" style={{ fontSize: 10, marginTop: 4 }}>
+                Total: ${totalEst.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>THESIS <span style={{ color: 'var(--error)' }}>*</span></div>
+          <textarea className="input-field" value={thesis} onChange={e => setThesis(e.target.value)} rows={2} placeholder="Why do you think this will hit?" style={{ width: '100%', resize: 'vertical' }} />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>SOURCE <span style={{ color: 'var(--error)' }}>*</span></div>
+          <input className="input-field" value={source} onChange={e => setSource(e.target.value)} placeholder="Newsletter, DM, own read, etc." style={{ width: '100%' }} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>EXPECTED DIR</div>
+            <select className="input-field" value={expectedDir} onChange={e => setExpectedDir(e.target.value)} style={{ width: '100%' }}>
+              <option value="">--</option>
+              <option value="up">Up</option>
+              <option value="down">Down</option>
+            </select>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>EXPECTED BY</div>
+            <input className="input-field" type="date" value={expectedBy} onChange={e => setExpectedBy(e.target.value)} style={{ width: '100%' }} />
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--on-surface-variant)', marginBottom: 6 }}>TTL (DAYS)</div>
+            <input className="input-field" type="number" min="1" max="365" value={ttlDays} onChange={e => setTtlDays(e.target.value)} style={{ width: '100%' }} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!canSubmit} onClick={submit}>
+            {submitting ? 'Placing…' : 'Place Order'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LeaderboardPage({ players, user, achievementsUnlocked, code }) {
   // Empty-state guard -- the leaderboard fetch is async and may not have
   // returned yet (or there are no active users for some reason).
@@ -8276,6 +8801,7 @@ function App() {
       case 'insights': return <InsightsPage />;
       case 'learn': return <LearnPage code={accessCode} />;
       case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} user={user} adminCode={accessCode} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
+      case 'crypto-bot': return isAdmin ? <CryptoBotPage adminCode={accessCode} crypto={crypto} setNotification={setNotification} user={user} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
       default: return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
     }
   };

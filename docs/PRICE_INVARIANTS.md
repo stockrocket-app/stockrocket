@@ -50,28 +50,30 @@ numeric.
 finite positive number. No call site may bypass this function. Adding a new
 trade path that calls `/api/trades` directly is a violation.
 
-### I3. Server re-verifies every trade price against a live fetch
+### I3. Server-authoritative execution price
 
 `/api/trades` POST fetches a live price server-side (same multi-source chain
 as `/api/price`: Coinbase primary + CoinGecko fallback for crypto, Finnhub
-for stocks) and compares it to the client-submitted `price`. If the client
-price deviates more than the per-asset threshold, the trade is rejected
-with `error: 'price_deviation'`. Current thresholds:
+for stocks) and USES IT as the execution price for the ledger row. The
+client-submitted `price` is advisory only -- it drives a `display_drift_pct`
+audit flag but never determines what the trade records.
 
--   Stocks: `PRICE_DEVIATION_LIMITS.stock = 0.03` (3%)
--   Crypto: `PRICE_DEVIATION_LIMITS.crypto = 0.05` (5%)
+The only hard rejection is `error: 'price_unverifiable'` (fail closed when
+no vendor returns a price at all). There is no "deviation rejection" path --
+a rejection loop on fast-moving markets was itself user harm for a paper-
+trading app (per 2026-04-18 S54d pivot). The server always fills at its own
+live price; the client never controls the ledger value.
 
-If no live price is available server-side, the trade is rejected with
-`error: 'price_unverifiable'` (fail closed). This is the final backstop:
-even if every client-side guard is bypassed (e.g. by someone crafting a
-manual POST), the server will not record a trade that disagrees with a
-live market or cannot be verified at all.
+This makes the phantom-price class of bug impossible: the server physically
+cannot record a trade against a mock value because it never reads the
+client's price as truth.
 
 **Historical note:** 2026-04-18 to 2026-04-18 evening, this endpoint held
 a hard 503 kill switch for all crypto POSTs (`error: 'crypto_trading_paused'`)
 while the unified price service was under construction. The kill switch was
-removed once Coinbase primary + CoinGecko fallback + server-side deviation
-verification shipped together.
+removed once Coinbase primary + CoinGecko fallback + server-side verification
+shipped together (S54b). Deviation-rejection was tried briefly (S54c) and
+replaced with the server-authoritative model (S54d) the same night.
 
 ### I4. No seed prices exist in code
 
@@ -97,6 +99,47 @@ fallback. For stocks, Finnhub is primary; a fallback is tracked for
 follow-up. A single-vendor outage may not silently kill a feed. The
 per-symbol result still carries `source` so consumers can see which vendor
 served this tick.
+
+### I8. Limit fills execute at the trigger price, not the live price
+
+**This is a deliberate exception to I3, admin-only and paper-only.**
+
+`/api/crypto/fill-order` (the crypto bot's fill engine) writes trade rows at
+the order's preset `trigger_price` -- NOT at the server's live price. The
+endpoint:
+
+1. Fetches a live price via the same multi-source chain (Coinbase -> CoinGecko).
+2. Confirms the market crossed the trigger:
+   -   SELL order: live >= trigger.
+   -   BUY order: live <= trigger.
+3. If crossed, validates target user's cash (BUY) or holdings (SELL). On
+    insufficient, expires the order with a reason code, never writes a trade.
+4. If funded, writes the trade at `trigger_price` with `source: 'crypto_bot_limit'`.
+5. Never fills if no live price is available (fail-closed).
+
+**Why this carve-out exists:** the bot's purpose is measurable prediction
+accuracy. Every filled limit represents a call the admin made ("SELL BTC at
+$100k"). Writing the fill at the live price instead of the trigger would
+smear that signal with whatever tick happened to cross the threshold,
+making outcome scoring noisy. Limit orders, by definition, say "execute at
+THIS preset price when the market crosses it," and the ledger should honor
+that.
+
+**Why it's safe:**
+-   Live price verification still applies. No fill ever happens without a
+    real server-side fetch confirming the market crossed.
+-   The endpoint is admin-only (auth via `X-Admin-Code` header or the Vercel
+    Cron shared secret). No family user surface can call it.
+-   Trades land with `source='crypto_bot_limit'` so the ledger is filterable
+    and audit-trail is clear.
+-   Only five assets allowed (BTC, ETH, ADA, SOL, XRP) via CHECK constraint
+    on `stockrocket_crypto_orders`. No new-symbol attack surface.
+
+**The invariant that limits this carve-out:** market orders from any other
+surface (Trade page, Crypto page, direct POST to `/api/trades`) still follow
+I3. Only the crypto bot's fill engine uses preset-price execution, and only
+for pre-authorized limit orders that passed admin validation at creation
+time.
 
 ### I6. Validation happens at the edge of every boundary
 
