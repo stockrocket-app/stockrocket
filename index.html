@@ -38,7 +38,7 @@ const API_BASE = (() => {
 })();
 // APP_VERSION / APP_BUILT_AT are a visible build stamp so Admin can tell whether
 // a fresh bundle has actually landed vs a cached one. Bump on every deploy.
-const APP_VERSION = '2026-04-23.2';
+const APP_VERSION = '2026-04-23.4';
 const APP_BUILT_AT = '2026-04-22T02:30:00Z';
 const APP_BUILD_NOTES = 'Leaderboard "same team" callout added above rankings -- reframes quick-gain instinct around strategy, skill-building, and learning together. Plus: dashboard flash-of-inflated-value fix (localStorage restore neutralizes derived fields; prevPx stale fallback removed from DashboardPage render). Plus prior: InteractiveChart v1 (1D/1W/1M/3M/6M/1Y tabs, hover tooltip, avg-cost line), /api/history intraday, crypto->StockDetailPage routing, GIF cache-bust.';
 
@@ -7373,8 +7373,12 @@ function CryptoBotPage({ adminCode, crypto, setNotification, user }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [showPlace, setShowPlace] = useState(false);
+  const [orderPreset, setOrderPreset] = useState(null);
   const [fillStatus, setFillStatus] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [marketRead, setMarketRead] = useState(null);
+  const [marketReadAt, setMarketReadAt] = useState(null);
+  const [marketReadLoading, setMarketReadLoading] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -7401,15 +7405,34 @@ function CryptoBotPage({ adminCode, crypto, setNotification, user }) {
     } catch {}
   }, [adminCode]);
 
+  // Load the rule-based Market Read analyses. Deterministic strategy engine
+  // that pulls 90d daily candles per asset and applies a fixed rule set.
+  // See api/crypto/analyze.js for the rules.
+  const loadMarketRead = useCallback(async () => {
+    setMarketReadLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/crypto/analyze`, {
+        headers: { 'X-Admin-Code': adminCode },
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setMarketRead(data.analyses || []);
+        setMarketReadAt(Date.now());
+      }
+    } catch {} finally {
+      setMarketReadLoading(false);
+    }
+  }, [adminCode]);
+
   // Initial load
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await Promise.all([loadOrders(), loadPortfolios()]);
+      await Promise.all([loadOrders(), loadPortfolios(), loadMarketRead()]);
       if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [loadOrders, loadPortfolios]);
+  }, [loadOrders, loadPortfolios, loadMarketRead]);
 
   // Fill check loop -- immediate + every 60s while page is mounted.
   useEffect(() => {
@@ -7543,6 +7566,129 @@ function CryptoBotPage({ adminCode, crypto, setNotification, user }) {
           <span style={{ color: (fillStatus.expired || 0) > 0 ? 'var(--error)' : 'var(--on-surface-variant)' }}>EXPIRED {fillStatus.expired || 0}</span>
         </div>
       )}
+
+      {/* Market Read -- rule-based strategy signals with suggested triggers */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'var(--font-label)', fontSize: 11, letterSpacing: '0.12em', color: 'var(--on-surface-variant)' }}>MARKET READ · STRATEGY SIGNALS</span>
+          {marketReadAt && (
+            <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-label)', letterSpacing: '0.08em' }}>
+              · AS OF {new Date(marketReadAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          <button className="btn btn-sm btn-ghost" onClick={loadMarketRead} disabled={marketReadLoading} style={{ fontSize: 10 }}>
+            {marketReadLoading ? 'Analyzing…' : 'Refresh'}
+          </button>
+        </div>
+        {(!marketRead || marketRead.length === 0) && !marketReadLoading && (
+          <div className="text-muted" style={{ fontSize: 13 }}>Click Refresh to run the strategy engine against Coinbase candles.</div>
+        )}
+        {marketRead && marketRead.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+            {marketRead.map(a => {
+              if (a.error) {
+                return (
+                  <div key={a.symbol} style={{ background: 'var(--surface-container-high)', border: '1px solid var(--outline-variant)', padding: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, fontSize: 16 }}>{a.symbol}</span>
+                      <span className="text-muted" style={{ fontSize: 10 }}>unavailable</span>
+                    </div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>{a.error}</div>
+                  </div>
+                );
+              }
+              // Signal colour map
+              const signalColor = ({
+                SELL_ZONE: 'var(--error)',
+                TAKE_PARTIALS: '#ffb020',
+                HOLD: 'var(--on-surface-variant)',
+                ACCUMULATE: '#7cc4ff',
+                BUY_ZONE: 'var(--success)',
+              })[a.signal] || 'var(--on-surface-variant)';
+              // Pair against user holdings to show per-account P/L
+              const posByUser = cryptoHoldings.map(u => {
+                const row = u.rows.find(r => r.symbol === a.symbol);
+                return { label: u.label, row };
+              }).filter(p => p.row);
+              return (
+                <div key={a.symbol} style={{ background: 'var(--surface-container-high)', border: `1px solid ${signalColor}`, padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 800, fontSize: 18 }}>{a.symbol}</span>
+                    <span style={{ fontFamily: 'var(--font-label)', fontSize: 10, letterSpacing: '0.12em', color: signalColor, fontWeight: 700, padding: '3px 8px', border: `1px solid ${signalColor}` }}>{a.signal_label.toUpperCase()}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 18, fontWeight: 700 }}>{formatCash(a.price)}</span>
+                    <span style={{ fontSize: 11, color: a.change_7d_pct >= 0 ? 'var(--success)' : 'var(--error)' }}>
+                      7d {a.change_7d_pct >= 0 ? '+' : ''}{a.change_7d_pct}%
+                    </span>
+                    <span style={{ fontSize: 11, color: a.change_30d_pct >= 0 ? 'var(--success)' : 'var(--error)' }}>
+                      30d {a.change_30d_pct >= 0 ? '+' : ''}{a.change_30d_pct}%
+                    </span>
+                  </div>
+                  {/* 30d range visualiser */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontFamily: 'var(--font-mono, monospace)', color: 'var(--on-surface-variant)', marginBottom: 3 }}>
+                      <span>{formatCash(a.low_30d)}</span>
+                      <span className="text-muted">30D RANGE</span>
+                      <span>{formatCash(a.high_30d)}</span>
+                    </div>
+                    <div style={{ position: 'relative', height: 6, background: 'var(--surface-container)', border: '1px solid var(--outline-variant)' }}>
+                      <div style={{ position: 'absolute', left: `${Math.max(0, Math.min(100, a.range_position * 100))}%`, top: -3, width: 2, height: 12, background: signalColor }} />
+                    </div>
+                  </div>
+                  {/* Reasoning */}
+                  <div style={{ fontSize: 11, color: 'var(--on-surface-variant)', marginBottom: 10, minHeight: 36 }}>
+                    {a.reasoning.map((r, i) => <div key={i}>· {r}</div>)}
+                  </div>
+                  {/* Per-user P/L */}
+                  {posByUser.length > 0 && (
+                    <div style={{ background: 'var(--surface-container)', padding: 6, marginBottom: 10, fontSize: 10 }}>
+                      {posByUser.map(p => (
+                        <div key={p.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span className="text-muted">{p.label}</span>
+                          <span style={{ fontFamily: 'var(--font-mono, monospace)', color: p.row.pnl >= 0 ? 'var(--success)' : 'var(--error)' }}>
+                            {formatQty(p.row.shares, 4)} · {p.row.pnl >= 0 ? '+' : ''}{p.row.pnlPct.toFixed(1)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Suggested targets */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    <button className="btn btn-sm" style={{ background: 'rgba(255,113,108,0.08)', borderColor: 'var(--error)', color: 'var(--error)', fontSize: 10 }}
+                      onClick={() => {
+                        setOrderPreset({
+                          symbol: a.symbol,
+                          side: 'SELL',
+                          trigger_price: a.suggested_sell_target,
+                          thesis: `Bot ${a.signal_label}: ${a.reasoning.join('; ')}`,
+                          source: 'bot_analysis',
+                        });
+                        setShowPlace(true);
+                      }}>
+                      SELL @ {formatCash(a.suggested_sell_target)}
+                    </button>
+                    <button className="btn btn-sm" style={{ background: 'rgba(124,196,255,0.08)', borderColor: 'var(--success)', color: 'var(--success)', fontSize: 10 }}
+                      onClick={() => {
+                        setOrderPreset({
+                          symbol: a.symbol,
+                          side: 'BUY',
+                          trigger_price: a.suggested_buy_target,
+                          thesis: `Bot ${a.signal_label}: ${a.reasoning.join('; ')}`,
+                          source: 'bot_analysis',
+                        });
+                        setShowPlace(true);
+                      }}>
+                      BUY @ {formatCash(a.suggested_buy_target)}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Holdings */}
       <div style={{ marginBottom: 40 }}>
@@ -7703,8 +7849,9 @@ function CryptoBotPage({ adminCode, crypto, setNotification, user }) {
         <CryptoBotPlaceOrderModal
           adminCode={adminCode}
           crypto={crypto}
-          onClose={() => setShowPlace(false)}
-          onPlaced={async () => { setShowPlace(false); await loadOrders(); setNotification && setNotification({ type: 'success', message: 'Order placed.' }); }}
+          preset={orderPreset}
+          onClose={() => { setShowPlace(false); setOrderPreset(null); }}
+          onPlaced={async () => { setShowPlace(false); setOrderPreset(null); await loadOrders(); setNotification && setNotification({ type: 'success', message: 'Order placed.' }); }}
           setNotification={setNotification}
         />
       )}
@@ -7712,16 +7859,16 @@ function CryptoBotPage({ adminCode, crypto, setNotification, user }) {
   );
 }
 
-function CryptoBotPlaceOrderModal({ adminCode, crypto, onClose, onPlaced, setNotification }) {
-  const [userCode, setUserCode] = useState('RSJ-ADMIN');
-  const [symbol, setSymbol] = useState('BTC');
-  const [side, setSide] = useState('SELL');
-  const [trigger, setTrigger] = useState('');
-  const [qty, setQty] = useState('');
-  const [thesis, setThesis] = useState('');
-  const [source, setSource] = useState('');
-  const [expectedDir, setExpectedDir] = useState('');
-  const [expectedBy, setExpectedBy] = useState('');
+function CryptoBotPlaceOrderModal({ adminCode, crypto, onClose, onPlaced, setNotification, preset }) {
+  const [userCode, setUserCode] = useState(preset?.user_code || 'RSJ-ADMIN');
+  const [symbol, setSymbol] = useState(preset?.symbol || 'BTC');
+  const [side, setSide] = useState(preset?.side || 'SELL');
+  const [trigger, setTrigger] = useState(preset?.trigger_price != null ? String(preset.trigger_price) : '');
+  const [qty, setQty] = useState(preset?.qty != null ? String(preset.qty) : '');
+  const [thesis, setThesis] = useState(preset?.thesis || '');
+  const [source, setSource] = useState(preset?.source || '');
+  const [expectedDir, setExpectedDir] = useState(preset?.expected_direction || '');
+  const [expectedBy, setExpectedBy] = useState(preset?.expected_by || '');
   const [ttlDays, setTtlDays] = useState('30');
   const [submitting, setSubmitting] = useState(false);
 
