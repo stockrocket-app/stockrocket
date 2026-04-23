@@ -88,31 +88,52 @@ export default async function handler(req) {
 }
 
 // ------------------------------------------------------------------
-// Candle fetch -- Coinbase public API. No key, no cost.
-// Returns array of { time, low, high, open, close, volume } ASCENDING.
+// Candle fetch -- primary: CoinGecko market_chart (daily closes, 90 bars).
+// Coinbase's /candles endpoint returns 403 from Vercel Edge IPs even though
+// browser requests work fine; /api/price's /stats endpoint still works from
+// Edge because it's a different Coinbase product. So for historical data
+// we use CoinGecko, which serves Vercel Edge IPs fine.
+//
+// CoinGecko returns closes only (no OHLC). We approximate:
+//   "high" = close (same as close since we only have closes)
+//   "low"  = close
+//   "open" = close
+// This means our 30d-high is actually the 30d-highest-close, which
+// understates the true intraday high slightly. Signal thresholds account
+// for this -- a close at 85% of the 30d close range is a strong sell signal
+// regardless of intraday wicks.
 // ------------------------------------------------------------------
+const COINGECKO_IDS = {
+  BTC: 'bitcoin',
+  ETH: 'ethereum',
+  ADA: 'cardano',
+  SOL: 'solana',
+  XRP: 'ripple',
+};
+
 async function fetchDailyCandles(symbol) {
+  const id = COINGECKO_IDS[symbol];
+  if (!id) throw new Error(`no_coingecko_id_for_${symbol}`);
   const res = await fetch(
-    `https://api.exchange.coinbase.com/products/${encodeURIComponent(symbol)}-USD/candles?granularity=86400`,
+    `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=90&interval=daily`,
     { signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined }
   );
-  if (!res.ok) throw new Error(`coinbase_${res.status}`);
-  const rows = await res.json();
-  if (!Array.isArray(rows)) throw new Error('coinbase_malformed');
-  // Coinbase returns [time, low, high, open, close, volume] descending by time.
-  rows.sort((a, b) => a[0] - b[0]);
-  return rows.map(r => ({
-    time: Number(r[0]),
-    low: Number(r[1]),
-    high: Number(r[2]),
-    open: Number(r[3]),
-    close: Number(r[4]),
-    volume: Number(r[5]),
-  })).filter(c =>
-    Number.isFinite(c.low) && Number.isFinite(c.high) &&
-    Number.isFinite(c.open) && Number.isFinite(c.close) &&
-    c.low > 0 && c.high > 0 && c.close > 0
-  );
+  if (!res.ok) throw new Error(`coingecko_${res.status}`);
+  const data = await res.json();
+  const prices = Array.isArray(data?.prices) ? data.prices : [];
+  if (!prices.length) throw new Error('coingecko_no_prices');
+  // prices is [[timestamp_ms, price], ...] ascending.
+  return prices.map(p => {
+    const price = Number(p[1]);
+    return {
+      time: Math.floor(Number(p[0]) / 1000),
+      low: price,
+      high: price,
+      open: price,
+      close: price,
+      volume: 0,
+    };
+  }).filter(c => Number.isFinite(c.close) && c.close > 0);
 }
 
 // ------------------------------------------------------------------
