@@ -953,7 +953,52 @@ const ACADEMY_LESSONS = [
 // ==================== WEEKLY REPORTS DATA ====================
 const WEEKLY_REPORTS = [
   {
-    id: 'week-2026-04-14', weekStart: 'Apr 14', weekEnd: 'Apr 18, 2026', volume: 44, isCurrent: true,
+    id: 'week-2026-04-27', weekStart: 'Apr 27', weekEnd: 'May 1, 2026', volume: 45, isCurrent: true,
+    pulse: {
+      heartbeat: { value: '+0.9%', direction: 'up', label: 'Five up weeks in a row.', breakdown: 'The S&P 500 closed Friday at a fresh record high. That is the fifth straight weekly gain, the longest streak since October 2024. Steady wins compound, the same way a small daily push at the gym ends up being a totally different body six months later.' },
+      breadth: { winners: 5, losers: 5, label: 'Tight 1.10 to 1 advance-decline ratio.', breakdown: 'NYSE advancers (2,275) barely outpaced decliners (2,067) for the week. The index hit records but the rally was narrow. A few big winners are doing most of the heavy lifting. Watch this: when leadership broadens, the rally has more room to run.' },
+      mood: { sentiment: 'Greed (CNN Index: 70)', meterPercent: 70, breakdown: "CNN's Fear and Greed Index sits at 70, firmly in the Greed zone after climbing 55 points off Extreme Fear earlier this spring. Investor optimism is strong but starting to flash a yellow light. Greed at this level is when the smartest investors quietly tighten stops and look for opportunities, not chase." }
+    },
+    crypto: {
+      dailyBars: [60, 58, 62, 55, 58, 60, 62], peakDay: 2,
+      chartBreakdown: 'Bitcoin opened the week near $77,700 and closed Friday near $78,200, a tight 0.62% weekly gain. Most of the action was repeated tests of the $80,000 resistance zone followed by pullbacks. This shape is called consolidation: the market is building a base before the next move, and the base looks sturdy.',
+      smartMoney: { insight: 'Spot Bitcoin ETFs flipped to net outflows late in the week.', breakdown: 'After more than $2.4B of inflows in the first three weeks of April, ETFs saw over $400M flow OUT in the final stretch. That is profit-taking, not panic. A Coinbase and Glassnode survey this week showed 75% of institutions still consider BTC undervalued.' },
+      gossip: [
+        { label: 'BTC Resistance', text: 'Bitcoin keeps knocking on $80,000 and getting rejected. When a level holds this many times, the eventual break (in either direction) tends to be loud.' },
+        { label: 'Solana Volume', text: "Solana's DEX (decentralized exchange) trading volume hit $11.49B this week, putting it 51% ahead of Ethereum globally. The price is quiet, but the network has never been busier." }
+      ],
+      table: [
+        { name: 'Bitcoin', subtitle: 'The King', icon: 'currency_bitcoin', change: '+0.62%', marketCap: '$1.55 Trillion', signal: 'Hold', color: 'neutral' },
+        { name: 'Ethereum', subtitle: 'The Builder', icon: 'token', change: '-0.28%', marketCap: '$278 Billion', signal: 'Hold', color: 'neutral' },
+        { name: 'Solana', subtitle: 'The Speed', icon: 'bolt', change: '-2.4%', marketCap: '$45 Billion', signal: 'Watch', color: 'neutral' },
+      ]
+    },
+    focus: [
+      { number: '01', tag: 'Earnings', tagColor: 'primary', title: 'Big Tech Beats Big', body: 'Alphabet posted Q1 net income of $62.6B, up 81% year over year, with revenue growing 20% (its fastest pace since 2022). Amazon hit $181.5B in revenue with AWS accelerating to 28% growth, the fastest AWS pace in 15 quarters. The earnings surprise pushed the S&P 500 and Nasdaq to record highs late in the week.', simpleTerms: 'When the biggest companies earn way more than expected, it is like the strongest players on the team scoring a season-high. The whole index moves with them.', cta: 'View Details' },
+      { number: '02', tag: 'Predictions', tagColor: 'tertiary', title: 'Make Your Call', body: 'Three teardowns are live: BTC, NVDA, and AAPL. The Predictions feature lets you set a target price and a date, lock it in, and see how you stack up when the result comes back. Right now the leaderboard is empty. First conviction calls of the season are open.', simpleTerms: 'Think of it like calling a free throw before the player shoots. Not for points yet, but for bragging rights and a real track record. The earlier you start, the more reps you get.', cta: 'Open Predictions' },
+      { number: '03', tag: 'Mindset', tagColor: 'neutral', title: 'A Strong Week All Around', body: 'Trades, tweaks, or just thoughtful holds, every move you made this week was sharper than the last. Showing up consistently is the part that separates lucky traders from skilled ones. Keep the rhythm going.', simpleTerms: 'Athletes drill the basics a thousand times before the game. Every trade and every check-in is a rep. Stay consistent and the moves get sharper without you noticing.', cta: 'See Activity' }
+    ],
+    migration: {
+      body: 'The 2026 rotation theme stayed intact this week. Year-to-date, Energy is up around 21%, Materials around 17%, Staples around 15%, and Industrials around 12%. Tech is the laggard YTD, even with Alphabet and Amazon putting up monster numbers. Utilities have been a quiet winner because AI data centers consume an ever-growing slice of the national grid.',
+      analogy: { title: 'The New Lineup', text: 'Last year the headline players were all on one team (Big Tech). This year the bench is scoring. Energy, Industrials, Staples, and Utilities are putting up big numbers while Tech rests a few starters. The market rewards different teams in different seasons.' },
+      flows: [
+        { sector: 'Energy', status: 'buying', label: 'YTD Leader' },
+        { sector: 'Industrials', status: 'buying', label: 'Steady Climb' },
+        { sector: 'Utilities', status: 'buying', label: 'AI Power Play' },
+        { sector: 'Technology', status: 'holding', label: 'Laggard YTD' }
+      ]
+    },
+    glossary: [
+      { term: 'Record High', def: 'The highest price an index or stock has ever closed at. Breaking through prior records often pulls more buyers off the sidelines.' },
+      { term: 'Consolidation', def: 'When a price moves sideways for a while after a big run. Like a runner catching their breath before sprinting again.' },
+      { term: 'Sector Rotation', def: 'When investors move money from one industry to another based on which is winning. The 2026 rotation has favored Energy, Industrials, Staples, and Utilities over Tech.' },
+      { term: 'AI Capex', def: 'Capital spending by big tech companies to build AI infrastructure: chips, data centers, power. Amazon and Alphabet both confirmed another record year of it this week.' },
+      { term: 'Net Inflows / Outflows', def: 'When more money is coming into an ETF than leaving (inflows) or vice versa (outflows). Flow direction is a strong signal of investor conviction.' },
+      { term: 'Resistance Level', def: 'A price a stock or coin keeps hitting and bouncing off. The more times it tests the level, the bigger the eventual break tends to be.' },
+    ]
+  },
+  {
+    id: 'week-2026-04-14', weekStart: 'Apr 14', weekEnd: 'Apr 18, 2026', volume: 44, isCurrent: false,
     pulse: {
       heartbeat: { value: '+1.37%', direction: 'up', label: 'Market drifted higher.', breakdown: 'The S&P 500 added gains across four of five trading days. Buyers stayed in charge, but nobody was chasing. Think of it as cruising speed, not foot-on-the-floor.' },
       breadth: { winners: 6, losers: 4, label: 'Winners in the lead, barely.', breakdown: 'For every 10 stocks, 6 went up and 4 went down. That is a healthy tilt but not a blowout -- the gains were narrow, concentrated in a handful of big names.' },
