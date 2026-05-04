@@ -954,6 +954,36 @@ const ACADEMY_LESSONS = [
 const WEEKLY_REPORTS = [
   {
     id: 'week-2026-04-27', weekStart: 'Apr 27', weekEnd: 'May 1, 2026', volume: 45, isCurrent: true,
+    predictions: {
+      intro: "Five tickers I'm watching this week. Each one anchored to real data and a real catalyst. Not financial advice, just how I'd think about each name if I had to make a call this morning.",
+      picks: [
+        {
+          ticker: 'GOOGL', name: 'Alphabet', currentPrice: '$385.69', direction: 'up', conviction: 'High',
+          thesis: "Q1 was a blowout. Revenue +20% (fastest pace since 2022), net income +81% YoY, Cloud at $20.0B beating the $18.1B estimate. The post-earnings analyst upgrades landed in days. Closed Friday at a fresh 52-week high.",
+          dataAnchor: 'Post-earnings target hikes (May 1): JPMorgan raised to $460, TD Cowen to $450, Raymond James to $425. Q1 net income $62.6B, EPS $5.11.'
+        },
+        {
+          ticker: 'AAPL', name: 'Apple', currentPrice: '$280.07', direction: 'up', conviction: 'Medium',
+          thesis: "Q2 came in record-strong: $111.2B revenue (+17%), iPhone +22% YoY (Tim Cook called the iPhone 17 lineup the most popular in Apple's history). Q3 guidance landed at 14-17% growth versus the 9.5% Wall Street expected. The blowout was real.",
+          dataAnchor: 'Q3 revenue guide: 14-17% YoY (vs. 9.5% consensus). Q2 EPS $2.01 (beat $1.95). Services $31B all-time high. New $100B buyback authorized May 1.'
+        },
+        {
+          ticker: 'AMZN', name: 'Amazon', currentPrice: '$263.99', direction: 'up', conviction: 'High',
+          thesis: 'AWS is the story. Cloud growth re-accelerated to 28% on a $37.6B base, the fastest pace in 15 quarters. Stifel raised the target to $319 the day of earnings, the highest on the Street. The picks-and-shovels of the AI boom is humming.',
+          dataAnchor: 'AWS Q1 growth 28% (15-quarter high). AWS operating income $14.2B. Stifel target $319 (May 1). Wall Street average target $283.79.'
+        },
+        {
+          ticker: 'NVDA', name: 'NVIDIA', currentPrice: '$198.45', direction: 'up', conviction: 'Medium',
+          thesis: "Up 20% in April but still 23% below the average analyst target. Q1 earnings drop May 20. The AI capex story is being validated by Alphabet's $20B Cloud number and Amazon's AWS acceleration. NVDA is the picks-and-shovels play behind both. Watch the run-up into earnings.",
+          dataAnchor: 'Earnings May 20. 60 of 63 analysts rate Buy or Strong Buy. Average target $266.24 (34% upside). Risk: China data-center revenue still excluded from guidance.'
+        },
+        {
+          ticker: 'BTC', name: 'Bitcoin', currentPrice: '$78,178', direction: 'neutral', conviction: 'Medium',
+          thesis: "The $80,000 level is the line in the sand. Multiple tests, repeated rejection. When a level holds this many times, the eventual break tends to be loud in either direction. ETF flows just flipped from $2.4B inflows to $400M+ outflows late April. Watching the next ETF print closely.",
+          dataAnchor: 'Resistance: $80,000 (multi-week, repeatedly rejected). Support: 200-day EMA near $68,000. Coinbase + Glassnode survey: 75% of institutions consider BTC undervalued.'
+        }
+      ]
+    },
     pulse: {
       heartbeat: { value: '+0.9%', direction: 'up', label: 'Five up weeks in a row.', breakdown: 'The S&P 500 closed Friday at a fresh record high. That is the fifth straight weekly gain, the longest streak since October 2024. Steady wins compound, the same way a small daily push at the gym ends up being a totally different body six months later.' },
       breadth: { winners: 5, losers: 5, label: 'Tight 1.10 to 1 advance-decline ratio.', breakdown: 'NYSE advancers (2,275) barely outpaced decliners (2,067) for the week. The index hit records but the rally was narrow. A few big winners are doing most of the heavy lifting. Watch this: when leadership broadens, the rally has more room to run.' },
@@ -5753,8 +5783,50 @@ function WeeklyReportPage({ setStockDetail }) {
         </p>
       </div>
 
+      {/* Milburn's Predictions -- forward-looking calls anchored to real data */}
+      {report.predictions && (
+        <div className="glass-panel" style={{ padding: 'clamp(24px, 4vw, 40px)', marginBottom: 32, borderColor: 'rgba(0,255,163,0.25)', background: 'linear-gradient(135deg, rgba(0,255,163,0.04), transparent)', position: 'relative', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(28px, 4vw, 44px)', lineHeight: 1, margin: 0 }}>
+              Milburn's <span style={{ fontStyle: 'italic', color: 'var(--primary-fixed)' }}>Predictions</span>
+            </h2>
+            <span className="label-system" style={{ color: 'var(--on-surface-variant)' }}>Five tickers {'·'} five theses {'·'} week ahead</span>
+          </div>
+          <p className="text-muted" style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 24, maxWidth: 760 }}>
+            {report.predictions.intro}
+          </p>
+          <div style={{ display: 'grid', gap: 0 }}>
+            {report.predictions.picks.map((p, i) => (
+              <div key={p.ticker} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 180px) 1fr', gap: 'clamp(16px, 3vw, 32px)', padding: '20px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)', alignItems: 'start' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 700, letterSpacing: '0.02em' }}>{p.ticker}</div>
+                  <div className="text-muted" style={{ fontSize: 12, marginBottom: 10 }}>{p.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <Icon name={p.direction === 'up' ? 'trending_up' : p.direction === 'down' ? 'trending_down' : 'trending_flat'} size={14} className={p.direction === 'up' ? 'text-primary' : p.direction === 'down' ? 'text-error' : 'text-muted'} />
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>{p.currentPrice}</span>
+                  </div>
+                  <span className={`badge ${p.conviction === 'High' ? 'badge-primary' : 'badge-neutral'}`} style={{ fontSize: 9, padding: '4px 10px' }}>
+                    {p.conviction} conviction
+                  </span>
+                </div>
+                <div>
+                  <p style={{ fontSize: 14, lineHeight: 1.55, marginBottom: 12 }}>{p.thesis}</p>
+                  <div style={{ borderLeft: '2px solid var(--primary-fixed)', padding: '8px 14px', background: 'rgba(0,255,163,0.04)', borderRadius: '0 var(--radius-md) var(--radius-md) 0' }}>
+                    <p className="label-system" style={{ fontSize: 9, marginBottom: 4 }}>Anchor</p>
+                    <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.55, margin: 0 }}>{p.dataAnchor}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-muted" style={{ fontSize: 11, fontStyle: 'italic', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            Not financial advice. These are Milburn's calls anchored to public data. Markets move. Conviction is not certainty. Use your own judgment.
+          </p>
+        </div>
+      )}
+
       {/* Market Pulse -- 3 glass cards */}
-      <div className="stats-grid" style={{ marginTop: -20, position: 'relative', zIndex: 10 }}>
+      <div className="stats-grid" style={{ position: 'relative', zIndex: 10 }}>
         <div className="glass-panel glow-emerald" style={{ padding: 32, borderColor: 'rgba(0,255,163,0.2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <span className="label-system">Market Heartbeat</span>
