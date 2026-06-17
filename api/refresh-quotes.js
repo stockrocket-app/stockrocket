@@ -31,8 +31,15 @@ const STOCK_UNIVERSE = [
   'AVGO', 'TSM', 'SNOW', 'ANET', 'VRT', 'ARM', 'PANW',
 ];
 
-const CONCURRENCY = 8;       // symbols fetched in parallel per batch
-const BATCH_PAUSE_MS = 120;  // pause between batches (keeps us < 30 req/sec)
+// Finnhub free tier is 60 req/min and is shared with live client /api/price
+// reads. Refreshing all ~57 symbols in one burst exhausts that budget and gets
+// throttled to zero. So each run refreshes a small ROTATING slice instead: tiny,
+// reliable, and contention-friendly. Over consecutive runs the whole universe
+// cycles through. The persistent cache + last-known fallback in /api/price cover
+// everything in between, so partial coverage per run is fine.
+const BATCH_SIZE = 12;       // symbols refreshed per run
+const CONCURRENCY = 4;       // fetched in parallel within the run
+const BATCH_PAUSE_MS = 250;  // pause between parallel groups (well under 30/sec)
 
 export default async function handler(req) {
   // Optional shared-secret guard. Vercel adds `Authorization: Bearer $CRON_SECRET`
@@ -50,17 +57,26 @@ export default async function handler(req) {
   if (!key) return json({ ok: false, error: 'finnhub_key_missing' }, 500);
   if (!SB_URL || !SB_KEY) return json({ ok: false, error: 'supabase_not_configured' }, 500);
 
+  // Pick this run's rotating window. `?offset=N` forces a specific window (used
+  // when warming the whole cache by walking offsets); otherwise rotate by minute.
+  const url = new URL(req.url);
+  const windows = Math.ceil(STOCK_UNIVERSE.length / BATCH_SIZE);
+  const forced = parseInt(url.searchParams.get('offset') || '', 10);
+  const widx = Number.isFinite(forced) ? (((forced % windows) + windows) % windows)
+                                       : (new Date().getUTCMinutes() % windows);
+  const slice = STOCK_UNIVERSE.slice(widx * BATCH_SIZE, widx * BATCH_SIZE + BATCH_SIZE);
+
   const entries = [];
   let failed = 0;
 
-  for (let i = 0; i < STOCK_UNIVERSE.length; i += CONCURRENCY) {
-    const batch = STOCK_UNIVERSE.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < slice.length; i += CONCURRENCY) {
+    const batch = slice.slice(i, i + CONCURRENCY);
     const results = await Promise.all(batch.map(sym => fetchQuote(sym, key)));
     for (const r of results) {
       if (r.ok) entries.push(r.entry);
       else failed++;
     }
-    if (i + CONCURRENCY < STOCK_UNIVERSE.length) await sleep(BATCH_PAUSE_MS);
+    if (i + CONCURRENCY < slice.length) await sleep(BATCH_PAUSE_MS);
   }
 
   if (entries.length) {
@@ -71,7 +87,7 @@ export default async function handler(req) {
     }
   }
 
-  return json({ ok: true, refreshed: entries.length, failed, universe: STOCK_UNIVERSE.length, at: new Date().toISOString() });
+  return json({ ok: true, refreshed: entries.length, failed, window: widx, windows, batch: slice.length, universe: STOCK_UNIVERSE.length, at: new Date().toISOString() });
 }
 
 async function fetchQuote(sym, key) {
