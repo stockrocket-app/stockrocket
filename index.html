@@ -1196,11 +1196,48 @@ const LiveData = {
     } catch { return null; }
   },
 
-  // Fetch all stock quotes in parallel
+  // Fetch all stock quotes through the unified, cache-backed /api/price service.
+  // 2026-06-17: previously this fired one Finnhub /quote call PER symbol (~57 on
+  // load), which blew Finnhub's 60/min free-tier limit -> 429s -> stocks fell
+  // back to cost basis and net liquidity bounced between reloads. Now we batch
+  // through /api/price (<=20 symbols per request), which serves warm cache hits
+  // (kept fresh by the /api/refresh-quotes cron) and returns the last-known price
+  // when Finnhub rate-limits, instead of nothing. Result preserves input order
+  // and the legacy quote shape so callers are unchanged.
   async fetchAllStocks(symbols) {
     try {
-      const promises = symbols.map(s => LiveData.fetchStockQuote(s));
-      return await Promise.all(promises);
+      const chunks = [];
+      for (let i = 0; i < symbols.length; i += 20) chunks.push(symbols.slice(i, i + 20));
+      const bySymbol = new Map();
+      const batches = await Promise.all(chunks.map(async chunk => {
+        try {
+          const res = await fetch(`${API_BASE}/api/price?symbols=${chunk.join(',')}&asset_type=stock`);
+          if (!res.ok) return [];
+          const data = await res.json();
+          return (data && data.ok && Array.isArray(data.prices)) ? data.prices : [];
+        } catch { return []; }
+      }));
+      for (const arr of batches) for (const e of arr) bySymbol.set(e.symbol, e);
+      return symbols.map(sym => {
+        const e = bySymbol.get(sym);
+        const px = e ? Number(e.price) : NaN;
+        // No usable price (never cached + live fetch failed) -> null, so the
+        // consumer marks the symbol stale and falls back to avgCost (honest
+        // floor), exactly as before. A stale-but-real cached price still flows
+        // through as a normal quote -- that's the whole point of the cache.
+        if (!e || !Number.isFinite(px) || px <= 0) return null;
+        return {
+          price: px,
+          change: Number.isFinite(Number(e.change)) ? Number(e.change) : 0,
+          changePercent: Number.isFinite(Number(e.change_pct)) ? Number(e.change_pct) : 0,
+          high: Number.isFinite(Number(e.high)) ? Number(e.high) : null,
+          low: Number.isFinite(Number(e.low)) ? Number(e.low) : null,
+          open: Number.isFinite(Number(e.open)) ? Number(e.open) : null,
+          prevClose: Number.isFinite(Number(e.prev_close)) ? Number(e.prev_close) : null,
+          timestamp: Number(e.fetched_at) || Date.now(),
+          stale: !!e.stale,
+        };
+      });
     } catch { return null; }
   },
 
