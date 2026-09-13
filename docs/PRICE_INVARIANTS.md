@@ -232,3 +232,8 @@ Every invariant in this file is load-bearing. Changes require:
 
 Silently relaxing an invariant ("just this once") is how we got the
 2026-04-18 incident in the first place.
+
+
+## I9 — User stock target sells
+
+The Trade page's Target sell sends `/api/orders`, never `/api/trades`. A persisted stock order executes at a valid server Finnhub quote at or above its minimum target, with provider timestamp checked again within the database transaction (60-second maximum age, 5-second future tolerance). See `PAPER_TARGET_ORDERS.md`. Market, stock-target and crypto-limit portfolio writes now share the same atomic RPC and portfolio lock. The existing crypto-only trigger-price carveout remains unchanged.
