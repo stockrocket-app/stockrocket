@@ -17,6 +17,7 @@ function setup(quote={c:150,t:Date.now()/1000}) {
   const u=new URL(url);calls.push({path:u.pathname,body:options.body?JSON.parse(options.body):null});
   if(u.hostname==='finnhub.io')return Response.json(quote);
   assert.equal(u.hostname,'fixture.invalid','test must not access a real database');
+  if(u.pathname.endsWith('stockrocket_take_finnhub_permit'))return Response.json(true);
   if(u.pathname.endsWith('stockrocket_access_codes'))return Response.json([{code:'FIXTURE',active:true}]);
   if(u.pathname.endsWith('stockrocket_create_stock_order'))return Response.json(order);
   if(u.pathname.endsWith('stockrocket_execute_trade'))return Response.json({ok:true,order:{...order,status:quote.c>=160?'filled':'pending'}});
@@ -90,4 +91,10 @@ test('unknown create transport errors remain retryable and do not disclose raw d
  setup();const transport=globalThis.fetch;
  globalThis.fetch=async(url,options)=>{if(String(url).endsWith('stockrocket_create_stock_order'))throw new TypeError('fixture-sensitive-transport-detail');return transport(url,options);};
  const response=await handler(create());assert.equal(response.status,503);assert.deepEqual(await response.json(),{error:'database_unavailable'});
+});
+
+test('shared quota denial leaves a successfully saved order pending',async()=>{
+ const calls=setup();const transport=globalThis.fetch;
+ globalThis.fetch=async(url,options)=>String(url).endsWith('take_finnhub_permit')?Response.json(false):transport(url,options);
+ const response=await handler(create());assert.equal(response.status,200);assert.equal((await response.json()).order.status,'pending');assert(!calls.some(c=>c.path.endsWith('stockrocket_execute_trade')));
 });

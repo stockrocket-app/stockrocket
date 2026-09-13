@@ -1,3 +1,4 @@
+import {finnhubFetch} from '../lib/finnhub-budget.js';
 // StockRocket -- Unified Price Service (Vercel Edge Function)
 // -----------------------------------------------------------
 // Single endpoint for all price lookups. Routes to the correct vendor based on
@@ -168,7 +169,7 @@ async function fetchStockBatch(symbols) {
 async function fetchFinnhubQuote(sym, key) {
   if (!key) return { ok: false, symbol: sym, error: 'finnhub_key_missing' };
   try {
-    const res = await fetch(
+    const res = await finnhubFetch(
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${key}`,
       { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
     );

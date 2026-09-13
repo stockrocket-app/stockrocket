@@ -13,7 +13,7 @@ def q(sql,ok=True):
  if ok: assert r.returncode==0,r.stderr
  return r.stdout.strip() if ok else r
 u='review-'+uuid.uuid4().hex
-q(f"insert into stockrocket_access_codes(code,active) values('{u}',true);insert into stockrocket_portfolios(user_code,holdings) values('{u}','{{\"AAPL\":{{\"shares\":10,\"avgCost\":100,\"assetType\":\"stock\"}}}}');")
+q(f"insert into stockrocket_access_codes(code,active) values('{u}',true);set role stockrocket_trade_writer;insert into stockrocket_portfolios(user_code,holdings) values('{u}','{{\"AAPL\":{{\"shares\":10,\"avgCost\":100,\"assetType\":\"stock\"}}}}');reset role;")
 def create(n=2):
  key=str(uuid.uuid4());oid=q(f"select stockrocket_create_stock_order('{u}','{key}','AAPL',{n},120)->>'id';");return oid,key
 def fill(oid,age=0): return f"select stockrocket_execute_trade('{u}','SELL','AAPL','Apple','stock',2,125,null,'{oid}',clock_timestamp()-interval '{age} seconds')->'order'->>'status';"

@@ -125,3 +125,76 @@ language sql security invoker set search_path=public,pg_temp as $$
 $$;
 revoke all on function stockrocket_scan_stock_orders() from public,anon,authenticated;
 grant execute on function stockrocket_scan_stock_orders() to service_role;
+
+-- Writer fence: old immutable deployments retain service_role credentials but
+-- cannot issue partial ledger/portfolio REST writes after this migration.
+do $$ begin
+ if not exists(select 1 from pg_roles where rolname='stockrocket_trade_writer') then
+  create role stockrocket_trade_writer nologin noinherit nobypassrls;
+ end if;
+end $$;
+do $$ begin execute format('grant stockrocket_trade_writer to %I',current_user); end $$;
+grant usage,create on schema public to stockrocket_trade_writer;
+revoke all on stockrocket_portfolios,stockrocket_trades from public,anon,authenticated,service_role;
+grant select,insert on stockrocket_portfolios to service_role;
+grant select on stockrocket_trades to service_role;
+grant select,insert,update,delete on stockrocket_portfolios,stockrocket_trades,stockrocket_stock_orders to stockrocket_trade_writer;
+grant select on stockrocket_access_codes to stockrocket_trade_writer;
+create policy stockrocket_writer_portfolios on stockrocket_portfolios to stockrocket_trade_writer using(true) with check(true);
+create policy stockrocket_writer_trades on stockrocket_trades to stockrocket_trade_writer using(true) with check(true);
+create policy stockrocket_writer_stock_orders on stockrocket_stock_orders to stockrocket_trade_writer using(true) with check(true);
+create policy stockrocket_writer_access_codes on stockrocket_access_codes for select to stockrocket_trade_writer using(true);
+alter function stockrocket_execute_trade(text,text,text,text,text,numeric,numeric,uuid,uuid,timestamptz,uuid) security definer;
+alter function stockrocket_execute_trade(text,text,text,text,text,numeric,numeric,uuid,uuid,timestamptz,uuid) owner to stockrocket_trade_writer;
+alter function stockrocket_create_stock_order(text,uuid,text,numeric,numeric) security definer;
+alter function stockrocket_create_stock_order(text,uuid,text,numeric,numeric) owner to stockrocket_trade_writer;
+revoke create on schema public from stockrocket_trade_writer;
+-- No application role inherits this identity; only audited RPCs enter it.
+revoke stockrocket_trade_writer from service_role,anon,authenticated;
+
+create function stockrocket_enforce_writer() returns trigger language plpgsql security invoker set search_path=public,pg_temp as $$
+begin
+ if current_user='stockrocket_trade_writer' then
+  if TG_OP='DELETE' then return OLD; else return NEW; end if;
+ end if;
+ if TG_TABLE_NAME='stockrocket_portfolios' and TG_OP='INSERT' then
+  if NEW.cash=100000 and NEW.starting_cash=100000 and NEW.holdings='{}'::jsonb then return NEW; end if;
+ end if;
+ raise exception 'atomic_trade_rpc_required' using errcode='42501';
+end $$;
+revoke all on function stockrocket_enforce_writer() from public,anon,authenticated,service_role;
+create trigger stockrocket_portfolio_writer_fence before insert or update or delete on stockrocket_portfolios for each row execute function stockrocket_enforce_writer();
+create trigger stockrocket_ledger_writer_fence before insert or update or delete on stockrocket_trades for each row execute function stockrocket_enforce_writer();
+-- Legacy crypto order table is absent from the historical bootstrap schema.
+-- When present, grant the dedicated RPC owner only its required table access.
+do $$ begin
+ if to_regclass('public.stockrocket_crypto_orders') is not null then
+  grant select,update on stockrocket_crypto_orders to stockrocket_trade_writer;
+  create policy stockrocket_writer_crypto_orders on stockrocket_crypto_orders to stockrocket_trade_writer using(true) with check(true);
+ end if;
+end $$;
+
+-- Global rolling admission budget for every Finnhub consumer in this codebase.
+-- Extra five seconds cover bounded permit-response latency before HTTP starts:
+-- <=50 vendor starts/60s and <=20/1s when permits start HTTP within five seconds.
+create table stockrocket_vendor_budget (
+ name text primary key, admissions timestamptz[] not null default '{}'
+);
+insert into stockrocket_vendor_budget(name) values('finnhub');
+alter table stockrocket_vendor_budget enable row level security;
+revoke all on stockrocket_vendor_budget from public,anon,authenticated;
+grant select,update on stockrocket_vendor_budget to service_role;
+create function stockrocket_take_finnhub_permit() returns boolean language plpgsql security invoker set search_path=public,pg_temp as $$
+declare times timestamptz[]; current_time_at timestamptz; short_count integer;
+begin
+ select admissions into times from stockrocket_vendor_budget where name='finnhub' for update;
+ if not found then return false; end if;
+ current_time_at:=clock_timestamp();
+ select coalesce(array_agg(t),'{}'),count(*) filter(where t>current_time_at-interval '6 seconds') into times,short_count
+ from unnest(times) t where t>current_time_at-interval '65 seconds';
+ if cardinality(times)>=50 or short_count>=20 then return false; end if;
+ update stockrocket_vendor_budget set admissions=array_append(times,current_time_at) where name='finnhub';
+ return true;
+end $$;
+revoke all on function stockrocket_take_finnhub_permit() from public,anon,authenticated;
+grant execute on function stockrocket_take_finnhub_permit() to service_role;

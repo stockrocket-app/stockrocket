@@ -19,9 +19,16 @@ create table if not exists stockrocket_crypto_orders (
 drop trigger if exists fixture_crypto_touch on stockrocket_crypto_orders;
 create trigger fixture_crypto_touch before update on stockrocket_crypto_orders
  for each row execute function moddatetime(updated_at);
+-- The legacy fixture can be created after the migration on a fresh test DB.
+grant select,update on stockrocket_crypto_orders to stockrocket_trade_writer;
+do $$ begin
+ if not exists(select 1 from pg_policies where schemaname='public' and tablename='stockrocket_crypto_orders' and policyname='stockrocket_writer_crypto_orders') then
+  create policy stockrocket_writer_crypto_orders on stockrocket_crypto_orders to stockrocket_trade_writer using(true) with check(true);
+ end if;
+end $$;
 """)
 u='crypto-review-'+uuid.uuid4().hex
-q(f"insert into stockrocket_access_codes(code,active) values('{u}',true);insert into stockrocket_portfolios(user_code,holdings) values('{u}','{{}}');")
+q(f"insert into stockrocket_access_codes(code,active) values('{u}',true);set role stockrocket_trade_writer;insert into stockrocket_portfolios(user_code,holdings) values('{u}','{{}}');reset role;")
 def create(side='BUY',qty=1,expiry="clock_timestamp()+interval '1 day'",status='pending'):
  return q(f"insert into stockrocket_crypto_orders(user_code,symbol,name,side,trigger_price,qty,thesis,source,expire_at,status) values('{u}','BTC','Bitcoin','{side}',100,{qty},'isolated fixture','fixture',{expiry},'{status}') returning id;").splitlines()[0]
 def fill(oid,price):
