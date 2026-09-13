@@ -1361,7 +1361,7 @@ const CRYPTO_FAILURE_TRIP = 3;
 const CRYPTO_BREAKER_OPEN_MS = 5 * 60 * 1000;
 
 function useLiveData() {
-  const [stocks, setStocks] = useState(MOCK_STOCKS);      // seed with static last-known so layout doesn't flicker
+  const [stocks, setStocks] = useState(()=>MOCK_STOCKS.map(s=>({...s,price:null,change:0,changePercent:0,high:null,low:null,open:null,prevClose:null,stale:true}))); // Directory only until real quotes arrive; never render example prices as live.
   const [crypto, setCrypto] = useState(MOCK_CRYPTO);      // null-price directory; no price leaks possible
   const [stocksLive, setStocksLive] = useState(false);
   const [cryptoLive, setCryptoLive] = useState(false);
@@ -2773,7 +2773,8 @@ function Sidebar({ activePage, setActivePage, user, onClose, className, isAdmin,
 }
 
 // ==================== DASHBOARD ====================
-function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achievementsUnlocked, achievementsTotal, leaderboard }) {
+function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achievementsUnlocked, achievementsTotal, leaderboard, onNavigate, onTrade }) {
+  const [watchlistSearch,setWatchlistSearch]=useState('');
   const [chartPeriod, setChartPeriod] = useState('1M');
   const allAssets = [...(stocks || []), ...(crypto || [])];
   // Recalculate holdings with current prices.
@@ -2796,6 +2797,7 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
     const gain = (currentPrice - h.avgCost) * h.shares;
     return { ...h, currentPrice, value, gain, returnPercent: h.avgCost > 0 ? ((currentPrice - h.avgCost) / h.avgCost) * 100 : 0 };
   });
+  const estimatedValuation=holdings.some(h=>!(Number(allAssets.find(a=>a.symbol===h.symbol)?.price)>0));
   const totalInvested = holdings.reduce((sum, h) => sum + (h.avgCost * h.shares), 0);
   const totalValue = portfolio.cash + holdings.reduce((sum, h) => sum + h.value, 0);
   const totalGain = holdings.reduce((sum, h) => sum + h.gain, 0);
@@ -2850,7 +2852,7 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
           <div className="ambient-glow"></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1, flexWrap: 'wrap', gap: 16 }}>
             <div>
-              <p className="stat-label" style={{ marginBottom: 8 }}>Total Net Liquidity</p>
+              <p className="stat-label" style={{ marginBottom: 8 }}>{estimatedValuation?'Estimated Portfolio Value':'Total Net Liquidity'}</p>{estimatedValuation && <p role="status" className="text-muted" style={{fontSize:12}}>Quotes are unavailable for some holdings. Their estimates use cost basis until prices arrive.</p>}
               <h2 className="stat-value lg" style={{ margin: 0 }}>{whole}<span className="decimal">{decimal}</span></h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
                 <span className={`badge ${totalGain >= 0 ? 'badge-primary' : 'badge-error'}`}><Icon name={totalGain >= 0 ? 'trending_up' : 'trending_down'} size={14} /> {totalGain >= 0 ? '+' : ''}{totalGainPct.toFixed(1)}%</span>
@@ -3032,24 +3034,16 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
             <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
               <div className="input-with-icon">
                 <Icon name="search" />
-                <input className="input-field" placeholder="Search signals..." style={{ width: 192, padding: '8px 12px 8px 40px', fontSize: 12 }} />
+                <input className="input-field" aria-label="Search watchlist" placeholder="Search signals..." value={watchlistSearch} onChange={e=>setWatchlistSearch(e.target.value)} style={{ width: 192, padding: '8px 12px 8px 40px', fontSize: 12 }} />
               </div>
-              <button className="btn-icon"><Icon name="add" /></button>
+              <button className="btn-icon" aria-label="Browse markets" onClick={()=>onNavigate('market')}><Icon name="add" /></button>
             </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
               <thead><tr><th>Instrument</th><th>Last Price</th><th>Market Cap</th><th>Sentiment Signal</th><th>Action</th></tr></thead>
               <tbody>
-                {[
-                  // Read from LIVE crypto state, not raw MOCK_CRYPTO. MOCK_CRYPTO
-                  // seeds with price:null by design (see 2026-04-18 BTC incident
-                  // + PRICE_INVARIANTS.md), so the old code always painted $0.00
-                  // for BTC/ETH/SOL until we stopped using it here. The live
-                  // `crypto` prop gets real prices from LiveData.fetchCrypto.
-                  ...(crypto || []).slice(0, 3).map(c => ({ ...c, _kind: 'crypto' })),
-                  ...(stocks || []).slice(0, 2).map(s => ({ ...s, _kind: 'stock' })),
-                ].map(s => {
+                {(watchlistSearch.trim() ? [...(crypto||[]).map(c=>({...c,_kind:'crypto'})),...(stocks||[]).map(c=>({...c,_kind:'stock'}))].filter(a=>`${a.symbol} ${a.name}`.toLowerCase().includes(watchlistSearch.trim().toLowerCase())) : [...(crypto||[]).slice(0,3).map(c=>({...c,_kind:'crypto'})),...(stocks||[]).slice(0,2).map(c=>({...c,_kind:'stock'}))]).map(s => {
                   const px = Number(s.price);
                   const hasPrice = Number.isFinite(px) && px > 0;
                   const pct = Number(s.changePercent) || 0;
@@ -3066,7 +3060,7 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
                       <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{hasPrice ? formatCurrency(px) : '--'}</td>
                       <td className="text-muted">{s.marketCap || 'N/A'}</td>
                       <td><span className={`badge ${cls}`}><span className="badge-dot glow"></span> {sentiment}</span></td>
-                      <td><button className="btn btn-ghost btn-sm">Execute</button></td>
+                      <td><button className="btn btn-ghost btn-sm" aria-label={`Trade ${s.symbol}`} onClick={()=>onTrade(s.symbol,'BUY')}>Execute</button></td>
                     </tr>
                   );
                 })}
@@ -3080,7 +3074,7 @@ function DashboardPage({ portfolio, stocks, crypto, user, setStockDetail, achiev
 }
 
 // ==================== PORTFOLIO ====================
-function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
+function PortfolioPage({ portfolio, user, stocks, setStockDetail, onNavigate, onTrade }) {
   const investedValue = portfolio.holdings.reduce((sum, h) => sum + h.value, 0);
   const totalValue = portfolio.cash + investedValue;
   const totalGain = portfolio.holdings.reduce((sum, h) => sum + h.gain, 0);
@@ -3117,9 +3111,9 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm">Overview</button>
-          <button className="btn btn-secondary btn-sm">Analytics</button>
-          <button className="btn btn-secondary btn-sm">Reports</button>
+          <span className="btn btn-ghost btn-sm" aria-current="page">Overview</span>
+          <button className="btn btn-secondary btn-sm" onClick={()=>onNavigate('insights')}>Market insights</button>
+          <button className="btn btn-secondary btn-sm" onClick={()=>onNavigate('report')}>Reports</button>
         </div>
       </div>
       <div className="stats-grid" style={{ marginBottom: 32 }}>
@@ -3234,7 +3228,7 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
                   <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(h.currentPrice)}</td>
                   <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(h.value)}</td>
                   <td><span className={`badge ${h.gain >= 0 ? 'badge-primary' : 'badge-error'}`}>{h.gain >= 0 ? '+' : ''}{formatCurrency(h.gain)} ({h.returnPercent.toFixed(1)}%)</span></td>
-                  <td><button className="btn btn-ghost btn-sm">Execute</button></td>
+                  <td><button className="btn btn-ghost btn-sm" aria-label={`Trade ${h.symbol}`} onClick={()=>onTrade(h.symbol,'SELL')}>Execute</button></td>
                 </tr>
               ))}
             </tbody>
@@ -3321,10 +3315,10 @@ function PortfolioPage({ portfolio, user, stocks, setStockDetail }) {
 }
 
 // ==================== TRADE ====================
-function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, user, code }) {
+function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, user, code, initialTrade }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState(stocks[0]);
-  const [tradeType, setTradeType] = useState('BUY');
+  const [selectedSymbol, setSelectedSymbol] = useState(initialTrade?.symbol || stocks[0]?.symbol || '');
+  const [tradeType, setTradeType] = useState(initialTrade?.type || 'BUY');
   const [shares, setShares] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
   const [orderType, setOrderType] = useState('market'); // market, limit
@@ -3357,11 +3351,24 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
       setNotification({type:'success',message:`Order ${data.order.status}`}); await refreshOrders();
     }catch{setNotification({type:'error',message:'Cancellation not confirmed. Refresh order history before retrying.'});}
   };
-  const isStock = selectedAsset && !crypto.some(c=>c.symbol===selectedAsset.symbol);
+  const knownAssets = [...stocks.map(a=>({...a,type:'stock'})), ...crypto.map(a=>({...a,type:'crypto'}))];
+  const holdings = portfolio.holdings.filter(h=>Number(h.shares)>0);
+  const allAssets = [...knownAssets,...holdings.filter(h=>!knownAssets.some(a=>a.symbol===h.symbol)).map(h=>({symbol:h.symbol,name:h.name||h.symbol,type:h.assetType||'stock',price:null,stale:true,change:0,changePercent:0}))];
+  const selectedAsset=allAssets.find(a=>a.symbol===selectedSymbol)||null;
+  const ownedAssets=holdings.map(h=>allAssets.find(a=>a.symbol===h.symbol)).filter(Boolean);
+  const isStock = selectedAsset && selectedAsset.type!=='crypto' && !crypto.some(c=>c.symbol===selectedAsset.symbol);
+  const chooseAsset=symbol=>{setSelectedSymbol(symbol);setShares('');setLimitPrice('');setShowConfirm(false);};
+  const chooseTradeType=type=>{setTradeType(type);setSearchTerm('');if(type==='BUY'&&!selectedAsset)setSelectedSymbol(allAssets[0]?.symbol||'');setShares('');setLimitPrice('');setShowConfirm(false);};
+  // Sell always starts from an owned asset, including holdings outside today's market list.
+  useEffect(()=>{
+    if(tradeType==='SELL' && !holdings.some(h=>h.symbol===selectedSymbol)) {
+      const first=ownedAssets.find(a=>a.type!=='crypto')||ownedAssets[0];
+      setSelectedSymbol(first?.symbol||'');setShares('');setLimitPrice('');setShowConfirm(false);
+    }
+  },[tradeType,selectedSymbol,portfolio.holdings]);
   useEffect(()=>{if(tradeType!=='SELL'||!isStock)setOrderType('market');},[tradeType,isStock]);
-
-  const allAssets = [...stocks, ...crypto];
-  const filtered = searchTerm ? allAssets.filter(a => a.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || a.name.toLowerCase().includes(searchTerm.toLowerCase())) : allAssets;
+  const browseAssets=tradeType==='SELL'?ownedAssets:allAssets;
+  const filtered = searchTerm ? browseAssets.filter(a => a.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || a.name.toLowerCase().includes(searchTerm.toLowerCase())) : browseAssets;
   const execPrice = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : (selectedAsset?.price || 0);
   const total = selectedAsset ? parseFloat(shares || 0) * execPrice : 0;
   const { data: chartData, loading: chartLoading, retry: retryChart } = useChartData(selectedAsset?.symbol, 30);
@@ -3386,7 +3393,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
   const handleTradeClick = () => { if (validateTrade()) setShowConfirm(true); };
 
   const executeTrade = async () => {
-    if(submitting.current) return;
+    if(submitting.current || !validateTrade()) return;
     submitting.current=true;
     setShowConfirm(false);
     const qty = parseFloat(shares);
@@ -3510,12 +3517,12 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
         {/* Left: Asset Browser + Chart */}
         <div>
           <div className="card" style={{ marginBottom: 24 }}>
-            <div className="input-with-icon" style={{ marginBottom: 20 }}><Icon name="search" /><input className="input-field" placeholder="Search stocks & crypto..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
+            <div className="input-with-icon" style={{ marginBottom: 20 }}><Icon name="search" /><input className="input-field" aria-label="Search assets" placeholder={tradeType==='SELL'?'Search your holdings...':'Search stocks & crypto...'} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
             <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-              {filtered.slice(0, 10).map(a => {
+              {(tradeType==='SELL'?filtered:filtered.slice(0,10)).map(a => {
                 const owned = portfolio.holdings.find(h => h.symbol === a.symbol);
                 return (
-                  <div key={a.symbol} className="stock-row" style={{ cursor: 'pointer', padding: '12px 8px', borderRadius: 'var(--radius-lg)', background: selectedAsset?.symbol === a.symbol ? 'rgba(0,255,163,0.08)' : 'transparent' }} onClick={() => { setSelectedAsset(a); setShares(''); }}>
+                  <button type="button" aria-label={`Select ${a.symbol}`} aria-pressed={selectedSymbol===a.symbol} key={a.symbol} className="stock-row" style={{ width:'100%',textAlign:'left',border:0,color:'inherit',font:'inherit', cursor: 'pointer', padding: '12px 8px', borderRadius: 'var(--radius-lg)', background: selectedAsset?.symbol === a.symbol ? 'rgba(0,255,163,0.08)' : 'transparent' }} onClick={() => chooseAsset(a.symbol)}>
                     <div className="stock-icon-badge" style={{ background: a.change >= 0 ? 'rgba(0,255,163,0.15)' : 'rgba(255,113,108,0.15)', color: a.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{a.symbol.slice(0, 2)}</div>
                     <div className="stock-info">
                       <div className="stock-symbol-text">{a.symbol} {owned && <span style={{ fontSize: 10, color: 'var(--secondary)' }}>({owned.shares} owned)</span>}</div>
@@ -3525,10 +3532,10 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
                       <RowSparkline symbol={a.symbol} isUp={a.change >= 0} width={60} height={24} />
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(a.price)}</div>
+                      <div style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{Number(a.price)>0?formatCurrency(a.price):'Quote unavailable'}</div>
                       <div style={{ fontFamily: 'var(--font-headline)', fontSize: 12, color: a.change >= 0 ? 'var(--primary-fixed)' : 'var(--error)' }}>{a.change >= 0 ? '+' : ''}{a.changePercent.toFixed(2)}%</div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -3541,7 +3548,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
                   <div className="stock-name-text">{selectedAsset.name}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 700 }}>{formatCurrency(selectedAsset.price)}</div>
+                  <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 700 }}>{Number(selectedAsset.price)>0?formatCurrency(selectedAsset.price):'Quote unavailable'}</div>
                   <span className={`badge ${selectedAsset.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{selectedAsset.change >= 0 ? '+' : ''}{selectedAsset.changePercent.toFixed(2)}%</span>
                 </div>
               </div>
@@ -3571,31 +3578,30 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
 
             {/* Buy/Sell Toggle */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              <button className={`btn ${tradeType === 'BUY' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', boxShadow: '0 0 20px rgba(255,113,108,0.3)', color: '#fff' } : {}) }} onClick={() => setTradeType('BUY')}>
+              <button className={`btn ${tradeType === 'BUY' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', boxShadow: '0 0 20px rgba(255,113,108,0.3)', color: '#fff' } : {}) }} onClick={() => chooseTradeType('BUY')}>
                 <Icon name="add_circle" size={16} /> Buy
               </button>
-              <button className={`btn ${tradeType === 'SELL' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setTradeType('SELL')}>
+              <button className={`btn ${tradeType === 'SELL' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => chooseTradeType('SELL')}>
                 <Icon name="remove_circle" size={16} /> Sell
               </button>
             </div>
 
+            {tradeType==='SELL' && !ownedAssets.length && <p role="status">No holdings available to sell. Buy a stock first to place a target sell.</p>}
             {selectedAsset && <>
               {/* Asset display */}
               <div style={{ marginBottom: 16 }}>
-                <label className="input-label">Asset</label>
-                <div className="input-field" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }}>
-                  <div className="stock-icon-badge" style={{ width: 24, height: 24, fontSize: 8, background: 'rgba(0,255,163,0.15)', color: 'var(--primary-fixed)' }}>{selectedAsset.symbol.slice(0, 2)}</div>
-                  <span style={{ fontWeight: 700 }}>{selectedAsset.symbol}</span>
-                  <span className="text-muted" style={{ fontSize: 12 }}>{selectedAsset.name}</span>
-                </div>
+                <label className="input-label" htmlFor="trade-asset">{tradeType==='SELL'?'Holding to sell':'Asset'}</label>
+                <select id="trade-asset" aria-label={tradeType==='SELL'?'Holding to sell':'Asset'} className="input-field" value={selectedSymbol} onChange={e=>chooseAsset(e.target.value)}>
+                  {(tradeType==='SELL'?ownedAssets:allAssets).map(a=><option key={a.symbol} value={a.symbol}>{a.symbol} — {a.name}{tradeType==='SELL'?` (${holdings.find(h=>h.symbol===a.symbol)?.shares} owned)`:''}</option>)}
+                </select>
               </div>
 
               {/* Order Type */}
               <div style={{ marginBottom: 16 }}>
                 <label className="input-label">Order_Type</label>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className={`btn btn-sm ${orderType === 'market' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'market' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} onClick={() => setOrderType('market')}>Market</button>
-                  <button className={`btn btn-sm ${orderType === 'limit' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'limit' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} disabled={tradeType!=='SELL'||!isStock} onClick={() => setOrderType('limit')}>Target sell</button>
+                  <button className={`btn btn-sm ${orderType === 'market' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'market' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} onClick={() => {setOrderType('market');setShowConfirm(false);}}>Market</button>
+                  <button className={`btn btn-sm ${orderType === 'limit' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'limit' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} disabled={tradeType!=='SELL'||!isStock} onClick={() => {setOrderType('limit');setShowConfirm(false);}}>Target sell</button>
                 </div>
                 <p className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
                   {orderType === 'market' ? 'Market order: buy/sell at the current price right now' : 'Target sell: saves a pending stock order. A fresh server quote at or above your target may fill it immediately; otherwise it waits.'}
@@ -3605,15 +3611,15 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
               {/* Limit Price (only for limit orders) */}
               {orderType === 'limit' && (
                 <div style={{ marginBottom: 16 }}>
-                  <label className="input-label">{tradeType === 'BUY' ? 'Max_Price' : 'Min_Price'}</label>
-                  <input className="input-field" type="number" placeholder={formatCurrency(selectedAsset.price)} value={limitPrice} onChange={e => setLimitPrice(e.target.value)} min="0" step="0.01" />
+                  <label className="input-label" htmlFor="trade-target-price">Target sell price ($)</label>
+                  <input id="trade-target-price" className="input-field" type="number" placeholder="Enter target price" value={limitPrice} onChange={e => setLimitPrice(e.target.value)} min="0" step="0.01" />
                 </div>
               )}
 
               {/* Shares + Quick Amounts */}
               <div style={{ marginBottom: 16 }}>
-                <label className="input-label">Shares</label>
-                <input className="input-field" type="number" placeholder="How many shares?" value={shares} onChange={e => setShares(e.target.value)} min="0" step="1" />
+                <label className="input-label" htmlFor="trade-shares">Shares</label>
+                <input id="trade-shares" className="input-field" type="number" placeholder="How many shares?" value={shares} onChange={e => setShares(e.target.value)} min="0" step="1" />
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   {quickAmounts.map(amt => (
                     <button key={amt} className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => setShares(String(amt))}>{amt}</button>
@@ -3660,7 +3666,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
               {/* Execute Button */}
               <button className="btn btn-primary" style={{ width: '100%', padding: 14, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff', boxShadow: '0 0 20px rgba(255,113,108,0.3)' } : {}) }} onClick={handleTradeClick}>
                 <Icon name={tradeType === 'BUY' ? 'rocket_launch' : 'sell'} size={18} />
-                {tradeType === 'BUY' ? `Buy ${shares || '0'} ${selectedAsset.symbol}` : `Sell ${shares || '0'} ${selectedAsset.symbol}`}
+                {orderType==='limit'?'Review target sell':tradeType === 'BUY' ? `Buy ${shares || '0'} ${selectedAsset.symbol}` : `Sell ${shares || '0'} ${selectedAsset.symbol}`}
               </button>
             </>}
           </div>
@@ -3707,7 +3713,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
             <div style={{ fontSize: 48, marginBottom: 16 }}>{tradeType === 'BUY' ? '🚀' : '💰'}</div>
             <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{orderType==='limit'?'Save target sell':`Confirm ${tradeType==='BUY'?'Purchase':'Sale'}`}</h2>
             <p className="text-muted" style={{ marginBottom: 24 }}>
-              {tradeType === 'BUY' ? 'Buy' : 'Sell'} <strong>{shares} shares</strong> of <strong>{selectedAsset.symbol}</strong> at <strong>{formatCurrency(execPrice)}</strong> per share
+              {tradeType === 'BUY' ? 'Buy' : 'Sell'} <strong>{shares} shares</strong> of <strong>{selectedAsset.symbol}</strong> {orderType==='limit'?'when the price is at least':'at'} <strong>{formatCurrency(execPrice)}</strong> per share
             </p>
             <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 24 }}>
               <div style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900 }}>{formatCurrency(total)}</div>
@@ -4619,9 +4625,9 @@ function ChatPage({ user, displayName, code, isAdmin, initialRoom, onRoomChange 
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
-              <button className="header-icon-btn"><Icon name="search" /></button>
-              <button className="header-icon-btn"><Icon name="push_pin" /></button>
-              <button className="header-icon-btn"><Icon name="more_vert" /></button>
+              <span className="text-muted" style={{fontSize:11}}>Search, pins and more tools are not available yet.</span><button className="header-icon-btn" disabled aria-label="Search chat unavailable" title="Not available yet"><Icon name="search" /></button>
+              <button className="header-icon-btn" disabled aria-label="Pinned messages unavailable" title="Not available yet"><Icon name="push_pin" /></button>
+              <button className="header-icon-btn" disabled aria-label="More chat tools unavailable" title="Not available yet"><Icon name="more_vert" /></button>
             </div>
           </div>
 
@@ -6807,15 +6813,15 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
               <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="trending_up" size={20} /> Quick_Actions</h3>
               <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveTab('users')}>
                 <span className="label-system">Add a family member</span>
-                <button className="btn btn-primary btn-sm"><Icon name="person_add" size={14} /> Add</button>
+                <button className="btn btn-primary btn-sm" onClick={()=>setActiveTab('users')}><Icon name="person_add" size={14} /> Add</button>
               </div>
               <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveTab('content')}>
                 <span className="label-system">Post announcement</span>
-                <button className="btn btn-secondary btn-sm"><Icon name="campaign" size={14} /> Write</button>
+                <button className="btn btn-secondary btn-sm" onClick={()=>setActiveTab('content')}><Icon name="campaign" size={14} /> Write</button>
               </div>
               <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveTab('challenges')}>
                 <span className="label-system">Create challenge</span>
-                <button className="btn btn-secondary btn-sm"><Icon name="emoji_events" size={14} /> Create</button>
+                <button className="btn btn-secondary btn-sm" onClick={()=>setActiveTab('challenges')}><Icon name="emoji_events" size={14} /> Create</button>
               </div>
             </div>
             <div className="card">
@@ -6869,22 +6875,22 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
             </div>
 
             <div>
-              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="school" size={20} /> Academy_Lessons</h3>
+              <h3 className="section-title" style={{ marginBottom: 16 }}><Icon name="school" size={20} /> Academy_Lessons</h3><p className="text-muted">Lesson editing and uploads are not available yet.</p>
               <div className="card">
                 {['What is a Stock?', 'Technical Patterns 101', 'Options Trading 101', 'Blockchain Infrastructure', 'Portfolio Management', 'Algorithmic Strategies'].map((l, i) => (
                   <div key={i} className="stock-row">
                     <Icon name="menu_book" size={18} className="text-primary" />
                     <div className="stock-info"><div style={{ fontSize: 13, fontWeight: 600 }}>{l}</div></div>
-                    <button className="btn btn-secondary btn-sm"><Icon name="edit" size={14} /> Edit</button>
+                    <button className="btn btn-secondary btn-sm" disabled title="Not available yet" aria-label="Settings control unavailable"><Icon name="edit" size={14} /> Edit</button>
                   </div>
                 ))}
-                <button className="btn btn-ghost" style={{ marginTop: 12, width: '100%' }}><Icon name="add" size={16} /> Add New Lesson</button>
+                <button className="btn btn-ghost" disabled title="Not available yet" style={{ marginTop: 12, width: '100%' }}><Icon name="add" size={16} /> Add New Lesson</button>
               </div>
 
               <h3 className="section-title" style={{ marginBottom: 16, marginTop: 32 }}><Icon name="upload_file" size={20} /> Upload_Content</h3>
-              <div className="card" style={{ textAlign: 'center', padding: 32, border: '2px dashed rgba(73,72,71,0.2)', cursor: 'pointer' }}>
+              <div className="card" style={{ textAlign: 'center', padding: 32, border: '2px dashed rgba(73,72,71,0.2)' }}>
                 <Icon name="cloud_upload" size={40} className="text-muted" />
-                <p className="text-muted" style={{ marginTop: 12, fontSize: 13 }}>Drag & drop files here or click to browse</p>
+                <p className="text-muted" style={{ marginTop: 12, fontSize: 13 }}>File uploads are not available yet</p>
                 <p className="text-muted" style={{ fontSize: 11 }}>Images, PDFs, videos for Academy lessons</p>
               </div>
             </div>
@@ -6900,30 +6906,30 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
               <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="tune" size={20} /> Trading_Limits</h3>
               <div style={{ marginBottom: 16 }}>
                 <label className="input-label">Max_Trade_Amount ($)</label>
-                <input className="input-field" type="number" value={maxTradeAmount} onChange={e => setMaxTradeAmount(e.target.value)} />
+                <input className="input-field" type="number" disabled value={maxTradeAmount} onChange={e => setMaxTradeAmount(e.target.value)} />
                 <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Maximum dollar amount per single trade</p>
               </div>
               <div style={{ marginBottom: 16 }}>
                 <label className="input-label">Max_Daily_Trades</label>
-                <input className="input-field" type="number" value={maxDailyTrades} onChange={e => setMaxDailyTrades(e.target.value)} />
+                <input className="input-field" type="number" disabled value={maxDailyTrades} onChange={e => setMaxDailyTrades(e.target.value)} />
                 <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Maximum trades a user can make per day</p>
               </div>
-              <button className="btn btn-primary" onClick={() => setNotification({ type: 'success', message: 'Trading limits saved' })}><Icon name="save" size={16} /> Save Limits</button>
+              <p className="text-muted">Trading-limit editing is not available yet; these fields do not change server limits.</p><button className="btn btn-primary" disabled><Icon name="save" size={16} /> Save Limits</button>
             </div>
 
             <div className="card">
-              <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="account_balance_wallet" size={20} /> Default_Settings</h3>
+              <h3 className="section-title" style={{ marginBottom: 20 }}><Icon name="account_balance_wallet" size={20} /> Default_Settings</h3><p className="text-muted">These settings are read-only. Editing is not available yet.</p>
               <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div><span className="label-system">Starting Cash</span><p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4 }}>$100,000.00</p></div>
-                <button className="btn btn-secondary btn-sm"><Icon name="edit" size={14} /></button>
+                <button className="btn btn-secondary btn-sm" disabled title="Not available yet" aria-label="Settings control unavailable"><Icon name="edit" size={14} /></button>
               </div>
               <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div><span className="label-system">Paper Mode Default</span><p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4, color: 'var(--primary-fixed)' }}>Enabled</p></div>
-                <button className="btn btn-secondary btn-sm"><Icon name="toggle_on" size={14} /></button>
+                <button className="btn btn-secondary btn-sm" disabled title="Not available yet" aria-label="Settings control unavailable"><Icon name="toggle_on" size={14} /></button>
               </div>
               <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div><span className="label-system">Allow Crypto</span><p style={{ fontFamily: 'var(--font-headline)', fontWeight: 700, marginTop: 4, color: 'var(--primary-fixed)' }}>Enabled</p></div>
-                <button className="btn btn-secondary btn-sm"><Icon name="toggle_on" size={14} /></button>
+                <button className="btn btn-secondary btn-sm" disabled title="Not available yet" aria-label="Settings control unavailable"><Icon name="toggle_on" size={14} /></button>
               </div>
             </div>
           </div>
@@ -7058,19 +7064,19 @@ function AdminPage({ portfolio, stocks, crypto, setNotification, user, adminCode
                 </div>
               </div>
 
-              <h3 className="section-title" style={{ marginBottom: 16, marginTop: 32 }}><Icon name="manage_accounts" size={20} /> Chat_Rooms</h3>
+              <h3 className="section-title" style={{ marginBottom: 16, marginTop: 32 }}><Icon name="manage_accounts" size={20} /> Chat_Rooms</h3><p className="text-muted">Room editing and creation are not available yet.</p>
               <div className="card">
                 {['General', 'Trade Alerts', 'Research', 'Memes & Fun'].map((r, i) => (
                   <div key={i} className="stock-row">
                     <Icon name="forum" size={18} className="text-primary" />
                     <div className="stock-info"><div style={{ fontSize: 13, fontWeight: 600 }}>{r}</div></div>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-secondary btn-sm"><Icon name="edit" size={14} /></button>
-                      <button className="btn btn-secondary btn-sm" style={{ color: 'var(--error)' }}><Icon name="delete" size={14} /></button>
+                      <button className="btn btn-secondary btn-sm" disabled title="Not available yet" aria-label="Settings control unavailable"><Icon name="edit" size={14} /></button>
+                      <button className="btn btn-secondary btn-sm" style={{ color: 'var(--error)' }} disabled title="Not available yet" aria-label="Settings control unavailable"><Icon name="delete" size={14} /></button>
                     </div>
                   </div>
                 ))}
-                <button className="btn btn-ghost" style={{ marginTop: 12, width: '100%' }}><Icon name="add" size={16} /> Create Room</button>
+                <button className="btn btn-ghost" disabled title="Not available yet" style={{ marginTop: 12, width: '100%' }}><Icon name="add" size={16} /> Create Room</button>
               </div>
             </div>
           </div>
@@ -8902,6 +8908,8 @@ function App() {
   const [tier, setTier] = useState(restoredAuth?.tier || 'free');
   const [accessCode, setAccessCode] = useState(restoredAuth?.code || '');
   const [activePage, setActivePage] = useState('dashboard');
+  const [tradeIntent,setTradeIntent]=useState(null);
+  const openTrade=(symbol,type='BUY')=>{setTradeIntent({symbol,type});setStockDetail(null);setActivePage('trade');};
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Chat alert: top-banner notification when a new chat message arrives in a
@@ -9162,9 +9170,9 @@ function App() {
 
   const renderPage = () => {
     switch (activePage) {
-      case 'dashboard': return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} setStockDetail={setStockDetail} achievementsUnlocked={achievementsUnlocked} achievementsTotal={achievementsTotal} leaderboard={leaderboard} />;
-      case 'portfolio': return <PortfolioPage portfolio={portfolio} user={user} stocks={stocks} setStockDetail={setStockDetail} />;
-      case 'trade': return <TradePage stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
+      case 'dashboard': return <DashboardPage onNavigate={setActivePage} onTrade={openTrade} portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} setStockDetail={setStockDetail} achievementsUnlocked={achievementsUnlocked} achievementsTotal={achievementsTotal} leaderboard={leaderboard} />;
+      case 'portfolio': return <PortfolioPage onNavigate={setActivePage} onTrade={openTrade} portfolio={portfolio} user={user} stocks={stocks} setStockDetail={setStockDetail} />;
+      case 'trade': return <TradePage initialTrade={tradeIntent} stocks={stocks} crypto={crypto} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} />;
       case 'market': return <MarketsPage stocks={stocks} setStockDetail={setStockDetail} />;
       case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} setStockDetail={setStockDetail} />;
       case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} code={accessCode} />;
@@ -9172,9 +9180,9 @@ function App() {
       case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
       case 'insights': return <InsightsPage />;
       case 'learn': return <LearnPage code={accessCode} />;
-      case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} user={user} adminCode={accessCode} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
-      case 'crypto-bot': return isAdmin ? <CryptoBotPage adminCode={accessCode} crypto={crypto} setNotification={setNotification} user={user} /> : <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
-      default: return <DashboardPage portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
+      case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} user={user} adminCode={accessCode} /> : <DashboardPage onNavigate={setActivePage} onTrade={openTrade} portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
+      case 'crypto-bot': return isAdmin ? <CryptoBotPage adminCode={accessCode} crypto={crypto} setNotification={setNotification} user={user} /> : <DashboardPage onNavigate={setActivePage} onTrade={openTrade} portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
+      default: return <DashboardPage onNavigate={setActivePage} onTrade={openTrade} portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
     }
   };
 

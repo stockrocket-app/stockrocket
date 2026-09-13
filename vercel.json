@@ -59,7 +59,8 @@
   ],
   "git": {
     "deploymentEnabled": {
-      "codex/paper-target-sell-orders": false
+      "codex/paper-target-sell-orders": false,
+      "codex/paper-target-sell-fix": false
     }
   }
 }
