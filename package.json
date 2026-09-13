@@ -1,1 +1,1 @@
-{"name":"stockrocket","private":true,"type":"module","engines":{"node":">=24"},"scripts":{"test":"node --test tests/*.test.js"}}
+{"name":"stockrocket","private":true,"type":"module","engines":{"node":">=24"},"scripts":{"test":"node --test tests/*.test.js"},"devDependencies":{"@babel/core":"7.29.7","@babel/plugin-transform-react-jsx":"7.27.1","jsdom":"26.1.0","react":"18.3.1","react-dom":"18.3.1"}}
