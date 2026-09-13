@@ -1,3 +1,4 @@
+import {isOfferedPaperAsset} from '../lib/paper-assets.js';
 import {finnhubFetch} from '../lib/finnhub-budget.js';
 // StockRocket -- Trades API (Vercel Edge Function)
 // --------------------------------------------------------
@@ -121,13 +122,14 @@ export default async function handler(req) {
     const name = (body.name || '').toString().slice(0, 120);
     const assetType = (body.asset_type || 'stock').toString();
     const shares = Number(body.shares);
-    const price = Number(body.price);
+    const candidatePrice = Number(body.price);
+    const price = Number.isFinite(candidatePrice) && candidatePrice>0 ? candidatePrice : null;
 
     if (!['BUY', 'SELL'].includes(type)) return json({ error: 'invalid_type' }, 400);
     if (!['stock', 'crypto'].includes(assetType)) return json({ error: 'invalid_asset_type' }, 400);
-    if (!symbol) return json({ error: 'symbol_required' }, 400);
+    if (!/^[A-Z][A-Z0-9.-]{0,14}$/.test(symbol)) return json({ error: 'invalid_symbol' }, 400);
+    if (type==='BUY' && !isOfferedPaperAsset(symbol,assetType)) return json({error:'unsupported_asset'},400);
     if (!isFinite(shares) || shares <= 0) return json({ error: 'invalid_shares' }, 400);
-    if (!isFinite(price) || price <= 0) return json({ error: 'invalid_price' }, 400);
 
     // ------------------------------------------------------------------
     // SERVER-AUTHORITATIVE PRICING -- 2026-04-18 incident fix (final form)
@@ -148,7 +150,7 @@ export default async function handler(req) {
       }, 400);
     }
     const executionPrice = resolved.price;
-    const displayDrift = Math.abs(price - executionPrice) / executionPrice;
+    const displayDrift = price===null ? null : Math.abs(price - executionPrice) / executionPrice;
     const displayDriftFlagged = displayDrift > (DISPLAY_DRIFT_FLAG[assetType] || 0.05);
     const total = shares * executionPrice;
 
@@ -157,7 +159,7 @@ export default async function handler(req) {
       p_qty:shares,p_price:executionPrice,p_request:requestId,
     });
     if(error) return json({error:['insufficient_shares','insufficient_cash','idempotency_conflict','invalid_trade'].includes(error)?error:'trade_failed'},400);
-    return json({...result,execution:{...result.execution,client_price:price,display_drift_pct:displayDrift*100,display_drift_flagged:displayDriftFlagged,source:resolved.source}});
+    return json({...result,execution:{...result.execution,client_price:price,display_drift_pct:displayDrift===null?null:displayDrift*100,display_drift_flagged:displayDriftFlagged,source:resolved.source}});
   }
 
   return json({ error: 'method_not_allowed' }, 405);

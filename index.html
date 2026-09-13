@@ -23,6 +23,7 @@
 </head>
 <body>
   <div id="root"></div>
+  <script src="/content/reports/2026-09-13.js"></script>
   <script type="text/babel">
 // =============================================
 // STOCK ROCKET -- StockRocket V2
@@ -162,15 +163,10 @@ async function fetchServerPortfolio(code) {
 // Returns { ok: true, portfolio, trade } on success, { ok: false, error, detail } on failure.
 async function executeServerTrade({ code, type, symbol, name, assetType, shares, price, requestId = crypto.randomUUID() }) {
   if (!code) return { ok: false, error: 'not_authenticated' };
-  // PRICE INTEGRITY GUARD -- single choke point. Incident 2026-04-18: UI passed
-  // a stale seed price ($97,245 for BTC) into six trades because the live feed
-  // was silently mocked. A non-finite or non-positive price must ALWAYS fail
-  // fast here, before the network call, regardless of which call site built
-  // the request. See docs/PRICE_INVARIANTS.md.
-  const px = Number(price);
-  if (!isFinite(px) || px <= 0) {
-    return { ok: false, error: 'stale_price', detail: 'Live price unavailable -- trade blocked. Please wait for prices to refresh.' };
-  }
+  // Browser quotes are advisory. Missing bulk-feed data must not hide a supported
+  // paper buy: the server obtains its own valid provider quote or refuses execution.
+  const candidatePrice=Number(price);
+  const px=Number.isFinite(candidatePrice)&&candidatePrice>0?candidatePrice:null;
   const qty = Number(shares);
   if (!isFinite(qty) || qty <= 0) {
     return { ok: false, error: 'invalid_shares', detail: 'Invalid share amount' };
@@ -204,6 +200,8 @@ function errorMessageForTrade(err, detail) {
     case 'insufficient_shares':   return detail || 'Not enough shares to sell';
     case 'invalid_shares':        return 'Invalid share amount';
     case 'invalid_price':         return 'Invalid price';
+    case 'unsupported_asset': return 'This asset is not offered for paper buying.';
+    case 'invalid_symbol': return 'Select an offered asset.';
     case 'symbol_required':       return 'Symbol required';
     case 'price_unverifiable':    return 'Live price is unavailable right now. Give it a second and try again.';
     case 'stale_price':           return detail || 'Live price unavailable -- please wait for prices to refresh.';
@@ -959,8 +957,9 @@ const ACADEMY_LESSONS = [
 
 // ==================== WEEKLY REPORTS DATA ====================
 const WEEKLY_REPORTS = [
+  ...(window.STOCKROCKET_WEEKLY_REPORT ? [window.STOCKROCKET_WEEKLY_REPORT] : []),
   {
-    id: 'week-2026-04-27', weekStart: 'Apr 27', weekEnd: 'May 1, 2026', volume: 45, isCurrent: true,
+    id: 'week-2026-04-27', weekStart: 'Apr 27', weekEnd: 'May 1, 2026', volume: 45, isCurrent: false,
     predictions: {
       intro: "Five tickers I'm watching this week. Each one anchored to real data and a real catalyst. Not financial advice, just how I'd think about each name if I had to make a call this morning.",
       picks: [
@@ -1453,17 +1452,16 @@ function useLiveData() {
           if (!q) return { ...s, price: null, change: 0, changePercent: 0,
                            high: null, low: null, open: null, prevClose: null, stale: true };
           return { ...s, price: q.price, change: q.change, changePercent: q.changePercent,
-                   high: q.high, low: q.low, open: q.open, prevClose: q.prevClose, stale: false };
+                   high: q.high, low: q.low, open: q.open, prevClose: q.prevClose, stale: !!q.stale };
         });
         setStocks(updated);
-        setStocksLive(true);
+        setStocksLive(updated.some(q=>q.price>0&&!q.stale));
       } else {
         setStocksLive(false);
       }
     } else {
-      // Market closed: fetch one quote pull on first load so we have honest
-      // session-close numbers, then freeze.
-      if (!stocksLive) {
+      // Cache-backed refresh also retries missing symbols when the market is closed.
+      {
         const symbols = MOCK_STOCKS.map(s => s.symbol);
         const quotes = await LiveData.fetchAllStocks(symbols);
         if (quotes && quotes.some(q => q && q.price)) {
@@ -1474,15 +1472,15 @@ function useLiveData() {
             if (!q) return { ...s, price: null, change: 0, changePercent: 0,
                              high: null, low: null, open: null, prevClose: null, stale: true };
             return { ...s, price: q.price, change: q.change, changePercent: q.changePercent,
-                     high: q.high, low: q.low, open: q.open, prevClose: q.prevClose, stale: false };
+                     high: q.high, low: q.low, open: q.open, prevClose: q.prevClose, stale: !!q.stale };
           });
           setStocks(updated);
-          setStocksLive(true);
+          setStocksLive(updated.some(q=>q.price>0&&!q.stale));
         }
       }
     }
     setLastUpdated(new Date());
-  }, [stocksLive]);
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -1833,7 +1831,8 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
   // the symbol, synthesize a display-only record from the holding so they can
   // still see the position (and sell it once the live feed returns).
   // IMPORTANT: we deliberately do NOT put a "price" on the synthesized record
-  // so that the trade panel can't compute totals or submit. Per PRICE_INVARIANTS,
+  // so the trade panel cannot invent an estimate. Submission asks the server for
+  // an authoritative quote; unavailable quotes fail closed. Per PRICE_INVARIANTS,
   // trades must never use a fallback/seed price -- the 2026-04-18 BTC incident
   // was caused by exactly that pattern.
   const isStaleFeed = !liveAsset && !!holding;
@@ -1853,13 +1852,15 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
   const { data: chartData, loading: chartLoading, retry: retryChart, source: chartSource } = useChartData(asset?.symbol, chartRange);
   const isCryptoAsset = !!asset && CRYPTO_SYMBOLS.has(asset.symbol);
   const tradeablePrice = liveAsset ? Number(liveAsset.price) : NaN;
-  const canTrade = !isStaleFeed && Number.isFinite(tradeablePrice) && tradeablePrice > 0;
-  const total = canTrade ? parseFloat(shares || 0) * tradeablePrice : 0;
+  const hasDisplayQuote=Number.isFinite(tradeablePrice)&&tradeablePrice>0;
+  const displayIsStale=!!liveAsset?.stale;
+  const canTrade = !!asset && (!!liveAsset || tradeType==='SELL');
+  const total = hasDisplayQuote ? parseFloat(shares || 0) * tradeablePrice : 0;
 
   const executeTrade = async () => {
     if (!asset || !shares || parseFloat(shares) <= 0) return;
     if (!canTrade) {
-      setNotification({ type: 'error', message: 'Live price unavailable -- cannot execute trade. Try again when the feed returns.' });
+      setNotification({ type: 'error', message: 'This asset is not offered for paper buying.' });
       return;
     }
     const qty = parseFloat(shares);
@@ -1921,7 +1922,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          {isStaleFeed ? (
+          {!hasDisplayQuote ? (
             <>
               <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900, color: 'var(--on-surface-variant)' }}>--</div>
               <span className="badge badge-neutral" style={{ fontSize: 12, padding: '6px 14px' }}>FEED UNAVAILABLE</span>
@@ -1930,16 +1931,16 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
             <>
               <div style={{ fontFamily: 'var(--font-headline)', fontSize: 36, fontWeight: 900 }}>{formatCurrency(asset.price)}</div>
               <span className={`badge ${asset.change >= 0 ? 'badge-primary' : 'badge-error'}`} style={{ fontSize: 13, padding: '6px 16px' }}>
-                {asset.change >= 0 ? '+' : ''}{asset.changePercent.toFixed(2)}% today
+                {asset.change >= 0 ? '+' : ''}{(Number(asset.changePercent)||0).toFixed(2)}% today
               </span>
             </>
           )}
         </div>
       </div>
-      {isStaleFeed && (
+      {(!hasDisplayQuote || displayIsStale) && (
         <div className="card" style={{ padding: '12px 16px', marginBottom: 24, background: 'rgba(255,155,95,0.08)', border: '1px solid rgba(255,155,95,0.25)', display: 'flex', alignItems: 'center', gap: 12 }}>
           <Icon name="warning" size={16} />
-          <span style={{ fontSize: 13 }}>Live market data is unavailable for <strong>{asset.symbol}</strong>. You can view your position, but trading is paused until the feed returns.</span>
+          <span style={{ fontSize: 13 }}>{hasDisplayQuote?'Displayed price is last known, not a current quote, for':'Live market data is unavailable for'} <strong>{asset.symbol}</strong>. Paper orders request a server quote when submitted. No trade executes if that quote is unavailable.</span>
         </div>
       )}
 
@@ -1997,8 +1998,8 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
             <button className={`btn ${tradeType === 'SELL' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setTradeType('SELL')}>Sell</button>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label className="input-label">Shares</label>
-            <input className="input-field" type="number" placeholder="0" value={shares} onChange={e => setShares(e.target.value)} min="0" />
+            <label className="input-label" htmlFor="detail-trade-shares">Shares</label>
+            <input id="detail-trade-shares" className="input-field" type="number" placeholder="0" value={shares} onChange={e => setShares(e.target.value)} min="0" />
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
               {[1, 5, 10, 25].map(a => <button key={a} className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => setShares(String(a))}>{a}</button>)}
             </div>
@@ -2006,7 +2007,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
           <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span className="label-system">Total</span>
-              <span style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700 }}>{formatCurrency(total)}</span>
+              <span style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700 }}>{hasDisplayQuote?formatCurrency(total):'Calculated at execution'}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span className="label-system">Cash</span>
@@ -2026,7 +2027,7 @@ function StockDetailPage({ symbol, stocks, crypto, portfolio, setPortfolio, setN
             onClick={executeTrade}
           >
             <Icon name={tradeType === 'BUY' ? 'rocket_launch' : 'sell'} size={18} />
-            {canTrade ? `${tradeType === 'BUY' ? 'Buy' : 'Sell'} ${asset.symbol}` : 'Trading paused -- feed unavailable'}
+            {canTrade ? `${tradeType === 'BUY' ? 'Buy' : 'Sell'} ${asset.symbol}` : 'Asset not offered for buying'}
           </button>
         </div>
       </div>
@@ -3351,7 +3352,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
       setNotification({type:'success',message:`Order ${data.order.status}`}); await refreshOrders();
     }catch{setNotification({type:'error',message:'Cancellation not confirmed. Refresh order history before retrying.'});}
   };
-  const knownAssets = [...stocks.map(a=>({...a,type:'stock'})), ...crypto.map(a=>({...a,type:'crypto'}))];
+  const knownAssets = [...stocks.map(a=>({...a,type:'stock'})), ...crypto.map(a=>({...a,type:'crypto'}))].map(a=>({...a,change:Number(a.change)||0,changePercent:Number(a.changePercent)||0}));
   const holdings = portfolio.holdings.filter(h=>Number(h.shares)>0);
   const allAssets = [...knownAssets,...holdings.filter(h=>!knownAssets.some(a=>a.symbol===h.symbol)).map(h=>({symbol:h.symbol,name:h.name||h.symbol,type:h.assetType||'stock',price:null,stale:true,change:0,changePercent:0}))];
   const selectedAsset=allAssets.find(a=>a.symbol===selectedSymbol)||null;
@@ -3370,6 +3371,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
   const browseAssets=tradeType==='SELL'?ownedAssets:allAssets;
   const filtered = searchTerm ? browseAssets.filter(a => a.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || a.name.toLowerCase().includes(searchTerm.toLowerCase())) : browseAssets;
   const execPrice = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : (selectedAsset?.price || 0);
+  const quoteKnown=orderType==='limit'||(Number(selectedAsset?.price)>0);
   const total = selectedAsset ? parseFloat(shares || 0) * execPrice : 0;
   const { data: chartData, loading: chartLoading, retry: retryChart } = useChartData(selectedAsset?.symbol, 30);
 
@@ -3382,7 +3384,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
     if (!selectedAsset) { setNotification({ type: 'error', message: 'Select an asset first' }); return false; }
     if(orderType==='limit' && (tradeType!=='SELL'||!isStock||!Number.isFinite(Number(limitPrice))||Number(limitPrice)<=0)){setNotification({type:'error',message:'Enter a positive target price for a stock holding.'});return false;}
     const qty = parseFloat(shares);
-    if (tradeType === 'BUY' && total > portfolio.cash) { setNotification({ type: 'error', message: `Not enough cash! You need ${formatCurrency(total)} but have ${formatCurrency(portfolio.cash)}` }); return false; }
+    if (tradeType === 'BUY' && total > portfolio.cash) { setNotification({ type: 'error', message: `Not enough cash! You need ${quoteKnown?formatCurrency(total):'Calculated at execution'} but have ${formatCurrency(portfolio.cash)}` }); return false; }
     if (tradeType === 'SELL') {
       if (!existing) { setNotification({ type: 'error', message: `You don't own any ${selectedAsset.symbol} to sell` }); return false; }
       if (qty > existing.shares) { setNotification({ type: 'error', message: `You only have ${existing.shares} shares of ${selectedAsset.symbol}` }); return false; }
@@ -3634,7 +3636,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
               <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="label-system">Price_Per_Share</span>
-                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{formatCurrency(execPrice)}</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontWeight: 600 }}>{quoteKnown?formatCurrency(execPrice):'Server quote at execution'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="label-system">Shares</span>
@@ -3643,7 +3645,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
                 <div style={{ height: 1, background: 'rgba(73,72,71,0.1)', margin: '8px 0' }}></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span className="label-system" style={{ fontSize: 12 }}>Estimated_Total</span>
-                  <span style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700 }}>{formatCurrency(total)}</span>
+                  <span style={{ fontFamily: 'var(--font-headline)', fontSize: 22, fontWeight: 700 }}>{quoteKnown?formatCurrency(total):'Calculated at execution'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="label-system">Cash_Available</span>
@@ -3713,10 +3715,10 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
             <div style={{ fontSize: 48, marginBottom: 16 }}>{tradeType === 'BUY' ? '🚀' : '💰'}</div>
             <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{orderType==='limit'?'Save target sell':`Confirm ${tradeType==='BUY'?'Purchase':'Sale'}`}</h2>
             <p className="text-muted" style={{ marginBottom: 24 }}>
-              {tradeType === 'BUY' ? 'Buy' : 'Sell'} <strong>{shares} shares</strong> of <strong>{selectedAsset.symbol}</strong> {orderType==='limit'?'when the price is at least':'at'} <strong>{formatCurrency(execPrice)}</strong> per share
+              {tradeType === 'BUY' ? 'Buy' : 'Sell'} <strong>{shares} shares</strong> of <strong>{selectedAsset.symbol}</strong> {orderType==='limit'?'when the price is at least':'at'} <strong>{quoteKnown?formatCurrency(execPrice):'Server quote at execution'}</strong> per share
             </p>
             <div style={{ padding: 16, background: 'var(--surface-container-highest)', borderRadius: 'var(--radius-lg)', marginBottom: 24 }}>
-              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900 }}>{formatCurrency(total)}</div>
+              <div style={{ fontFamily: 'var(--font-headline)', fontSize: 28, fontWeight: 900 }}>{quoteKnown?formatCurrency(total):'Calculated at execution'}</div>
               <div className="label-system" style={{ marginTop: 4 }}>{orderType === 'market' ? 'Market Order' : 'Limit Order'}</div>
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
@@ -3914,7 +3916,7 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
                   <div><div className="stock-symbol-text">{c.symbol} {owned && <span style={{ fontSize: 10, color: 'var(--secondary)' }}>({owned.shares} owned)</span>}</div><div className="stock-name-text">{c.name}</div></div>
                 </div></td>
                 <td style={{ fontFamily: 'var(--font-headline)', fontWeight: 700 }}>{formatCurrency(c.price)}</td>
-                <td><span className={`badge ${c.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{c.change >= 0 ? '+' : ''}{c.changePercent.toFixed(2)}%</span></td>
+                <td><span className={`badge ${c.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{c.change >= 0 ? '+' : ''}{c.changePercent==null?'—':Number(c.changePercent).toFixed(2)+'%'}</span></td>
                 <td><button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); setSelectedCrypto(c.symbol); }}>Trade</button></td>
               </tr>;
             })}</tbody>
@@ -3932,7 +3934,7 @@ function CryptoPage({ crypto, stocks, portfolio, setPortfolio, setNotification, 
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontFamily: 'var(--font-headline)', fontSize: 24, fontWeight: 700 }}>{formatCurrency(selected.price)}</div>
-                  <span className={`badge ${selected.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{selected.change >= 0 ? '+' : ''}{selected.changePercent.toFixed(2)}%</span>
+                  <span className={`badge ${selected.change >= 0 ? 'badge-primary' : 'badge-error'}`}>{selected.change >= 0 ? '+' : ''}{selected.changePercent==null?'—':Number(selected.changePercent).toFixed(2)+'%'}</span>
                 </div>
               </div>
 
@@ -5860,11 +5862,32 @@ function TeardownCard({ teardown, completions, onOpen, dc }) {
 }
 
 // ==================== WEEKLY REPORT PAGE ====================
-function WeeklyReportPage({ setStockDetail }) {
+function WeeklyReportPage({ setStockDetail, onTrade }) {
   const [selectedReport, setSelectedReport] = useState(WEEKLY_REPORTS[0]?.id);
   const report = WEEKLY_REPORTS.find(r => r.id === selectedReport) || WEEKLY_REPORTS[0];
   if (!report) return <div className="empty-state"><Icon name="summarize" /><h3>No reports yet</h3><p>Check back next week for the first intelligence briefing.</p></div>;
   const tagColors = { primary: 'var(--primary-fixed)', tertiary: 'var(--tertiary)', neutral: 'var(--on-surface-variant)' };
+  if(report.briefing) return <div>
+    <nav aria-label="Report archive" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:24}}>{WEEKLY_REPORTS.map(r=><button key={r.id} className="btn btn-secondary btn-sm" aria-pressed={r.id===report.id} onClick={()=>setSelectedReport(r.id)}>{r.briefing?'Current report':'Archive'} · {r.weekStart}</button>)}</nav>
+    <header style={{marginBottom:32}}>
+      <p className="label-system">Week of {report.weekStart} – {report.weekEnd}</p>
+      <h1 style={{fontFamily:'var(--font-headline)',fontSize:'clamp(28px,5vw,48px)',margin:'12px 0'}}>{report.briefing.title}</h1>
+      <p className="text-muted">As of {report.briefing.asOf}</p>
+      <p style={{fontSize:18,lineHeight:1.7,marginTop:20}}>{report.briefing.summary}</p>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:20}}><button className="btn btn-primary" onClick={()=>onTrade('ORCL','BUY')}>Paper buy ORCL</button><button className="btn btn-secondary" onClick={()=>setStockDetail('ORCL')}>View Oracle</button></div>
+      <p className="text-muted" style={{fontSize:12,marginTop:12}}>Paper trading uses simulated cash. Execution requires a valid server quote and sufficient paper balance.</p>
+    </header>
+    {report.briefing.sections.map(section=><section key={section.id} className="card" style={{marginBottom:24}}>
+      <h2 style={{fontSize:22,marginBottom:16}}>{section.title}</h2>
+      {(section.paragraphs||[]).map((paragraph,i)=><p key={i} style={{lineHeight:1.75,marginBottom:14}}>{paragraph}</p>)}
+      {!!section.metrics?.length && <dl style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:16,margin:'20px 0'}}>{section.metrics.map(metric=><div key={metric.label}><dt className="text-muted">{metric.label}</dt><dd style={{fontSize:23,fontWeight:700,margin:0}}>{metric.value}</dd></div>)}</dl>}
+      {!!section.bullets?.length && <ul style={{paddingLeft:20,lineHeight:1.75}}>{section.bullets.map((bullet,i)=><li key={i}>{bullet}</li>)}</ul>}
+      {!!section.sources?.length && <p style={{marginTop:18,fontSize:12}}>Sources: {section.sources.map((source,i)=><React.Fragment key={source.url}>{i>0?' · ':''}<a href={source.url} target="_blank" rel="noopener noreferrer" style={{color:'var(--primary-fixed)'}}>{source.label}</a></React.Fragment>)}</p>}
+    </section>)}
+    <section className="card" style={{marginBottom:24}}><h2>Paper-trading watchlist</h2>{(report.briefing.watchlist||report.watchlist||[]).map(asset=><div key={asset.ticker} style={{padding:'16px 0',borderBottom:'1px solid rgba(255,255,255,.08)'}}><h3>{asset.ticker} · {asset.name}</h3><p style={{lineHeight:1.7,margin:'8px 0'}}>{asset.note}</p><button className="btn btn-secondary btn-sm" onClick={()=>onTrade(asset.ticker,'BUY')}>Paper buy {asset.ticker}</button></div>)}</section>
+    <section className="card"><h2>Coming week: September 14–18</h2>{(report.briefing.outlook||report.outlook||[]).map((item,i)=><div key={i} style={{marginTop:18}}><p className="label-system">{item.date}</p><h3>{item.event}</h3><p style={{lineHeight:1.7,marginTop:8}}>{item.note}</p></div>)}</section>
+  </div>;
+
 
   return (
     <div>
@@ -5875,7 +5898,7 @@ function WeeklyReportPage({ setStockDetail }) {
             <button key={r.id} className={`btn btn-sm ${r.id === selectedReport ? 'btn-ghost' : 'btn-secondary'}`}
               style={r.id === selectedReport ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}}
               onClick={() => setSelectedReport(r.id)}>
-              {r.isCurrent && <Icon name="circle" size={8} style={{ color: 'var(--primary-fixed)' }} />} Vol. {r.volume} {'\u00B7'} {r.weekStart}
+              {r.briefing?'Current report':'Archive'} · Vol. {r.volume} {'\u00B7'} {r.weekStart}
             </button>
           ))}
         </div>
@@ -9177,7 +9200,7 @@ function App() {
       case 'crypto': return <CryptoPage crypto={crypto} stocks={stocks} portfolio={portfolio} setPortfolio={setPortfolio} setNotification={setNotification} user={user} code={accessCode} setStockDetail={setStockDetail} />;
       case 'leaderboard': return <LeaderboardPage players={leaderboard} user={user} achievementsUnlocked={achievementsUnlocked} code={accessCode} />;
       case 'chat': return <ChatPage user={user} displayName={displayName} code={accessCode} isAdmin={isAdmin} initialRoom={pendingChatRoom} onRoomChange={setCurrentChatRoom} />;
-      case 'report': return <WeeklyReportPage setStockDetail={setStockDetail} />;
+      case 'report': return <WeeklyReportPage onTrade={openTrade} setStockDetail={setStockDetail} />;
       case 'insights': return <InsightsPage />;
       case 'learn': return <LearnPage code={accessCode} />;
       case 'admin': return isAdmin ? <AdminPage portfolio={portfolio} stocks={stocks} crypto={crypto} setNotification={setNotification} user={user} adminCode={accessCode} /> : <DashboardPage onNavigate={setActivePage} onTrade={openTrade} portfolio={portfolio} stocks={stocks} crypto={crypto} user={user} />;
