@@ -46,9 +46,15 @@ numeric.
 
 ### I2. Trade submission is guarded at a single choke point
 
-`executeServerTrade()` rejects any request where `Number(price)` is not a
-finite positive number. No call site may bypass this function. Adding a new
-trade path that calls `/api/trades` directly is a violation.
+`executeServerTrade()` validates positive finite quantity and sends a request
+UUID. Browser `price` is optional advisory data: a missing/nonpositive value is
+sent as `null`, so a missing bulk-feed quote does not disable an offered asset.
+No call site may substitute a catalog/example price. `/api/trades` obtains its
+own positive finite provider quote or returns `price_unverifiable` without
+writing a trade. Offered BUY symbols and asset types are allowlisted; holdings,
+cash and the ledger are validated atomically by the database RPC. Existing owned
+positions can still be sold even when no longer in the offered BUY catalog.
+All browser market-trade paths use this shared helper.
 
 ### I3. Server-authoritative execution price
 
@@ -58,7 +64,7 @@ for stocks) and USES IT as the execution price for the ledger row. The
 client-submitted `price` is advisory only -- it drives a `display_drift_pct`
 audit flag but never determines what the trade records.
 
-The only hard rejection is `error: 'price_unverifiable'` (fail closed when
+The hard pricing rejection is `error: 'price_unverifiable'` (fail closed when
 no vendor returns a price at all). There is no "deviation rejection" path --
 a rejection loop on fast-moving markets was itself user harm for a paper-
 trading app (per 2026-04-18 S54d pivot). The server always fills at its own
@@ -79,10 +85,10 @@ replaced with the server-authoritative model (S54d) the same night.
 
 `MOCK_CRYPTO` is a symbol directory only. Its price field is always `null`
 and its `stale` flag is always `true`. Adding a non-null `price` to
-`MOCK_CRYPTO` is a violation. Stock seeds (`MOCK_STOCKS`) are allowed to
-carry last-known prices because US stock markets close and the prev-close
-price is a real, honest number; crypto markets are 24/7, so there is no
-equivalent "honest seed" -- any non-null seed price is by definition wrong.
+`MOCK_CRYPTO` is a violation. The historical stock directory still contains example prices, but `useLiveData`
+strips all prices on initialization. They must never reach the display or a
+trade as quotes. Valid server stock quotes may reflect the previous market
+close; target sells separately require a qualifying quote no older than 60 seconds.
 
 ### I5. Every live price carries a source and a timestamp
 
@@ -148,7 +154,7 @@ time.
 -   Proxy -> client: uniform response shape; no silent failures.
 -   Client -> vendor fetcher: guard for malformed vendor payloads.
 -   Client consumer hook: guard against partial batches + deviation.
--   Client UI -> trade submission: guard against stale / null prices.
+-   Client UI -> trade submission: validate quantity and UUID; normalize unavailable advisory prices to null. Server quote validation remains mandatory.
 -   Trade submission -> server: server re-validates price > 0.
 
 Six layers. Removing any one of them re-opens the bug.
@@ -237,3 +243,14 @@ Silently relaxing an invariant ("just this once") is how we got the
 ## I9 — User stock target sells
 
 The Trade page's Target sell sends `/api/orders`, never `/api/trades`. A persisted stock order executes at a valid server Finnhub quote at or above its minimum target, with provider timestamp checked again within the database transaction (60-second maximum age, 5-second future tolerance). See `PAPER_TARGET_ORDERS.md`. Market, stock-target and crypto-limit portfolio writes now share the same atomic RPC and portfolio lock. The existing crypto-only trigger-price carveout remains unchanged.
+
+
+### September 2026 paper-buy availability
+
+All 57 offered stocks (including ORCL) and five offered crypto assets are selectable.
+A browser quote is an estimate only; an absent quote displays “Calculated at
+execution” and can still request a paper buy. The server obtains its own quote,
+checks the shared vendor budget and validates cash before execution. Vendor or
+budget failure never creates a trade. Closed-market bulk refreshes retry missing
+symbols and preserve cached quote staleness. Report prices are editorial context
+and are never passed to execution.

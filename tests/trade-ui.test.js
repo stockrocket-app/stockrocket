@@ -16,7 +16,7 @@ let root;
 afterEach(async()=>{if(root)await act(async()=>root.unmount());root=null;dom.window.localStorage.clear();});
 const asset=(symbol,price=150)=>({symbol,name:symbol,price,type:'stock',change:0,changePercent:0});
 const holding=(symbol,shares=150)=>({symbol,name:symbol,shares,assetType:'stock',avgCost:100,currentPrice:150,gain:50*shares,returnPercent:50});
-async function mount(holdings=[holding('NVDA')]) {
+async function mount(holdings=[holding('NVDA')],assets={stocks:[asset('AAPL'),asset('NVDA')],crypto:[]}) {
  const requests=[],notifications=[];let orders=[];
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const source=html.slice(html.indexOf('function TradePage('),html.indexOf('// ==================== MARKETS'));
@@ -30,7 +30,7 @@ async function mount(holdings=[holding('NVDA')]) {
  });
  vm.runInContext(code,context);
  root=createRoot(document.getElementById('root'));
- await act(async()=>root.render(React.createElement(context.TradePage,{stocks:[asset('AAPL'),asset('NVDA')],crypto:[],portfolio:{cash:100000,holdings,trades:[]},setPortfolio:()=>{},setNotification:n=>notifications.push(n),code:'FIXTURE'})));
+ await act(async()=>root.render(React.createElement(context.TradePage,{stocks:assets.stocks,crypto:assets.crypto,portfolio:{cash:100000,holdings,trades:[]},setPortfolio:()=>{},setNotification:n=>notifications.push(n),code:'FIXTURE'})));
  return {requests,notifications};
 }
 const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
@@ -100,4 +100,44 @@ test('cold live-data hook never exposes the example NVDA price while transport i
  let state;function Probe(){state=context.useLiveData();return null;}
  root=createRoot(document.getElementById('root'));await act(async()=>root.render(React.createElement(Probe)));
  assert.equal(state.stocks[0].price,null);assert.equal(state.stocks[0].stale,true);assert.equal(state.stocksLive,false);
+});
+
+test('all 62 offered assets remain selectable for BUY even without cached quotes',async()=>{
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ const directory=vm.runInNewContext(html.slice(html.indexOf('const MOCK_STOCKS = ['),html.indexOf('const TRADER_INSIGHTS'))+';({stocks:MOCK_STOCKS.map(s=>({...s,price:null})),crypto:MOCK_CRYPTO});');
+ await mount([],directory);const selector=document.querySelector('select[aria-label="Asset"]');assert.equal(selector.options.length,62);
+ for(const item of [...directory.stocks,...directory.crypto]){await change(selector,item.symbol);assert.equal(selector.value,item.symbol);assert(button(`Buy 0 ${item.symbol}`));}
+ await change(selector,'ORCL');assert(document.body.textContent.includes('Quote unavailable'));
+});
+
+test('actual Oracle report renders all watchlist actions, two outlook events, sources and archive navigation',async()=>{
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ const data=html.slice(html.indexOf('const WEEKLY_REPORTS = ['),html.indexOf('// ==================== LIVE DATA LAYER'));
+ const source=html.slice(html.indexOf('function WeeklyReportPage('),html.indexOf('// ==================== ADMIN PAGE'));
+ const context=vm.createContext({React,window:{},Icon:()=>null,formatCurrency:n=>'$'+n});
+ vm.runInContext(readFileSync(new URL('../content/reports/2026-09-13.js',import.meta.url),'utf8'),context);
+ vm.runInContext(data,context);
+ vm.runInContext(transformSync('const {useState}=React;'+source,{plugins:[jsx],babelrc:false,configFile:false}).code,context);
+ const trading=[],details=[];root=createRoot(document.getElementById('root'));
+ await act(async()=>root.render(React.createElement(context.WeeklyReportPage,{onTrade:(symbol,type)=>trading.push({symbol,type}),setStockDetail:symbol=>details.push(symbol)})));
+ const briefing=context.window.STOCKROCKET_WEEKLY_REPORT.briefing;
+ assert(document.body.textContent.includes(briefing.title));assert.equal(briefing.watchlist.length,5);assert.equal(briefing.outlook.length,2);
+ for(const item of briefing.watchlist){await click(`Paper buy ${item.ticker}`);assert(document.body.textContent.includes(item.note));}
+ for(const item of briefing.outlook)assert(document.body.textContent.includes(item.event));
+ assert.equal(trading.length,5);assert(trading.every(t=>t.type==='BUY'));await click('View Oracle');assert.deepEqual(details,['ORCL']);
+ assert.equal(document.querySelectorAll('a[href^="https://"]').length,briefing.sections.reduce((n,s)=>n+(s.sources?.length||0),0));
+ await click('Archive · Apr 27');assert(document.body.textContent.includes('Weekly Intelligence'));await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Current report')).click());assert(document.body.textContent.includes(briefing.title));
+ assert.equal(vm.runInContext('WEEKLY_REPORTS.filter(r=>r.isCurrent).length',context),1);
+});
+test('closed-market refresh retries missing ORCL and retains stale cache labels',async()=>{
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');const source=html.slice(html.indexOf('function useLiveData()'),html.indexOf('// Market-hours check used by useLiveData'));
+ let round=0,interval;
+ const context=vm.createContext({React,MOCK_STOCKS:[asset('AAPL'),asset('ORCL')],MOCK_CRYPTO:[],isUsMarketOpen:()=>false,CRYPTO_FAILURE_TRIP:3,CRYPTO_BREAKER_OPEN_MS:300000,
+  LiveData:{fetchCrypto:async()=>[],fetchAllStocks:async()=>{round++;return[{price:100,change:0,changePercent:0,stale:true},round===1?null:{price:42,change:0,changePercent:0,stale:false}];}},
+  setInterval:fn=>{interval=fn;return 1;},clearInterval:()=>{},
+ });
+ vm.runInContext('const {useState,useEffect,useRef,useCallback}=React;'+source,context);let state;function Probe(){state=context.useLiveData();return null;}
+ root=createRoot(document.getElementById('root'));await act(async()=>root.render(React.createElement(Probe)));
+ assert.equal(state.stocks[0].stale,true);assert.equal(state.stocks[1].price,null);
+ await act(async()=>interval());assert.equal(round,2);assert.equal(state.stocks[1].price,42);assert.equal(state.stocks[0].stale,true);
 });
