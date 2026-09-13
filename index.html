@@ -160,7 +160,7 @@ async function fetchServerPortfolio(code) {
 // POST /api/trades -> execute trade on the server. Server validates cash/shares
 // and persists to stockrocket_trades + stockrocket_portfolios atomically.
 // Returns { ok: true, portfolio, trade } on success, { ok: false, error, detail } on failure.
-async function executeServerTrade({ code, type, symbol, name, assetType, shares, price }) {
+async function executeServerTrade({ code, type, symbol, name, assetType, shares, price, requestId = crypto.randomUUID() }) {
   if (!code) return { ok: false, error: 'not_authenticated' };
   // PRICE INTEGRITY GUARD -- single choke point. Incident 2026-04-18: UI passed
   // a stale seed price ($97,245 for BTC) into six trades because the live feed
@@ -179,7 +179,7 @@ async function executeServerTrade({ code, type, symbol, name, assetType, shares,
     const res = await fetch(`${API_BASE}/api/trades`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-User-Code': code },
-      body: JSON.stringify({ type, symbol, name, asset_type: assetType, shares: qty, price: px }),
+      body: JSON.stringify({ type, symbol, name, asset_type: assetType, shares: qty, price: px, request_id: requestId }),
     });
     let data = {};
     try { data = await res.json(); } catch { data = {}; }
@@ -198,6 +198,7 @@ async function executeServerTrade({ code, type, symbol, name, assetType, shares,
 // Human-readable message for server error codes.
 function errorMessageForTrade(err, detail) {
   switch (err) {
+    case 'client_update_required': return 'Reload StockRocket before submitting another trade.';
     case 'insufficient_cash':     return detail || 'Not enough cash for this trade';
     case 'no_shares_to_sell':     return detail || "You don't own any of this asset";
     case 'insufficient_shares':   return detail || 'Not enough shares to sell';
@@ -3329,6 +3330,35 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
   const [orderType, setOrderType] = useState('market'); // market, limit
   const [limitPrice, setLimitPrice] = useState('');
   const [showSuccess, setShowSuccess] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [orderError, setOrderError] = useState('');
+  const orderAssetsRef=useRef({stocks,crypto});
+  orderAssetsRef.current={stocks,crypto};
+  const submitting = useRef(false);
+  const requestStorageKey=`sr-unconfirmed-target-${code}`;
+  const requestRef = useRef(null);
+  if(!requestRef.current) {try{requestRef.current=JSON.parse(localStorage.getItem(requestStorageKey));}catch{}}
+  const clearRequest=()=>{requestRef.current=null;localStorage.removeItem(requestStorageKey);};
+  const refreshOrders = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/orders`, {headers:{'X-User-Code':code}});
+      const data = await res.json(); if(!res.ok) throw new Error();
+      setOrders(data.orders || []); setOrderError('');
+      if(requestRef.current && data.orders?.some(o=>o.request_id===requestRef.current.id)) {clearRequest();setShares('');setLimitPrice('');setNotification({type:'success',message:'Your earlier target order was confirmed. See its status below.'});}
+      const state = await fetchServerPortfolio(code);
+      if(state) setPortfolio(hydrateServerPortfolio(state.portfolio,state.trades,orderAssetsRef.current.stocks,orderAssetsRef.current.crypto));
+    } catch { setOrderError('Order history unavailable. Please retry.'); }
+  };
+  useEffect(() => { refreshOrders(); const timer=setInterval(refreshOrders,15000); return()=>clearInterval(timer); },[code]);
+  const cancelOrder = async id => {
+    try {
+      const res=await fetch(`${API_BASE}/api/orders?id=${encodeURIComponent(id)}`,{method:'DELETE',headers:{'X-User-Code':code}});
+      const data=await res.json(); if(!res.ok) throw new Error();
+      setNotification({type:'success',message:`Order ${data.order.status}`}); await refreshOrders();
+    }catch{setNotification({type:'error',message:'Cancellation not confirmed. Refresh order history before retrying.'});}
+  };
+  const isStock = selectedAsset && !crypto.some(c=>c.symbol===selectedAsset.symbol);
+  useEffect(()=>{if(tradeType!=='SELL'||!isStock)setOrderType('market');},[tradeType,isStock]);
 
   const allAssets = [...stocks, ...crypto];
   const filtered = searchTerm ? allAssets.filter(a => a.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || a.name.toLowerCase().includes(searchTerm.toLowerCase())) : allAssets;
@@ -3341,8 +3371,9 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
   const existing = selectedAsset ? portfolio.holdings.find(h => h.symbol === selectedAsset.symbol) : null;
 
   const validateTrade = () => {
-    if (!shares || parseFloat(shares) <= 0) { setNotification({ type: 'error', message: 'Enter a valid number of shares' }); return false; }
+    if (!shares || !Number.isFinite(Number(shares)) || parseFloat(shares) <= 0) { setNotification({ type: 'error', message: 'Enter a valid number of shares' }); return false; }
     if (!selectedAsset) { setNotification({ type: 'error', message: 'Select an asset first' }); return false; }
+    if(orderType==='limit' && (tradeType!=='SELL'||!isStock||!Number.isFinite(Number(limitPrice))||Number(limitPrice)<=0)){setNotification({type:'error',message:'Enter a positive target price for a stock holding.'});return false;}
     const qty = parseFloat(shares);
     if (tradeType === 'BUY' && total > portfolio.cash) { setNotification({ type: 'error', message: `Not enough cash! You need ${formatCurrency(total)} but have ${formatCurrency(portfolio.cash)}` }); return false; }
     if (tradeType === 'SELL') {
@@ -3355,17 +3386,38 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
   const handleTradeClick = () => { if (validateTrade()) setShowConfirm(true); };
 
   const executeTrade = async () => {
+    if(submitting.current) return;
+    submitting.current=true;
     setShowConfirm(false);
     const qty = parseFloat(shares);
     const assetType = selectedAsset.type || (crypto?.some(c => c.symbol === selectedAsset.symbol) ? 'crypto' : 'stock');
+    const signature=JSON.stringify([tradeType,selectedAsset.symbol,qty,orderType,limitPrice]);
+    if(orderType==='limit' && requestRef.current && requestRef.current.signature!==signature) {
+      setNotification({type:'error',message:'An earlier order is unconfirmed. Refresh orders or retry the original inputs before placing another.'});submitting.current=false;return;
+    }
+    if(requestRef.current?.signature!==signature) requestRef.current={signature,id:window.crypto.randomUUID()};
+    if(orderType==='limit') {
+      try {
+        localStorage.setItem(requestStorageKey,JSON.stringify(requestRef.current));
+        const res=await fetch(`${API_BASE}/api/orders`,{method:'POST',headers:{'Content-Type':'application/json','X-User-Code':code},body:JSON.stringify({symbol:selectedAsset.symbol,shares:qty,target_price:Number(limitPrice),request_id:requestRef.current.id})});
+        const data=await res.json();
+        if(!res.ok) {if(res.status===400) clearRequest();setNotification({type:'error',message:`Order not confirmed: ${data.error || 'please retry'}`});return;}
+        setNotification({type:'success',message:data.order.status==='pending'?'Target sell saved. It will be checked on the server even when this browser is closed.':`Target sell ${data.order.status}`});
+        clearRequest();setShares('');setLimitPrice('');await refreshOrders();
+      }catch{setNotification({type:'error',message:'Order response unavailable. Retry this same order to safely confirm it.'});}
+      finally{submitting.current=false;}
+      return;
+    }
     const result = await executeServerTrade({
       code, type: tradeType, symbol: selectedAsset.symbol, name: selectedAsset.name,
-      assetType, shares: qty, price: execPrice, // client price is advisory; server is authoritative
+      assetType, shares: qty, price: execPrice, requestId: requestRef.current.id, // client price is advisory; server is authoritative
     });
+    submitting.current=false;
     if (!result.ok) {
       setNotification({ type: 'error', message: errorMessageForTrade(result.error, result.detail) });
       return;
     }
+    requestRef.current=null;
     // Server confirmed + persisted. Server's executed price is authoritative.
     const hydrated = hydrateServerPortfolio(result.portfolio, [], stocks, crypto);
     const newTrade = { ...shapeServerTrade(result.trade), orderType, execution: result.execution || null };
@@ -3543,10 +3595,10 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
                 <label className="input-label">Order_Type</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className={`btn btn-sm ${orderType === 'market' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'market' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} onClick={() => setOrderType('market')}>Market</button>
-                  <button className={`btn btn-sm ${orderType === 'limit' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'limit' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} onClick={() => setOrderType('limit')}>Limit</button>
+                  <button className={`btn btn-sm ${orderType === 'limit' ? 'btn-ghost' : 'btn-secondary'}`} style={orderType === 'limit' ? { background: 'var(--primary-fixed)', color: 'var(--on-primary)' } : {}} disabled={tradeType!=='SELL'||!isStock} onClick={() => setOrderType('limit')}>Target sell</button>
                 </div>
                 <p className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-                  {orderType === 'market' ? 'Market order: buy/sell at the current price right now' : 'Limit order: set the max price you\'re willing to pay (or min to sell at)'}
+                  {orderType === 'market' ? 'Market order: buy/sell at the current price right now' : 'Target sell: saves a pending stock order. A fresh server quote at or above your target may fill it immediately; otherwise it waits.'}
                 </p>
               </div>
 
@@ -3634,13 +3686,26 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
         </div>
       </div>
 
+      <section className="glass-panel" style={{padding:24,marginTop:24}}>
+        <h2>Target sell orders</h2>
+        <p className="text-muted">Server processed with fresh quotes. Shares are not reserved; orders with insufficient shares are rejected at execution. No expiry until cancelled.</p>
+        <button className="btn btn-secondary" onClick={refreshOrders}>Refresh orders</button>
+        {orderError && <p role="alert">{orderError}</p>}
+        {!orders.length && <p>No target sell orders yet.</p>}
+        {orders.map(o=><div key={o.id} style={{padding:'12px 0',borderBottom:'1px solid var(--border-color)'}}>
+          <strong>{o.symbol}</strong> · {o.qty} shares · target {formatCurrency(Number(o.target_price))} · <strong>{o.status}</strong>
+          {o.filled_price && <span> · filled at {formatCurrency(Number(o.filled_price))}</span>}
+          {o.reason && <span> · {o.reason.replaceAll('_',' ')}</span>}
+          {o.status==='pending' && <button className="btn btn-secondary" style={{marginLeft:12}} onClick={()=>cancelOrder(o.id)}>Cancel order</button>}
+        </div>)}
+      </section>
       {/* Confirmation Modal */}
       {showConfirm && selectedAsset && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }} onClick={() => setShowConfirm(false)} />
           <div className="glass-panel" style={{ position: 'relative', padding: 32, maxWidth: 420, width: '100%', textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>{tradeType === 'BUY' ? '🚀' : '💰'}</div>
-            <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Confirm {tradeType === 'BUY' ? 'Purchase' : 'Sale'}</h2>
+            <h2 style={{ fontFamily: 'var(--font-headline)', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{orderType==='limit'?'Save target sell':`Confirm ${tradeType==='BUY'?'Purchase':'Sale'}`}</h2>
             <p className="text-muted" style={{ marginBottom: 24 }}>
               {tradeType === 'BUY' ? 'Buy' : 'Sell'} <strong>{shares} shares</strong> of <strong>{selectedAsset.symbol}</strong> at <strong>{formatCurrency(execPrice)}</strong> per share
             </p>
@@ -3651,7 +3716,7 @@ function TradePage({ stocks, crypto, portfolio, setPortfolio, setNotification, u
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowConfirm(false)}>Cancel</button>
               <button className="btn btn-primary" style={{ flex: 1, ...(tradeType === 'BUY' ? { background: 'linear-gradient(135deg, #ff716c, #d7383b)', color: '#fff' } : {}) }} onClick={executeTrade}>
-                Confirm {tradeType}
+                {orderType==='limit'?'Save pending order':`Confirm ${tradeType}`}
               </button>
             </div>
           </div>

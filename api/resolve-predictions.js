@@ -1,3 +1,4 @@
+import {finnhubFetch} from '../lib/finnhub-budget.js';
 // StockRocket -- Resolve Predictions Cron (Vercel Edge Function)
 // --------------------------------------------------------
 // Runs daily. Pulls every prediction whose target_date has arrived and
@@ -219,7 +220,7 @@ async function fetchLiveStockPrice(symbol) {
   const key = process.env.FINNHUB_KEY;
   if (!key) return null;
   try {
-    const res = await fetch(
+    const res = await finnhubFetch(
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${key}`,
       { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
     );

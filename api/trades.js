@@ -1,3 +1,4 @@
+import {finnhubFetch} from '../lib/finnhub-budget.js';
 // StockRocket -- Trades API (Vercel Edge Function)
 // --------------------------------------------------------
 // Server-side source of truth for portfolios + trade ledger.
@@ -5,7 +6,7 @@
 //
 //   GET  /api/trades            -> my portfolio + last 50 trades
 //   GET  /api/trades?admin=1    -> admin: all portfolios for leaderboard
-//   POST /api/trades  body:{type:'BUY'|'SELL', symbol, name, asset_type, shares, price}
+//   POST /api/trades  body:{type:'BUY'|'SELL', symbol, name, asset_type, shares, price, request_id}
 //       - Auth by X-User-Code header (any active access code)
 //       - Validates cash (BUY) / share count (SELL)
 //       - Inserts row in stockrocket_trades, upserts stockrocket_portfolios
@@ -109,6 +110,12 @@ export default async function handler(req) {
     let body;
     try { body = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
 
+    // Old cached clients sent Limit orders here without any pending condition.
+    // Require the current protocol before fetching a quote or mutating money.
+    const requestId = body.request_id;
+    if (!requestId) return json({error:'client_update_required',detail:'Reload StockRocket before submitting another trade.'},409);
+    if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) return json({error:'invalid_request_id'},400);
+    if ((body.order_type && body.order_type !== 'market') || body.target_price != null || body.limit_price != null) return json({error:'use_orders_endpoint'},400);
     const type = (body.type || '').toString().toUpperCase();
     const symbol = (body.symbol || '').toString().trim().toUpperCase();
     const name = (body.name || '').toString().slice(0, 120);
@@ -145,105 +152,12 @@ export default async function handler(req) {
     const displayDriftFlagged = displayDrift > (DISPLAY_DRIFT_FLAG[assetType] || 0.05);
     const total = shares * executionPrice;
 
-    const portfolio = await getPortfolio(me.code);
-    const cash = Number(portfolio.cash) || 0;
-    const holdings = (portfolio.holdings && typeof portfolio.holdings === 'object') ? portfolio.holdings : {};
-    let newCash = cash;
-    const newHoldings = { ...holdings };
-
-    // Capture pre-trade avg cost so SELL can compute realized P&L in the response
-    const preTradeAvgCost = Number(holdings[symbol]?.avgCost) || null;
-
-    if (type === 'BUY') {
-      if (total > cash + 0.005) {
-        return json({ error: 'insufficient_cash', detail: `Need $${total.toFixed(2)}, have $${cash.toFixed(2)}` }, 400);
-      }
-      newCash = cash - total;
-      const existing = holdings[symbol];
-      if (existing) {
-        const curShares = Number(existing.shares) || 0;
-        const curCost = Number(existing.avgCost) || 0;
-        const newShares = curShares + shares;
-        const newAvg = newShares > 0 ? ((curShares * curCost) + total) / newShares : executionPrice;
-        newHoldings[symbol] = {
-          symbol,
-          name: name || existing.name || symbol,
-          assetType: existing.assetType || assetType,
-          shares: newShares,
-          avgCost: newAvg,
-        };
-      } else {
-        newHoldings[symbol] = { symbol, name: name || symbol, assetType, shares, avgCost: executionPrice };
-      }
-    } else {
-      // SELL
-      const existing = holdings[symbol];
-      const curShares = Number(existing?.shares) || 0;
-      if (!existing || curShares <= 0) {
-        return json({ error: 'no_shares_to_sell', detail: `You don't own any ${symbol}` }, 400);
-      }
-      if (shares > curShares + EPSILON) {
-        return json({ error: 'insufficient_shares', detail: `You own ${curShares} ${symbol}, tried to sell ${shares}` }, 400);
-      }
-      newCash = cash + total;
-      const remaining = curShares - shares;
-      if (remaining <= EPSILON) {
-        delete newHoldings[symbol];
-      } else {
-        newHoldings[symbol] = { ...existing, shares: remaining };
-      }
-    }
-
-    // Insert trade row (append-only ledger) -- price = executionPrice (server-authoritative)
-    const tradeRow = {
-      user_code: me.code,
-      trade_type: type,
-      asset_type: assetType,
-      symbol,
-      name: name || symbol,
-      shares,
-      price: executionPrice,
-      total,
-      cash_after: newCash,
-    };
-    const { data: tradeIns, error: tradeErr } = await db.insert('stockrocket_trades', tradeRow);
-    if (tradeErr) return json({ error: 'trade_insert_failed', detail: tradeErr }, 500);
-
-    // Upsert the portfolio row
-    const portfolioRow = {
-      user_code: me.code,
-      cash: newCash,
-      starting_cash: Number(portfolio.starting_cash) || STARTING_CASH,
-      holdings: newHoldings,
-    };
-    const { data: portUp, error: portErr } = await db.upsert('stockrocket_portfolios', portfolioRow, 'user_code');
-    if (portErr) return json({ error: 'portfolio_upsert_failed', detail: portErr }, 500);
-
-    // Enriched execution metadata for the client to spell out P&L
-    const executionMeta = {
-      executed_price: executionPrice,
-      client_price: price,
-      display_drift_pct: displayDrift * 100,
-      display_drift_flagged: displayDriftFlagged,
-      source: resolved.source,
-      // For SELL: realized P&L vs the lot-level avg cost at the moment of sale
-      realized_gain: type === 'SELL' && preTradeAvgCost
-        ? (executionPrice - preTradeAvgCost) * shares
-        : null,
-      realized_gain_pct: type === 'SELL' && preTradeAvgCost
-        ? ((executionPrice - preTradeAvgCost) / preTradeAvgCost) * 100
-        : null,
-      avg_cost_at_trade: preTradeAvgCost,
-      // For BUY: the new blended avg cost after this purchase
-      new_avg_cost: type === 'BUY' ? Number(newHoldings[symbol]?.avgCost) : null,
-    };
-
-    return json({
-      ok: true,
-      trade: tradeIns?.[0] || tradeRow,
-      portfolio: portUp?.[0] || portfolioRow,
-      execution: executionMeta,
+    const {data: result,error} = await db.rpc('stockrocket_execute_trade', {
+      p_user:me.code,p_type:type,p_symbol:symbol,p_name:name,p_asset:assetType,
+      p_qty:shares,p_price:executionPrice,p_request:requestId,
     });
+    if(error) return json({error:['insufficient_shares','insufficient_cash','idempotency_conflict','invalid_trade'].includes(error)?error:'trade_failed'},400);
+    return json({...result,execution:{...result.execution,client_price:price,display_drift_pct:displayDrift*100,display_drift_flagged:displayDriftFlagged,source:resolved.source}});
   }
 
   return json({ error: 'method_not_allowed' }, 405);
@@ -259,6 +173,10 @@ function supabase(url, serviceKey) {
     'Prefer': 'return=representation',
   };
   return {
+    async rpc(name, body) {
+      const res = await fetch(`${base}/rpc/${name}`, {method:'POST',headers,body:JSON.stringify(body)});
+      const data = await res.json(); return res.ok ? {data} : {error:data.message};
+    },
     async select(table, query = '') {
       const res = await fetch(`${base}/${table}?${query}`, { headers });
       if (!res.ok) return { data: null, error: await res.text() };
@@ -339,7 +257,7 @@ async function fetchLiveStockPrice(symbol) {
   const key = process.env.FINNHUB_KEY;
   if (!key) return null;
   try {
-    const res = await fetch(
+    const res = await finnhubFetch(
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${key}`,
       { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
     );

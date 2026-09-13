@@ -1,3 +1,4 @@
+import {finnhubFetch} from '../lib/finnhub-budget.js';
 // StockRocket -- Predictions API (Vercel Edge Function)
 // --------------------------------------------------------
 // The forcing-function companion to Teardowns. Every prediction MUST cite
@@ -254,7 +255,7 @@ async function fetchLiveStockPrice(symbol) {
   const key = process.env.FINNHUB_KEY;
   if (!key) return null;
   try {
-    const res = await fetch(
+    const res = await finnhubFetch(
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${key}`,
       { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
     );

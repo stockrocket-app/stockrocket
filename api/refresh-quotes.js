@@ -1,3 +1,4 @@
+import {finnhubFetch} from '../lib/finnhub-budget.js';
 // StockRocket -- Quote cache warmer (Vercel Cron, Edge Function)
 // --------------------------------------------------------------
 // Runs every minute during US market hours (see vercel.json "crons"). Fetches
@@ -92,7 +93,7 @@ export default async function handler(req) {
 
 async function fetchQuote(sym, key) {
   try {
-    const res = await fetch(
+    const res = await finnhubFetch(
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${key}`,
       { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined }
     );

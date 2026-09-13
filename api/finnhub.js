@@ -1,3 +1,4 @@
+import {finnhubFetch} from '../lib/finnhub-budget.js';
 // StockRocket -- Finnhub proxy (Vercel Edge Function)
 // ----------------------------------------------------
 // The client never sees the Finnhub API key. It calls /api/finnhub?path=quote&symbol=AAPL,
@@ -86,7 +87,7 @@ export default async function handler(req) {
   const upstream = `https://finnhub.io/api/v1/${resolvedPath}?${forward.toString()}`;
 
   try {
-    const res = await fetch(upstream, {
+    const res = await finnhubFetch(upstream, {
       headers: { 'Accept': 'application/json' },
       // Short timeout -- UI should gracefully degrade rather than hang
       signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,

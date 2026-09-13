@@ -1,20 +1,10 @@
 // StockRocket -- Crypto Bot Fill Engine (Vercel Edge Function)
 // -----------------------------------------------------------
-// Runs one sweep of the limit-order queue:
-//   1. Mark any pending order with expire_at <= now as expired (ttl).
-//   2. Fetch live prices for the distinct symbols still pending.
-//   3. For each pending order, check if the trigger has been crossed.
-//   4. On cross, verify target user's cash (BUY) or holdings (SELL).
-//      - Insufficient -> expire with reason.
-//      - Sufficient   -> write a trade row at the TRIGGER price (not live),
-//                        upsert the portfolio, flip the order to filled.
-//
-// This endpoint lives outside /api/trades because limit fills have different
-// semantics than market orders:
-//   - /api/trades = server-authoritative, executes at server's live price.
-//   - /api/crypto/fill-order = executes at the preset trigger price after the
-//     server verifies the live market crossed it.
-// See docs/PRICE_INVARIANTS.md I8.
+// Runs a sweep of the existing admin crypto queue. Quote retrieval remains here;
+// stockrocket_execute_trade atomically checks/locks each order and portfolio,
+// then writes ledger, cash/holdings and terminal state in one transaction.
+// Crypto preserves the trigger-price policy (docs/PRICE_INVARIANTS.md I8).
+// User stock target orders are separately handled by /api/orders.
 //
 //   POST /api/crypto/fill-order                       -> run one sweep
 //     Auth: X-Admin-Code header (admin code)
@@ -127,189 +117,17 @@ export default async function handler(req) {
   // ------------------------------------------------------------------
   // Process in creation order (FIFO) so earlier orders get first claim on
   // cash/shares when multiple target the same asset.
-  const portfolioCache = new Map(); // user_code -> portfolio row
-
-  async function getPortfolio(userCode) {
-    if (portfolioCache.has(userCode)) return portfolioCache.get(userCode);
-    const { data } = await db.select(
-      'stockrocket_portfolios',
-      `user_code=eq.${encodeURIComponent(userCode)}&limit=1`
-    );
-    let p = data?.[0];
-    if (!p) {
-      // Bootstrap portfolio if it doesn't exist. Shouldn't happen for Milburn
-      // or Ella -- both already have portfolios.
-      const seed = {
-        user_code: userCode,
-        cash: STARTING_CASH,
-        starting_cash: STARTING_CASH,
-        holdings: {},
-      };
-      const { data: ins } = await db.insert('stockrocket_portfolios', seed);
-      p = ins?.[0] || seed;
-    }
-    portfolioCache.set(userCode, p);
-    return p;
-  }
-
   for (const order of pending) {
-    const live = priceMap[order.symbol];
-    if (!live || !isFinite(live.price) || live.price <= 0) {
-      details.push({ id: order.id, action: 'skip', reason: 'no_live_price' });
-      continue;
-    }
-
-    const trigger = Number(order.trigger_price);
-    const qty = Number(order.qty);
-    const side = order.side;
-
-    // Crossed? SELL when live >= trigger. BUY when live <= trigger.
-    const crossed = side === 'SELL' ? live.price >= trigger : live.price <= trigger;
-    if (!crossed) {
-      details.push({ id: order.id, action: 'wait', live: live.price, trigger });
-      continue;
-    }
-
-    // Cash / holdings guard before writing.
-    const portfolio = await getPortfolio(order.user_code);
-    const cash = Number(portfolio.cash) || 0;
-    const holdings = (portfolio.holdings && typeof portfolio.holdings === 'object') ? portfolio.holdings : {};
-    const existing = holdings[order.symbol];
-    const total = qty * trigger;
-
-    if (side === 'BUY' && total > cash + 0.005) {
-      await db.update(
-        'stockrocket_crypto_orders',
-        `id=eq.${encodeURIComponent(order.id)}&status=eq.pending`,
-        { status: 'expired', expired_reason: 'insufficient_cash' }
-      );
-      expired++;
-      details.push({ id: order.id, action: 'expired', reason: 'insufficient_cash', need: total, have: cash });
-      continue;
-    }
-    if (side === 'SELL') {
-      const curShares = Number(existing?.shares) || 0;
-      if (!existing || curShares <= 0 || qty > curShares + EPSILON) {
-        await db.update(
-          'stockrocket_crypto_orders',
-          `id=eq.${encodeURIComponent(order.id)}&status=eq.pending`,
-          { status: 'expired', expired_reason: 'insufficient_holdings' }
-        );
-        expired++;
-        details.push({ id: order.id, action: 'expired', reason: 'insufficient_holdings', need: qty, have: curShares });
-        continue;
-      }
-    }
-
-    // Compute portfolio mutation.
-    let newCash = cash;
-    const newHoldings = { ...holdings };
-    let preTradeAvgCost = Number(existing?.avgCost) || null;
-
-    if (side === 'BUY') {
-      newCash = cash - total;
-      if (existing) {
-        const curShares = Number(existing.shares) || 0;
-        const curCost = Number(existing.avgCost) || 0;
-        const newShares = curShares + qty;
-        const newAvg = newShares > 0 ? ((curShares * curCost) + total) / newShares : trigger;
-        newHoldings[order.symbol] = {
-          symbol: order.symbol,
-          name: order.name || existing.name || order.symbol,
-          assetType: existing.assetType || 'crypto',
-          shares: newShares,
-          avgCost: newAvg,
-        };
-      } else {
-        newHoldings[order.symbol] = {
-          symbol: order.symbol,
-          name: order.name || order.symbol,
-          assetType: 'crypto',
-          shares: qty,
-          avgCost: trigger,
-        };
-      }
-    } else {
-      // SELL
-      const curShares = Number(existing.shares) || 0;
-      newCash = cash + total;
-      const remaining = curShares - qty;
-      if (remaining <= EPSILON) {
-        delete newHoldings[order.symbol];
-      } else {
-        newHoldings[order.symbol] = { ...existing, shares: remaining };
-      }
-    }
-
-    // Write trade row (append-only ledger). price = trigger_price per I8.
-    const tradeRow = {
-      user_code: order.user_code,
-      trade_type: side,
-      asset_type: 'crypto',
-      symbol: order.symbol,
-      name: order.name || order.symbol,
-      shares: qty,
-      price: trigger,
-      total,
-      cash_after: newCash,
-      source: 'crypto_bot_limit',
-    };
-    const { data: tradeIns, error: tradeErr } = await db.insert('stockrocket_trades', tradeRow);
-    if (tradeErr) {
-      details.push({ id: order.id, action: 'error', step: 'trade_insert', err: tradeErr });
-      continue;
-    }
-    const tradeId = tradeIns?.[0]?.id;
-
-    // Upsert portfolio.
-    const portfolioRow = {
-      user_code: order.user_code,
-      cash: newCash,
-      starting_cash: Number(portfolio.starting_cash) || STARTING_CASH,
-      holdings: newHoldings,
-    };
-    const { error: portErr } = await db.upsert('stockrocket_portfolios', portfolioRow, 'user_code');
-    if (portErr) {
-      // Trade row was written but portfolio upsert failed. That's a bad
-      // partial state -- log the order with an error action. The trade row
-      // stays; manual cleanup if needed.
-      details.push({ id: order.id, action: 'error', step: 'portfolio_upsert', err: portErr, trade_id: tradeId });
-      continue;
-    }
-
-    // Refresh cache so downstream orders in the same sweep see the new state.
-    portfolioCache.set(order.user_code, portfolioRow);
-
-    // Mark order filled.
-    const { error: orderErr } = await db.update(
-      'stockrocket_crypto_orders',
-      `id=eq.${encodeURIComponent(order.id)}&status=eq.pending`,
-      {
-        status: 'filled',
-        filled_at: new Date().toISOString(),
-        filled_price: trigger,
-        fill_trade_id: tradeId,
-      }
-    );
-    if (orderErr) {
-      details.push({ id: order.id, action: 'error', step: 'order_mark_filled', err: orderErr, trade_id: tradeId });
-      continue;
-    }
-
-    filled++;
-    details.push({
-      id: order.id,
-      action: 'filled',
-      side,
-      symbol: order.symbol,
-      user_code: order.user_code,
-      trigger,
-      live: live.price,
-      qty,
-      total,
-      trade_id: tradeId,
-      pre_trade_avg_cost: preTradeAvgCost,
+    const live=priceMap[order.symbol];
+    if(!live || !Number.isFinite(live.price) || live.price<=0) continue;
+    const {data,error}=await db.rpc('stockrocket_execute_trade',{
+      p_user:order.user_code,p_type:order.side,p_symbol:order.symbol,p_name:order.name,
+      p_asset:'crypto',p_qty:Number(order.qty),p_price:live.price,p_crypto:order.id,
     });
+    if(error){details.push({id:order.id,action:'error'});continue;}
+    if(data.action==='filled')filled++;
+    if(data.action==='expired')expired++;
+    details.push({id:order.id,action:data.action});
   }
 
   return json({ ok: true, scanned, filled, expired, details, authedAs });
@@ -373,6 +191,10 @@ function supabase(url, serviceKey) {
     'Prefer': 'return=representation',
   };
   return {
+    async rpc(name, body) {
+      const res=await fetch(`${base}/rpc/${name}`,{method:'POST',headers,body:JSON.stringify(body)});
+      return res.ok?{data:await res.json()}:{error:true};
+    },
     async select(table, query = '') {
       const res = await fetch(`${base}/${table}?${query}`, { headers });
       if (!res.ok) return { data: null, error: await res.text() };

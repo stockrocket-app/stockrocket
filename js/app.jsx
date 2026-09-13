@@ -1,3 +1,5 @@
+// HISTORICAL SNAPSHOT: not loaded by index.html. Do not deploy as the current app.
+// Authoritative target-order UI and server-backed trading live in index.html.
 // =============================================
 // STOCK ROCKET -- StockRocket V2
 // React Application

@@ -161,12 +161,13 @@ export default async function handler(req) {
       return json({ error: 'not_cancellable', detail: `Order is ${order.status}, only pending orders can be cancelled.` }, 400);
     }
 
-    const { error } = await db.update(
+    const { data: cancelledRows, error } = await db.update(
       'stockrocket_crypto_orders',
-      `id=eq.${encodeURIComponent(id)}`,
+      `id=eq.${encodeURIComponent(id)}&status=eq.pending`,
       { status: 'cancelled' }
     );
     if (error) return json({ error: 'cancel_failed', detail: error }, 500);
+    if(!cancelledRows?.length) return json({error:'not_cancellable'},409);
     return json({ ok: true, cancelled: id });
   }
 
